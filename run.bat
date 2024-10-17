@@ -1,1 +1,1 @@
-python3 PROTEUS_NEWV1.py
+python PROTEUS_NEWV1.py

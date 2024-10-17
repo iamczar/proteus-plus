@@ -12,6 +12,7 @@ from local_file_picker import local_file_picker
 import csv
 import json
 from typing import Callable
+from pathlib import Path
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -24,7 +25,8 @@ def load_config():
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
-            print('Proteus loaded config: ', config)
+            #print('Proteus loaded config: ', config)
+            print("Proteus loaded config")
     except FileNotFoundError:
         print(f"Configuration file {config_file} not found.")
     except json.JSONDecodeError:
@@ -158,6 +160,7 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
     global lem_module
     modules = {}
     circ_modules = []
+    what = config['SERIAL_CONFIG']
     with open(config['SERIAL_CONFIG'], mode='r') as file:
         reader = csv.reader(file)
         next(reader)
@@ -179,6 +182,7 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module.type = 'LEM'
                     modules[moduleID] = module
                     lem_module=module.moduleID
+    print(f"module_list_update:moduleID:{moduleID}")
 
 
 def load_new_rows(module) -> None:
@@ -220,8 +224,14 @@ def scan_for_modules() -> Callable[[], None]:  ## Scan for modules, this will st
     return inner
 
 def null_session(target_module) -> None:   ## the 'Stop' button function, it stops the pumps and returns the valves to their 'off' state by running ALF with the null sequence
+    global experiment_folder_path
+    if experiment_folder_path is None:
+        experiment_folder_path = os.path.join(os.getcwd(), "log")
+    
+    
     data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-    log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
+    #log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
+    log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
     module_csv= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
     if target_module in processes:
         processes[target_module].communicate(b"exit\n")
@@ -239,6 +249,7 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
 
 
 def stop_btn_click() -> None:
+    print("stop_btn_click")
     def inner():
         target_module = moduleID
         threading.Thread(target=null_session(target_module), daemon=True).start()
@@ -268,13 +279,46 @@ def freeze_btn_click() -> None:
             freeze_button.text = "Freeze Off"
     return inner
 
-def start_btn_click() -> None:
-    def inner() -> None:
-        data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-        log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
-        module_csv_path= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-        alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
-    return inner
+# def start_btn_click() -> None:
+#     def inner() -> None:
+#         data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+#         log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
+#         module_csv_path= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+#         alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+#     return inner
+
+experiment_folder_path = None
+async def start_btn_click() -> None:
+    global seqFilename
+
+    # First, check if the sequence file has been selected
+    if not seqFilename:
+        # Trigger the file picker for selecting the sequence file
+        await pick_seqfile()
+
+    if seqFilename:
+        # If sequence file is selected, proceed to folder selection
+        def on_folder_selected(selected_folder):
+            # Use the selected folder or fallback to the default log folder
+            global experiment_folder_path
+            experiment_folder_path = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
+            
+            print(f"Selected log folder: {experiment_folder_path}")
+            
+            # Now run the sequence using the selected log folder and selected sequence file
+            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
+            module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+
+            # Call the alfi_session function with the appropriate arguments
+            alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+
+        # Trigger the folder picker after sequence file selection
+        select_save_log_folder(on_folder_selected)
+    else:
+        print("Sequence file not selected, cannot start sequence.")
+
+
 
 def mass_start_btn_click() -> None:
     def inner() -> None:
@@ -297,6 +341,89 @@ def purge_btn_click() -> None:
             module.data_frame = None
             module.data_file_row = 0
     return inner
+
+async def open_new_experiment_dialog() -> None:
+    with ui.dialog() as dialog:
+        with ui.card():
+            ui.label('Enter experiment name:')
+            folder_name_input = ui.input(label='Folder Name', placeholder='Enter folder name...')
+    
+            with ui.row():
+                # OK button to create the folder
+                ui.button('OK', on_click=lambda: create_experiment_folder(dialog, folder_name_input.value))
+                # Cancel button to close the dialog without doing anything
+                ui.button('Cancel', on_click=dialog.close)
+
+    dialog.open()  # Explicitly open the dialog after defining it
+
+
+async def create_experiment_folder(dialog, folder_name: str) -> None:
+    if folder_name:
+        # Construct the path to the 'experiments' directory
+        experiment_folder_path = os.path.join(os.getcwd(), "experiments", folder_name)
+        try:
+            os.makedirs(experiment_folder_path, exist_ok=True)  # Create the folder
+            print(f"Folder '{folder_name}' created at {experiment_folder_path}.")
+        except Exception as e:
+            print(f"Error creating folder '{folder_name}': {e}")
+    else:
+        print("Error: Folder name cannot be empty.")
+    
+    dialog.close()  # Close the dialog once folder creation process is done
+    
+seqFilename = None  # Initialize the global variable to store the sequence file
+def select_save_log_folder(callback, start_directory: str = os.getcwd()) -> None:
+    """Custom folder picker to select a directory to save logs."""
+
+    current_directory = Path(start_directory).expanduser()
+
+    def update_file_grid():
+        """Updates the UI grid to show the contents of the current directory."""
+        folder_contents = list(current_directory.glob('*'))
+        folder_contents.sort(key=lambda p: (not p.is_dir(), p.name.lower()))
+
+        file_grid.options['rowData'] = [{
+            'name': f'📁 {p.name}' if p.is_dir() else p.name,
+            'path': str(p),
+        } for p in folder_contents]
+
+        if current_directory != current_directory.parent:
+            # Add parent directory navigation (without <strong> tags)
+            file_grid.options['rowData'].insert(0, {
+                'name': '📁 ..',  # Display as a simple text for the parent folder
+                'path': str(current_directory.parent),
+            })
+
+        file_grid.update()
+
+    def handle_double_click(e):
+        """Handles folder navigation via double-click."""
+        nonlocal current_directory
+        selected_path = Path(e.args['data']['path'])
+        if selected_path.is_dir():
+            current_directory = selected_path
+            update_file_grid()
+
+    def handle_select():
+        """Handles the selection of the current folder."""
+        callback(str(current_directory))
+        folder_dialog.close()
+
+    # Create the dialog to display folder contents
+    with ui.dialog() as folder_dialog, ui.card():
+        ui.label(f'Select Folder (current: {current_directory})')
+
+        file_grid = ui.aggrid({
+            'columnDefs': [{'field': 'name', 'headerName': 'File'}],
+            'rowSelection': 'single',
+        }).on('cellDoubleClicked', handle_double_click)
+
+        with ui.row().classes('w-full justify-end'):
+            ui.button('Cancel', on_click=folder_dialog.close).props('outline')
+            ui.button('Select', on_click=handle_select)
+
+    update_file_grid()  # Load the initial directory contents
+    folder_dialog.open()  # Open the dialog
 
 
 def labq_session(debug=False, pump_head=None, tube_size=None, direction=None, speed=None, flow_rate=None, full_speed_running=False, start_pump=False, stop_pump=False) -> None:  
@@ -329,6 +456,16 @@ def labq_session(debug=False, pump_head=None, tube_size=None, direction=None, sp
     print(f"LabQ script started.")
 
 def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False, module_csv=None, data_csv=None, index=None, serial_config=None, port=None) -> None:
+    global experiment_folder_path  # Access the experiment folder path
+    
+    # Ensure we have a valid experiment folder, fallback to default log folder if not created
+    if experiment_folder_path is None:
+        experiment_folder_path = os.path.join(os.getcwd(), "log")
+
+    # Define the log file path within the experiment folder
+    log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
+    
+    
     # See ALF.py for the command line arguments
     if moduleID in processes:
         if processes[moduleID].poll() is None:
@@ -341,7 +478,7 @@ def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False
     if seq_csv:
         cmd_args.extend(['-q', seq_csv])
     if log_csv:
-        cmd_args.extend(['-l', log_csv])
+        cmd_args.extend(['-l', log_file_path])
     if baud:
         cmd_args.extend(['-b', str(baud)])
     if pause:
@@ -539,12 +676,13 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 ui.space()     
                 ui.space()
                 ui.button("STOP", on_click=stop_btn_click(), color='red')     
-                ui.space()     
-                ui.space()    
+                new_experiment = ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
+                ui.space()      
                 sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
                 index_dropdown = ui.select(label='Select Index', options=index_list).bind_value_to(index_value, "value")
                 freeze_button=ui.button("Index Freeze Off", on_click=freeze_btn_click(), color='orange')
-                start_button=ui.button("Begin Sequence", on_click=start_btn_click(), color='green') 
+                start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
+                
                 session_label = ui.label('')
                 ui.space()
                 ui.space()
