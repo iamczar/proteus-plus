@@ -324,6 +324,7 @@ def serial_listen(ser):
         print(f"An error occurred while listening to the serial port: {e}")
 
 def command_control(message, ser):
+    print(f"command_control:msg:{message}")
     try:
         # Split the message into values
         if debug:
