@@ -187,9 +187,6 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
 
 def load_new_rows(module) -> None:
 
-    print("---------------------------------------------load_new_rows------------------------------------------")
-
-
     if module.data_frame is None:
         start_row = 0
     else:    
