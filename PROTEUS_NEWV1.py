@@ -668,6 +668,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_lem = ui.tab('l', label = 'LEM')
             tab_LabQ = ui.tab('q', label = 'LabQ')
             tab_advanced = ui.tab('p', label = 'ADVANCED CONTROLS')
+            tab_image = ui.tab('i', label='PI&D')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
@@ -759,6 +760,9 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             labq_session_btn = ui.button("Confirm", on_click=lambda: labq_session(tube_size=labq_tubing.value), color='orange')
             ui.space()
 
+    # New Image tab panel
+    with ui.tab_panel(tab_image):
+        ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
 
 line_updates = ui.timer(5, refresh_all)
 
