@@ -19,12 +19,12 @@ def simulate_commands():
         airpump2 = 0
         pressureSP = 0
         oxySP = 0
-        pressureKp = 1
-        pressureKi = 1
-        pressureKd = 1
-        oxyKp = 1
-        oxyKi = 1
-        oxyKd = 1
+        pressureKp = 1.0
+        pressureKi = 1.0
+        pressureKd = 1.0
+        oxyKp = 1.0
+        oxyKi = 1.0
+        oxyKd = 1.0
         pump2dir = 1
         pump1dir = 1
         tube_bore = 1
@@ -33,7 +33,7 @@ def simulate_commands():
         ascmd1 = 1
         ascmd2 = 1
         ascmd3 = 1
-        wristCmd = 1
+        wristCmd = 0
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [

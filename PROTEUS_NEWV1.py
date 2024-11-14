@@ -250,7 +250,7 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
 
 
 def stop_btn_click() -> None:
-    print("stop_btn_click")
+    print("-------------------------------------------------stop_btn_click-----------------------------------------------")
     def inner():
         target_module = moduleID
         threading.Thread(target=null_session(target_module), daemon=True).start()
@@ -307,7 +307,8 @@ async def start_btn_click() -> None:
             print(f"Selected log folder: {experiment_folder_path}")
             
             # Now run the sequence using the selected log folder and selected sequence file
-            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
             log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
 
@@ -677,7 +678,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             with ui.grid(columns=5).classes('items-start'):
                 ui.space()     
                 ui.space()
-                ui.button("STOP", on_click=stop_btn_click(), color='red')     
+                stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')     
                 new_experiment = ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
                 ui.space()      
                 sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
