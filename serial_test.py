@@ -28,7 +28,6 @@ def simulate_commands():
         pump2dir = 1
         pump1dir = 1
         tube_bore = 1
-        tube_bore = 1
         pump_2_speed_ratio = 1.0        
         ascmd1 = 1
         ascmd2 = 1
@@ -40,7 +39,7 @@ def simulate_commands():
             circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
             valve6, valve7, valve8, valve9, valve10, airpump1, airpump2, pressureSP,
             oxySP, pressureKp, pressureKi, pressureKd, oxyKp, oxyKi, oxyKd, pump2dir,
-            pump1dir, tube_bore, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd
+            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd
         ]))
 
         return command_string + "\n"

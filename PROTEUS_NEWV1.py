@@ -13,6 +13,7 @@ import csv
 import json
 from typing import Callable
 from pathlib import Path
+import shutil
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -228,9 +229,12 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
     global experiment_folder_path
     if experiment_folder_path is None:
         experiment_folder_path = os.path.join(os.getcwd(), "log")
-    
+        
+    msg = f"null_session executed: experiment_folder_path:{experiment_folder_path}"
+    print(msg)
     
     data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+    #data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
     #log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
     log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
     module_csv= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
@@ -238,7 +242,8 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
         processes[target_module].communicate(b"exit\n")
         print(f"Stopped {target_module} ALF session")
         time.sleep(1)
-    alfi_session(seq_csv=config['NULLSEQUENCE'], index=17, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv)
+    #alfi_session(seq_csv=config['NULLSEQUENCE'], index=17, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv)
+    alfi_session(seq_csv="sequences\\system sequences\\STOP.csv", index=17, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv)
     print(f"Pumps stopped & valves returned to natural state.")
     time.sleep(1)
     if target_module in processes:
@@ -250,7 +255,7 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
 
 
 def stop_btn_click() -> None:
-    print("-------------------------------------------------stop_btn_click-----------------------------------------------")
+
     def inner():
         target_module = moduleID
         threading.Thread(target=null_session(target_module), daemon=True).start()
@@ -311,6 +316,15 @@ async def start_btn_click() -> None:
             data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
             log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+            
+            # Copy the sequence file to the selected folder
+            try:
+                dest_path = os.path.join(experiment_folder_path, os.path.basename(seqFilename))
+                shutil.copy(seqFilename, dest_path)
+                print(f"Sequence file copied to: {dest_path}")
+            except Exception as e:
+                print(f"Error copying sequence file: {e}")
+
 
             # Call the alfi_session function with the appropriate arguments
             alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)

@@ -386,35 +386,35 @@ def command_control(message, ser):
 
     # Call a different function based on the command
     if command == COMMANDS['MODSTATEREQUEST']:
-        if debug:
-            print("Calling handle_mod_state_request")
+        # if debug:
+        print("Calling handle_mod_state_request")
         handle_mod_state_request(moduid, message, ser)
     elif command == COMMANDS['MODSTATEREPLY']:
-        if debug:
-            print("Calling handle_mod_state_reply")
+        # if debug:
+        #print("Calling handle_mod_state_reply")
         handle_mod_state_reply(moduid, message, ser)
     elif command == COMMANDS['MODDATAREPORT']:
-        if debug:
-            print("Calling handle_mod_data_report")
+        # if debug:
+        #print("Calling handle_mod_data_report")
         handle_mod_data_report(moduid, message, ser)
 
 def handle_mod_state_request(moduid, line, ser):
     # Split the line into values
     values = line.split(',')
-    if debug:
-        print(f"Split line into values: {values}")
+    #if debug:
+    print(f"handle_mod_state_request:Split line into values: {values}")
 
     # Check if the line contains enough values
     if len(values) >= 4:
         moduid, command, transtype= map(int, values[1:4])
-        if debug:
-            print(f"Extracted moduid and command: {moduid}, {command}, {transtype}")
+        #if debug:
+        print(f"handle_mod_state_request:Extracted moduid and command: {moduid}, {command}, {transtype}")
 
         # Find the module with the given moduid
         module = next((m for m in modules if m.moduid == moduid), None)
         if module is not None:
             if debug:
-                print(f"Found module with moduid: {moduid}")
+                print(f"handle_mod_state_request:Found module with moduid: {moduid}")
 
             if transtype==TRANSTYPE['VOLUME']:   ######################################################### VOLUME TRANSITION 
                 # Check if there's a next sequence stage
@@ -431,6 +431,8 @@ def handle_mod_state_request(moduid, line, ser):
 
                     # Send the sequence to the Arduino
                     next_sequence_str = ','.join(next_sequence)
+                    print(f"sending sequence: {next_sequence_str}")
+                    
                     ser.write((next_sequence_str + "\n").encode())
                     if debug:
                         print(f"Sent next sequence to Arduino: {next_sequence_str}")
