@@ -2,3 +2,4 @@ nicegui
 pandas
 matplotlib
 pywin32
+pyserial

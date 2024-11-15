@@ -15,8 +15,7 @@ VERSION = "V03w2"
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
-
-
+moduid = None
 
 config = {}
 
@@ -61,94 +60,128 @@ if debug:
 ############################################ COMMUNICATION PROTOCOL POSITIONS ########################################################
 
 
+# COMPOS = {
+#     "nullLeader": 0,
+#     "modId": 1,
+#     "command": 2,
+#     "stateId": 3,
+#     "circFlow": 4,
+#     "pressureFlow": 5,
+#     "valve1": 6,
+#     "valve2": 7,
+#     "valve3": 8,
+#     "valve4": 9,
+#     "valve5": 10,
+#     "valve6": 11,
+#     "valve7": 12,
+#     "valve8": 13,
+#     "valve9": 14,
+#     "valve10": 15,
+#     "valve11": 16,
+#     "valve12": 17,
+#     "valve13": 18,
+#     "valve14": 19,
+#     "valve15": 20,
+#     "valve16": 21,
+#     "transTimeFlag": 22,
+#     "transTimeSp": 23,
+#     "pressureSP": 24,
+#     "oxySP": 25,
+#     "presInterval": 26,
+#     "flowInterval": 27,
+#     "oxyInterval": 28,
+#     "reportInterval": 29,
+#     "oxyTemp": 30,
+#     "oxyCircChannel": 31,
+#     "pumpSpeedRatio": 32,
+#     "circPumpCal": 33,
+#     "pressurePumpCal": 34,
+#     "pressureKp": 35,
+#     "pressureKi": 36,
+#     "pressureKd": 37,
+#     "oxyKp": 38,
+#     "oxyKi": 39,
+#     "oxyKd": 40,
+#     "flowInstalled": 41,
+#     "pressureInstalled": 42,
+#     "oxyInstalled": 43,
+#     "activeOxyChannel1": 44,
+#     "activeOxyChannel2": 45,
+#     "activeOxyChannel3": 46,
+#     "activeOxyChannel4": 47,
+#     "pump1Cw": 48,
+#     "pump2Cw": 49,
+#     "pump3Cw": 50,
+#     "pump4Cw": 51,
+#     "pump1DirPin": 52,
+#     "pump1StepPin": 53,
+#     "pump2DirPin": 54,
+#     "pump2StepPin": 55,
+#     "pump3DirPin": 56,
+#     "pump3StepPin": 57,
+#     "pump4DirPin": 58,
+#     "pump4StepPin": 59,
+#     "valve1Pin": 60,
+#     "valve2Pin": 61,
+#     "valve3Pin": 62,
+#     "valve4Pin": 63,
+#     "valve5Pin": 64,
+#     "valve6Pin": 65,
+#     "valve7Pin": 66,
+#     "valve8Pin": 67,
+#     "valve9Pin": 68,
+#     "valve10Pin": 69,
+#     "valve11Pin": 70,
+#     "valve12Pin": 71,
+#     "valve13Pin": 72,
+#     "valve14Pin": 73,
+#     "valve15Pin": 74,
+#     "valve16Pin": 75,
+#     "oxyConfigParameter": 76,
+#     "pressure0Address": 77,
+#     "pressureChannel": 78,
+#     "flow0Address": 79,
+#     "dispensePara": 80,
+#     "dispenseVolumeSP": 81,
+#     "pcBaudRate": 82,
+#     "oxyBaudRate": 83,
+#     "pressureBaudRate": 84,
+#     "flagCheck": 85,
+#     "nullTrailer": 86,
+# }
+
+
 COMPOS = {
-    "nullLeader": 0,
-    "modId": 1,
-    "command": 2,
-    "stateId": 3,
-    "circFlow": 4,
-    "pressureFlow": 5,
-    "valve1": 6,
-    "valve2": 7,
-    "valve3": 8,
-    "valve4": 9,
-    "valve5": 10,
-    "valve6": 11,
-    "valve7": 12,
-    "valve8": 13,
-    "valve9": 14,
-    "valve10": 15,
-    "valve11": 16,
-    "valve12": 17,
-    "valve13": 18,
-    "valve14": 19,
-    "valve15": 20,
-    "valve16": 21,
-    "transTimeFlag": 22,
-    "transTimeSp": 23,
-    "pressureSP": 24,
-    "oxySP": 25,
-    "presInterval": 26,
-    "flowInterval": 27,
-    "oxyInterval": 28,
-    "reportInterval": 29,
-    "oxyTemp": 30,
-    "oxyCircChannel": 31,
-    "pumpSpeedRatio": 32,
-    "circPumpCal": 33,
-    "pressurePumpCal": 34,
-    "pressureKp": 35,
-    "pressureKi": 36,
-    "pressureKd": 37,
-    "oxyKp": 38,
-    "oxyKi": 39,
-    "oxyKd": 40,
-    "flowInstalled": 41,
-    "pressureInstalled": 42,
-    "oxyInstalled": 43,
-    "activeOxyChannel1": 44,
-    "activeOxyChannel2": 45,
-    "activeOxyChannel3": 46,
-    "activeOxyChannel4": 47,
-    "pump1Cw": 48,
-    "pump2Cw": 49,
-    "pump3Cw": 50,
-    "pump4Cw": 51,
-    "pump1DirPin": 52,
-    "pump1StepPin": 53,
-    "pump2DirPin": 54,
-    "pump2StepPin": 55,
-    "pump3DirPin": 56,
-    "pump3StepPin": 57,
-    "pump4DirPin": 58,
-    "pump4StepPin": 59,
-    "valve1Pin": 60,
-    "valve2Pin": 61,
-    "valve3Pin": 62,
-    "valve4Pin": 63,
-    "valve5Pin": 64,
-    "valve6Pin": 65,
-    "valve7Pin": 66,
-    "valve8Pin": 67,
-    "valve9Pin": 68,
-    "valve10Pin": 69,
-    "valve11Pin": 70,
-    "valve12Pin": 71,
-    "valve13Pin": 72,
-    "valve14Pin": 73,
-    "valve15Pin": 74,
-    "valve16Pin": 75,
-    "oxyConfigParameter": 76,
-    "pressure0Address": 77,
-    "pressureChannel": 78,
-    "flow0Address": 79,
-    "dispensePara": 80,
-    "dispenseVolumeSP": 81,
-    "pcBaudRate": 82,
-    "oxyBaudRate": 83,
-    "pressureBaudRate": 84,
-    "flagCheck": 85,
-    "nullTrailer": 86,
+    "circFlow": 0,
+    "pressureFlow": 1,
+    "valve1": 2,
+    "valve2": 3,
+    "valve3": 4,
+    "valve4": 5,
+    "valve5": 6,
+    "valve6": 7,
+    "valve7": 8,
+    "valve8": 9,
+    "valve9": 10,
+    "valve10": 11,
+    "airpump1": 12,
+    "airpump2": 13,
+    "pressureSP": 14,
+    "oxySP": 15,
+    "pressureKp": 16,
+    "pressureKi": 17,
+    "pressureKd": 18,
+    "oxyKp": 19,
+    "oxyKi": 20,
+    "oxyKd": 21,
+    "pump2Dir": 22,
+    "pump1Dir": 23,
+    "tube_bore": 24,
+    "pump_2_speed_ratio": 25,
+    "ascmds1": 26,
+    "ascmds2": 27,
+    "ascmds3": 28,
+    "wristCmd": 29
 }
 
 TASKS = {
@@ -324,7 +357,7 @@ def serial_listen(ser):
         print(f"An error occurred while listening to the serial port: {e}")
 
 def command_control(message, ser):
-    print(f"command_control:msg:{message}")
+    #print(f"command_control:msg:{message}")
     try:
         # Split the message into values
         if debug:
@@ -353,35 +386,35 @@ def command_control(message, ser):
 
     # Call a different function based on the command
     if command == COMMANDS['MODSTATEREQUEST']:
-        if debug:
-            print("Calling handle_mod_state_request")
+        # if debug:
+        print("Calling handle_mod_state_request")
         handle_mod_state_request(moduid, message, ser)
     elif command == COMMANDS['MODSTATEREPLY']:
-        if debug:
-            print("Calling handle_mod_state_reply")
+        # if debug:
+        #print("Calling handle_mod_state_reply")
         handle_mod_state_reply(moduid, message, ser)
     elif command == COMMANDS['MODDATAREPORT']:
-        if debug:
-            print("Calling handle_mod_data_report")
+        # if debug:
+        #print("Calling handle_mod_data_report")
         handle_mod_data_report(moduid, message, ser)
 
 def handle_mod_state_request(moduid, line, ser):
     # Split the line into values
     values = line.split(',')
-    if debug:
-        print(f"Split line into values: {values}")
+    #if debug:
+    print(f"handle_mod_state_request:Split line into values: {values}")
 
     # Check if the line contains enough values
     if len(values) >= 4:
         moduid, command, transtype= map(int, values[1:4])
-        if debug:
-            print(f"Extracted moduid and command: {moduid}, {command}, {transtype}")
+        #if debug:
+        print(f"handle_mod_state_request:Extracted moduid and command: {moduid}, {command}, {transtype}")
 
         # Find the module with the given moduid
         module = next((m for m in modules if m.moduid == moduid), None)
         if module is not None:
             if debug:
-                print(f"Found module with moduid: {moduid}")
+                print(f"handle_mod_state_request:Found module with moduid: {moduid}")
 
             if transtype==TRANSTYPE['VOLUME']:   ######################################################### VOLUME TRANSITION 
                 # Check if there's a next sequence stage
@@ -398,6 +431,8 @@ def handle_mod_state_request(moduid, line, ser):
 
                     # Send the sequence to the Arduino
                     next_sequence_str = ','.join(next_sequence)
+                    print(f"sending sequence: {next_sequence_str}")
+                    
                     ser.write((next_sequence_str + "\n").encode())
                     if debug:
                         print(f"Sent next sequence to Arduino: {next_sequence_str}")

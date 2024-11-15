@@ -13,6 +13,7 @@ import csv
 import json
 from typing import Callable
 from pathlib import Path
+import shutil
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -187,9 +188,6 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
 
 def load_new_rows(module) -> None:
 
-    print("---------------------------------------------load_new_rows------------------------------------------")
-
-
     if module.data_frame is None:
         start_row = 0
     else:    
@@ -251,12 +249,29 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
         print(f"No null sequence running for {target_module}")
     time.sleep(1)
 
+def stop_experiment():
+        # If sequence file is selected, proceed to folder selection
+        # Use the selected folder or fallback to the default log folder
+        global experiment_folder_path
+       
+        # Now run the sequence using the selected log folder and selected sequence file
+        #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+        data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
+        log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
+        module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+        
+
+        # Call the alfi_session function with the appropriate arguments
+        alfi_session(index=index_value.value, seq_csv="sequences\\system sequences\\SYS_SEQ_NULL.csv", data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+
+
 
 def stop_btn_click() -> None:
-    print("stop_btn_click")
+
     def inner():
-        target_module = moduleID
-        threading.Thread(target=null_session(target_module), daemon=True).start()
+        # target_module = moduleID
+        # threading.Thread(target=null_session(target_module), daemon=True).start()
+        stop_experiment()
     return inner
 
 def lem_stop_btn_click() -> None:
@@ -310,9 +325,19 @@ async def start_btn_click() -> None:
             print(f"Selected log folder: {experiment_folder_path}")
             
             # Now run the sequence using the selected log folder and selected sequence file
-            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
             log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+            
+            # Copy the sequence file to the selected folder
+            try:
+                dest_path = os.path.join(experiment_folder_path, os.path.basename(seqFilename))
+                shutil.copy(seqFilename, dest_path)
+                print(f"Sequence file copied to: {dest_path}")
+            except Exception as e:
+                print(f"Error copying sequence file: {e}")
+
 
             # Call the alfi_session function with the appropriate arguments
             alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
@@ -671,6 +696,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_lem = ui.tab('l', label = 'LEM')
             tab_LabQ = ui.tab('q', label = 'LabQ')
             tab_advanced = ui.tab('p', label = 'ADVANCED CONTROLS')
+            tab_image = ui.tab('i', label='PI&D')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
@@ -679,7 +705,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             with ui.grid(columns=5).classes('items-start'):
                 ui.space()     
                 ui.space()
-                ui.button("STOP", on_click=stop_btn_click(), color='red')     
+                stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')     
                 new_experiment = ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
                 ui.space()      
                 sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
@@ -762,6 +788,9 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             labq_session_btn = ui.button("Confirm", on_click=lambda: labq_session(tube_size=labq_tubing.value), color='orange')
             ui.space()
 
+    # New Image tab panel
+    with ui.tab_panel(tab_image):
+        ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
 
 line_updates = ui.timer(5, refresh_all)
 
