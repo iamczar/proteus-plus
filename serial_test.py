@@ -116,6 +116,7 @@ def main():
                             # Send the command after receiving the expected message
                             ser.write(command.encode())
                             print(f"Host Sends: {command.strip()}")
+                            # close the serial port
                     
                     # Keep the last incomplete line in buffer (if any)
                     buffer = lines[-1]

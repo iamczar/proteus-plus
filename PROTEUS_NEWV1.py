@@ -27,7 +27,7 @@ def load_config():
         with open(config_file, 'r') as f:
             config = json.load(f)
             #print('Proteus loaded config: ', config)
-            print("Proteus loaded config")
+            #print("Proteus loaded config")
     except FileNotFoundError:
         print(f"Configuration file {config_file} not found.")
     except json.JSONDecodeError:
@@ -183,7 +183,7 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module.type = 'LEM'
                     modules[moduleID] = module
                     lem_module=module.moduleID
-    print(f"module_list_update:moduleID:{moduleID}")
+    #print(f"module_list_update:moduleID:{moduleID}")
 
 
 def load_new_rows(module) -> None:
@@ -192,7 +192,7 @@ def load_new_rows(module) -> None:
         start_row = 0
     else:    
         start_row = module.data_file_row
-    print(f"Loading new rows for {module.moduleID} from row {start_row}")
+    #print(f"Loading new rows for {module.moduleID} from row {start_row}")
     
     if not os.path.exists(module.data_file):
         print(f"{module.data_file} not found. No new rows loaded.")
@@ -249,29 +249,50 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
         print(f"No null sequence running for {target_module}")
     time.sleep(1)
 
-def stop_experiment():
-        # If sequence file is selected, proceed to folder selection
-        # Use the selected folder or fallback to the default log folder
-        global experiment_folder_path
-       
+def stop_experiment(target_module):
+    # If sequence file is selected, proceed to folder selection
+    # Use the selected folder or fallback to the default log folder
+    global experiment_folder_path
+    
+    try:
         # Now run the sequence using the selected log folder and selected sequence file
         #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
         data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
         log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
         module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-        
+
+        if target_module in processes:
+            processes[target_module].communicate(b"exit\n")
+            print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
+            time.sleep(1)
+        else:
+            print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
 
         # Call the alfi_session function with the appropriate arguments
-        alfi_session(index=index_value.value, seq_csv="sequences\\system sequences\\SYS_SEQ_NULL.csv", data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+        alfi_session(index=index_value.value, seq_csv="sequences\\system sequences\\STOP.csv", data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+        
+        print(f"-----------------------------------------Waiting 3 seconds {target_module} before sending an exit------------------------------------------------------")
+        time.sleep(3)
+        if target_module in processes:
+            processes[target_module].communicate(b"exit\n")
+            print(f"Stopped {target_module} null sequence")
+        else:
+            print(f"No null sequence running for {target_module}")
 
+    except Exception as e:
+        print(f"stop_experiment : ERROR: {e}")
 
 
 def stop_btn_click() -> None:
 
+    # def inner():
+    #     target_module = moduleID
+    #     #threading.Thread(target=null_session(target_module), daemon=True).start()
+    #     threading.Thread(target=stop_experiment(target_module), daemon=True).start()
+    # return inner
     def inner():
         target_module = moduleID
-        threading.Thread(target=null_session(target_module), daemon=True).start()
-        #stop_experiment()
+        stop_experiment(target_module)
     return inner
 
 def lem_stop_btn_click() -> None:
@@ -562,7 +583,7 @@ def refresh_all() -> None:
     subselect(module)
     data_processing(module.subset)
     update_line_plot()
-    print('Running Processes: ',processes)
+    #print('Running Processes: ',processes)
     for process in list(processes.keys()):
         if processes[process].poll() is None:
             print(f"Process {process} is still running.")
@@ -660,9 +681,9 @@ freeze = False
 
 cwd = os.getcwd()
 if os.getcwd()!=os.path.abspath(__file__):
-    print("Current Working Directory: ", os.getcwd())
+    #print("Current Working Directory: ", os.getcwd())
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    print("New Working Directory: ", os.getcwd())
+    #print("New Working Directory: ", os.getcwd())
 
 load_config()
 
