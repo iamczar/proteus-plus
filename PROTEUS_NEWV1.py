@@ -269,9 +269,9 @@ def stop_experiment():
 def stop_btn_click() -> None:
 
     def inner():
-        # target_module = moduleID
-        # threading.Thread(target=null_session(target_module), daemon=True).start()
-        stop_experiment()
+        target_module = moduleID
+        threading.Thread(target=null_session(target_module), daemon=True).start()
+        #stop_experiment()
     return inner
 
 def lem_stop_btn_click() -> None:
