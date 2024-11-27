@@ -17,17 +17,17 @@
         "title": "Pump speeds",
         "y_limits": null
     },
-    "Pressure": {
-        "name": "Pressure",
+    "Flow": {
+        "name": "Flow",
         "number_of_lines": 3,
         "y_values" : ["FLOWMEASURED","FLOWMEASURED_rolling_avg", "Pump2_mLmin"],
         "legend": ["ICS flow rate", "Flow Rolling AVG", "P2 setting"],
         "y_label": "Flow rate (mL/min)",
-        "title": "pressure",
+        "title": "Flow rate",
         "y_limits": null
     },
-    "Flow": {
-        "name": "Flow",
+    "Pressure": {
+        "name": "Pressure",
         "number_of_lines": 2,
         "y_values" : ["PRESSUREMEASURED","PRESSURESETPOINT"],
         "legend": ["Measured","Setpoint"],
@@ -44,14 +44,13 @@
         "title": "Pressure PID",
         "y_limits": null
     },
-
-    "Temp": {
-        "name": "Flow rate",
-        "number_of_lines": 1,
-        "y_values" : ["TEMPMEASURED"],
-        "legend": ["flow rate"],
-        "y_label": "mls/min",
-        "title": "Flow rate at Sensirion",
+    "Oxygen PID": {
+        "name": "Oxygen PID",
+        "number_of_lines": 3,
+        "y_values" : ["OXYGENKP", "OXYGENKI", "OXYGENKD"],
+        "legend": ["K$_P$", "K$_I$", "K$_D$"],
+        "y_label": "Gain",
+        "title": "Oxygen PID",
         "y_limits": null
     }
 }
