@@ -347,8 +347,12 @@ def retrieve_logs(target_module):
             # Use the selected folder or fallback to the default log folder
             target_folder = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-           
-            run_retrieve_logs(moduleID,module_csv_path,target_folder)
+            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+        
+            print(f"----------------------------retrieve_logs:{moduleID}-------------------------------------------------")
+            print(f"----------------------------target_folder:{target_folder}----------------------------------")
+            print(f"----------------------------module_csv_path:{module_csv_path}----------------------------------")
+            run_retrieve_logs(moduleID,module_csv_path,target_folder,data_file_path)
             
         except Exception as e:
             error_msg = f"-------------Error: retrieve_logs: {e}"
@@ -414,22 +418,24 @@ async def start_btn_click() -> None:
             print(f"Selected log folder: {experiment_folder_path}")
             
             # Now run the sequence using the selected log folder and selected sequence file
-            #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-            data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
+            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            copy_data_file_to_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
             log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
             
             # Copy the sequence file to the selected folder
             try:
-                dest_path = os.path.join(experiment_folder_path, os.path.basename(seqFilename))
-                shutil.copy(seqFilename, dest_path)
-                print(f"Sequence file copied to: {dest_path}")
+                sequence_dest_path = os.path.join(experiment_folder_path, os.path.basename(seqFilename))
+                shutil.copy(seqFilename, sequence_dest_path)
+                print(f"Sequence file copied to: {sequence_dest_path}")
             except Exception as e:
                 print(f"Error copying sequence file: {e}")
-
-
+                
             # Call the alfi_session function with the appropriate arguments
-            alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
+            # print("--------------------------------start_btn_click-------------------------------------")
+            # print(f"--------------------------------data_file_path:{data_file_path}-------------------------------------")
+            # print(f"--------------------------------copy_data_file_to_path:{copy_data_file_to_path}-------------------------------------")
+            alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path,experiment_file_path=copy_data_file_to_path)
 
         # Trigger the folder picker after sequence file selection
         select_save_log_folder(on_folder_selected)
@@ -571,7 +577,7 @@ def labq_session(debug=False, pump_head=None, tube_size=None, direction=None, sp
     processes['labq'] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     print(f"LabQ script started.")
     
-def run_retrieve_logs(module_id,serial_conf,target_folder):
+def run_retrieve_logs(module_id,serial_conf,target_folder,data_folder):
     if moduleID in processes:
         if processes[module_id].poll() is None:
             print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
@@ -579,9 +585,10 @@ def run_retrieve_logs(module_id,serial_conf,target_folder):
     cmd_args = ['scripts\\retrieve_sessions_logs.py','-u', str(moduleID)]
     cmd_args.extend(['-s', serial_conf])
     cmd_args.extend(['-t', target_folder])
+    cmd_args.extend(['-d', data_folder])
     processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     
-def run_stop_experiment(module_id,serial_conf):
+def run_stop_experiment(module_id,serial_conf):    
     if moduleID in processes:
         if processes[module_id].poll() is None:
             print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
@@ -617,7 +624,7 @@ def run_start_data_logging(module_id,serial_conf):
     cmd_args.extend(['-s', serial_conf])
     processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     
-def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False, module_csv=None, data_csv=None, index=None, serial_config=None, port=None) -> None:
+def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False, module_csv=None, data_csv=None, index=None, serial_config=None, port=None,experiment_file_path = None) -> None:
     global experiment_folder_path  # Access the experiment folder path
     
     # Ensure we have a valid experiment folder, fallback to default log folder if not created
@@ -656,6 +663,8 @@ def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False
         cmd_args.extend(['-c', port])
     if freeze:
         cmd_args.append('-p')
+    if experiment_file_path:
+        cmd_args.extend(['-e', experiment_file_path])
     # print("-------------------------------------------------------cmd_args--------------------------------------------------------")
     # print(cmd_args)
     processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)

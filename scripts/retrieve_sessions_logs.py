@@ -36,6 +36,14 @@ parser.add_argument(
     metavar=''
 )
 
+parser.add_argument(
+    '-d', '--data_folder',
+    type=str,
+    help='Specify the target folder to save the logs',
+    metavar=''
+)
+
+
 # Parse arguments
 args = parser.parse_args()
 
@@ -54,7 +62,7 @@ def find_module_serial(moduid):
     print(f"Module with moduid {moduid} not found")
     return None
 
-def copy_all_session_logs(com_port, target_folder):
+def copy_all_session_logs(com_port, target_folder,data_destination_filepath):
     """List and copy all files from the session logs folder."""
     source_folder = "/sd/session_logs"
     try:
@@ -84,9 +92,10 @@ def copy_all_session_logs(com_port, target_folder):
                 check=True
             )
             
+            print(f"Copying {source_file} to {data_destination_filepath}")
             # replace copy on the data folder
             subprocess.run(
-                ["ampy", "--port", com_port, "get", source_file, destination_file],
+                ["ampy", "--port", com_port, "get", source_file, data_destination_filepath],
                 check=True
             )
             
@@ -113,7 +122,7 @@ def main():
         if com_port is None:
             print(f"Failed to find serial connection for moduid {args.moduid}")
             sys.exit(1)
-        print(f"------------------------------com_port : {com_port} -----------------------------------------")
+        print(f"------------------------------retrieve session log COMPORT: {com_port} -----------------------------------------")
 
         thread = threading.Thread(target=copy_all_session_logs, args=(com_port,args.target_folder))
         thread.start()
