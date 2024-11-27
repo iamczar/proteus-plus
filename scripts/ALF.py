@@ -44,6 +44,7 @@ parser.add_argument('-b','--baud', type=int, help='baud', default=115200, metava
 parser.add_argument('-p','--pause', action='store_true', help='pause', default=False)
 parser.add_argument('-m','--module_csv', type=str, help='modules.csv', default='serial_config.csv', metavar='')
 parser.add_argument('-d','--data_csv', type=str, help='data.csv', metavar='')
+parser.add_argument('-e','--experiment_file_path', type=str, help='experiment.csv', metavar='')
 parser.add_argument('-i','--index', type=int, help='index', metavar='')
                     
 target = parser.add_mutually_exclusive_group()
@@ -510,6 +511,10 @@ def handle_mod_data_report(moduid, line, ser):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         if args.data_csv:
             log_file_path = args.data_csv
+            experiment_file_path = args.experiment_file_path
+            
+            # print(f"handle_mod_data_report: log_file_path : {log_file_path}")
+            # print(f"handle_mod_data_report: experiment_file_path : {experiment_file_path}")
         else: 
             log_file_path = os.path.join(dir_path, f"{moduid}_data.csv")
         # Get the current datetime
@@ -519,6 +524,11 @@ def handle_mod_data_report(moduid, line, ser):
         with open(log_file_path, 'a', newline='', encoding='utf-8-sig') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow([now] + values)
+            
+        # Save the line with a datetime to the secondary log file
+        with open(experiment_file_path, 'a', newline='', encoding='utf-8-sig') as secondary_csvfile:
+            secondary_writer = csv.writer(secondary_csvfile)
+            secondary_writer.writerow([now] + values)
 
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         if debug:
@@ -567,7 +577,6 @@ def find_module_serial(moduid):
 
                     print(f"find_module_serial: port: {port}")
                     print(f"find_module_serial: baudrate: {baudrate}")
-
 
                     ser = serial.Serial(port=row['port'], baudrate=int(row['baud_rate']), timeout=int(row['timeout']))
                     ser.moduid = int(row['moduid'])
