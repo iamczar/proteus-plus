@@ -250,49 +250,117 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
     time.sleep(1)
 
 def stop_experiment(target_module):
-    # If sequence file is selected, proceed to folder selection
-    # Use the selected folder or fallback to the default log folder
-    global experiment_folder_path
-    
     try:
-        # Now run the sequence using the selected log folder and selected sequence file
-        #data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-        data_file_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
-        log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
         module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-
         if target_module in processes:
-            processes[target_module].communicate(b"exit\n")
+            processes[target_module].terminate()
             print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
             time.sleep(1)
         else:
             print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
 
-        # Call the alfi_session function with the appropriate arguments
-        alfi_session(index=index_value.value, seq_csv="sequences\\system sequences\\STOP.csv", data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
-        
-        print(f"-----------------------------------------Waiting 3 seconds {target_module} before sending an exit------------------------------------------------------")
-        time.sleep(3)
-        if target_module in processes:
-            processes[target_module].communicate(b"exit\n")
-            print(f"Stopped {target_module} null sequence")
-        else:
-            print(f"No null sequence running for {target_module}")
+        print(f"-----------------------------------------calling run_stop_experiment ------------------------------------------------------")
+        run_stop_experiment(moduleID,module_csv_path)
 
     except Exception as e:
-        print(f"stop_experiment : ERROR: {e}")
-
+        print(f"stop_experiment:ERROR: {e}")
 
 def stop_btn_click() -> None:
-
-    # def inner():
-    #     target_module = moduleID
-    #     #threading.Thread(target=null_session(target_module), daemon=True).start()
-    #     threading.Thread(target=stop_experiment(target_module), daemon=True).start()
-    # return inner
     def inner():
         target_module = moduleID
-        stop_experiment(target_module)
+        threading.Thread(target=stop_experiment(target_module), daemon=True).start()
+    return inner
+
+def start_data_logging(target_module):
+    try:
+        module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+        if target_module in processes:
+            processes[target_module].terminate()
+            print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
+            time.sleep(1)
+        else:
+            print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
+
+        print(f"-----------------------------------------calling run_start_data_logging ------------------------------------------------------")
+        run_start_data_logging(moduleID,module_csv_path)
+
+    except Exception as e:
+        print(f"stop_experiment:ERROR: {e}")
+        
+
+def start_data_logging_btn_click() -> None:
+    def inner():
+        target_module = moduleID
+        threading.Thread(target=start_data_logging(target_module), daemon=True).start()
+    return inner
+
+def stop_data_logging(target_module):
+    try:
+        module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+        if target_module in processes:
+            processes[target_module].terminate()
+            print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
+            time.sleep(1)
+        else:
+            print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
+
+        print(f"-----------------------------------------calling run_stop_data_logging ------------------------------------------------------")
+        run_stop_data_logging(moduleID,module_csv_path)
+
+    except Exception as e:
+        print(f"stop_experiment:ERROR: {e}")
+
+def stop_data_logging_btn_click() -> None:
+    def inner():
+        target_module = moduleID
+        threading.Thread(target=stop_data_logging(target_module), daemon=True).start()
+    return inner
+
+def delete_all_logs(target_module):
+    try:
+        module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])    
+        run_delete_logs(moduleID,module_csv_path)
+    except Exception as e:
+        error_msg = f"-------------Error: retrieve_logs: ----------------- {e}"
+        print(error_msg)
+
+def confirm_delete_logs(target_module):
+    with ui.dialog() as dialog:
+        with ui.card():
+            ui.label(f"Are you sure you want to delete all logs in module {target_module}? This action cannot be undone!")
+            with ui.row().classes('justify-between'):
+                ui.button("Cancel", on_click=dialog.close).props('outline')
+                ui.button("Delete", on_click=lambda: [delete_all_logs(target_module), dialog.close()], color='red')
+    dialog.open()
+
+def delete_all_logs_btn_click() -> None:
+    def inner():
+        target_module = moduleID
+        threading.Thread(target=confirm_delete_logs(target_module), daemon=True).start()
+    return inner
+
+def retrieve_logs(target_module):
+    """Retrieve all files from the specified folder on the SD card."""
+    def on_folder_selected(selected_folder):
+        
+        try:
+            # Use the selected folder or fallback to the default log folder
+            target_folder = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
+            module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+           
+            run_retrieve_logs(moduleID,module_csv_path,target_folder)
+            
+        except Exception as e:
+            error_msg = f"-------------Error: retrieve_logs: {e}"
+            print(error_msg)
+
+    # Trigger the folder picker for selecting the destination folder
+    select_save_log_folder(on_folder_selected)
+    
+def retreive_log_btn_clicks() -> None:
+    def inner():
+        target_module = moduleID
+        threading.Thread(target=retrieve_logs(target_module), daemon=True).start()
     return inner
 
 def lem_stop_btn_click() -> None:
@@ -367,8 +435,6 @@ async def start_btn_click() -> None:
         select_save_log_folder(on_folder_selected)
     else:
         print("Sequence file not selected, cannot start sequence.")
-
-
 
 def mass_start_btn_click() -> None:
     def inner() -> None:
@@ -504,7 +570,53 @@ def labq_session(debug=False, pump_head=None, tube_size=None, direction=None, sp
     print(cmd_args)
     processes['labq'] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     print(f"LabQ script started.")
+    
+def run_retrieve_logs(module_id,serial_conf,target_folder):
+    if moduleID in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+            return
+    cmd_args = ['scripts\\retrieve_sessions_logs.py','-u', str(moduleID)]
+    cmd_args.extend(['-s', serial_conf])
+    cmd_args.extend(['-t', target_folder])
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    
+def run_stop_experiment(module_id,serial_conf):
+    if moduleID in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+            return
+    cmd_args = ['scripts\\SEND_STOP.py','-u', str(moduleID)]
+    cmd_args.extend(['-s', serial_conf])
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
 
+def run_delete_logs(module_id,serial_conf):
+    if moduleID in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+            return
+    cmd_args = ['scripts\\delete_module_logs.py','-u', str(moduleID)]
+    cmd_args.extend(['-s', serial_conf])
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+
+def run_stop_data_logging(module_id,serial_conf):
+    if moduleID in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+            return
+    cmd_args = ['scripts\\SEND_STOP_DATA_LOGGING.py','-u', str(moduleID)]
+    cmd_args.extend(['-s', serial_conf])
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    
+def run_start_data_logging(module_id,serial_conf):
+    if moduleID in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+            return
+    cmd_args = ['scripts\\SEND_START_DATA_LOGGING.py','-u', str(moduleID)]
+    cmd_args.extend(['-s', serial_conf])
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    
 def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False, module_csv=None, data_csv=None, index=None, serial_config=None, port=None) -> None:
     global experiment_folder_path  # Access the experiment folder path
     
@@ -514,7 +626,6 @@ def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False
 
     # Define the log file path within the experiment folder
     log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
-    
     
     # See ALF.py for the command line arguments
     if moduleID in processes:
@@ -545,8 +656,8 @@ def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False
         cmd_args.extend(['-c', port])
     if freeze:
         cmd_args.append('-p')
-        
-    print(cmd_args)
+    # print("-------------------------------------------------------cmd_args--------------------------------------------------------")
+    # print(cmd_args)
     processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     module = modules[moduleID]
     module.seqFilename = seq_csv
@@ -724,16 +835,19 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     with ui.tab_panel(tab_graphs): 
         with ui.grid(columns=1).classes('items-start'):       
             with ui.grid(columns=5).classes('items-start'):
-                ui.space()     
-                ui.space()
-                stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')     
-                new_experiment = ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
-                ui.space()      
+                new_experiment=ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
                 sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
+                start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
+                stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')
+                ui.space()
+                start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click(), color='green')
+                stop_data_logging_button = ui.button("Stop Data Logging", on_click=stop_data_logging_btn_click(), color='red') 
+                retreive_logs_button = ui.button("Retrive Logs", on_click=retreive_log_btn_clicks(), color='red')
+                delete_all_logs_button = ui.button("Delete All Logs", on_click=delete_all_logs_btn_click(), color='red')
+                ui.space()
+                ui.space()
                 index_dropdown = ui.select(label='Select Index', options=index_list).bind_value_to(index_value, "value")
                 freeze_button=ui.button("Index Freeze Off", on_click=freeze_btn_click(), color='orange')
-                start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
-                
                 session_label = ui.label('')
                 ui.space()
                 ui.space()

@@ -270,21 +270,21 @@ def load_sequence(moduid, debug=False):
             reader = csv.reader(csvfile, delimiter=',')
             header = next(reader)  # Assuming the first row contains column headers
 
-            # Check if keys in COMPOS match with the headers in the CSV file
-            for key, value in COMPOS.items():
-                if header[value] != key:
-                    print(f"Header for column {value} does not match key {key} in COMPOS.")
-                    return None
-            else:
+            # # Check if keys in COMPOS match with the headers in the CSV file
+            # for key, value in COMPOS.items():
+            #     if header[value] != key:
+            #         print(f"Header for column {value} does not match key {key} in COMPOS.")
+            #         return None
+            # else:
                 # Load data rows into the matrix
-                for row in reader:
-                    data_matrix.append(row)
+            for row in reader:
+                data_matrix.append(row)
 
-                # Print the loaded data matrix
-                if debug:
-                    print(f"Loaded data from {csv_file_path}:")
-                    for entry in data_matrix:
-                        print(entry)
+            # Print the loaded data matrix
+            if debug:
+                print(f"Loaded data from {csv_file_path}:")
+                for entry in data_matrix:
+                    print(entry)
 
     except Exception as e:
         print(f"An error occurred while loading the sequence for module {moduid}: {e}")
@@ -555,6 +555,8 @@ def find_module_serial(moduid):
     print(f"Searching for module with moduid {moduid}")
     serials = []
     full_path = args.module_csv
+    print(f"------------------------------------find_module_serial: full_path: {full_path}----------------------------------")
+   
     with open(full_path, 'r') as file:
         reader = csv.DictReader(file)
         for row in reader:
