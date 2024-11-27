@@ -3,6 +3,7 @@ import time
 
 
 def all_off_commands():
+        cmd = 0
         circFlowSpeed = 0
         pressureFlowSpeed = 0
         valve1 = 0
@@ -33,20 +34,22 @@ def all_off_commands():
         ascmd2 = 1
         ascmd3 = 1
         wristCmd = 0
+        transtime = 2
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [
-            circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
+            cmd,circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
             valve6, valve7, valve8, valve9, valve10, airpump1, airpump2, pressureSP,
             oxySP, pressureKp, pressureKi, pressureKd, oxyKp, oxyKi, oxyKd, pump2dir,
-            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd
+            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd,transtime
         ]))
 
         return command_string + "\n"
 
 def all_on_commands():
-        circFlowSpeed = 5
-        pressureFlowSpeed = 5
+        cmd = 0
+        circFlowSpeed = 5000
+        pressureFlowSpeed = 5000
         valve1 = 1
         valve2 = 1
         valve3 = 1
@@ -57,8 +60,8 @@ def all_on_commands():
         valve8 = 1
         valve9 = 1
         valve10 = 1
-        airpump1 = 1
-        airpump2 = 1
+        airpump1 = 0
+        airpump2 = 0
         pressureSP = 0
         oxySP = 0
         pressureKp = 1.0
@@ -75,23 +78,27 @@ def all_on_commands():
         ascmd2 = 1
         ascmd3 = 1
         wristCmd = 0
+        transtime = 2
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [
-            circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
+            cmd, circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
             valve6, valve7, valve8, valve9, valve10, airpump1, airpump2, pressureSP,
             oxySP, pressureKp, pressureKi, pressureKd, oxyKp, oxyKi, oxyKd, pump2dir,
-            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd
+            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd,transtime
         ]))
 
         return command_string + "\n"
+def stop_cmd():
+        return "1,0\n"
 
 def main():
     # Define the serial port and settings (adjust COM port and baudrate as needed)
-    port = 'COM5'  # Change this to the appropriate COM port
+    port = 'COM6'  # Change this to the appropriate COM port
     baudrate = 115200  # Adjust to match your device's baudrate
     expected_message = "0,3004,1001,50,0\n"  # The message to trigger sending the command
     command = all_off_commands()
+    #command = stop_cmd()
     #command = all_on_commands()
     # Open the serial port
     with serial.Serial(port, baudrate, timeout=1) as ser:
