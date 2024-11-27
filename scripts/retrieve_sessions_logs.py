@@ -124,7 +124,7 @@ def main():
             sys.exit(1)
         print(f"------------------------------retrieve session log COMPORT: {com_port} -----------------------------------------")
 
-        thread = threading.Thread(target=copy_all_session_logs, args=(com_port,args.target_folder))
+        thread = threading.Thread(target=copy_all_session_logs, args=(com_port,args.target_folder,args.data_folder))
         thread.start()
         
     except Exception as e:
