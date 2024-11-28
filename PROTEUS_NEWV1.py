@@ -271,28 +271,64 @@ def stop_btn_click() -> None:
         threading.Thread(target=stop_experiment(target_module), daemon=True).start()
     return inner
 
-def start_data_logging(target_module):
-    try:
-        module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-        if target_module in processes:
-            processes[target_module].terminate()
-            print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
-            time.sleep(1)
-        else:
-            print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
+# def start_data_logging(target_module):
+#     try:
+#         module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+#         if target_module in processes:
+#             processes[target_module].terminate()
+#             print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
+#             time.sleep(1)
+#         else:
+#             print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
 
-        print(f"-----------------------------------------calling run_start_data_logging ------------------------------------------------------")
-        run_start_data_logging(moduleID,module_csv_path)
+#         print(f"-----------------------------------------calling run_start_data_logging ------------------------------------------------------")
+#         #run_start_data_logging(moduleID,module_csv_path)
+                    
+#         run_start_data_logging(index=index_value.value, 
+#                          seq_csv=seqFilename, 
+#                          data_csv=data_file_path, 
+#                          log_csv=log_file_path, 
+#                          module_csv=module_csv_path,
+#                          experiment_file_path=copy_data_file_to_pat)
 
-    except Exception as e:
-        print(f"stop_experiment:ERROR: {e}")
+#     except Exception as e:
+#         print(f"stop_experiment:ERROR: {e}")
         
 
-def start_data_logging_btn_click() -> None:
-    def inner():
-        target_module = moduleID
-        threading.Thread(target=start_data_logging(target_module), daemon=True).start()
-    return inner
+async def start_data_logging_btn_click() -> None:
+    global seqFilename
+
+    # First, check if the sequence file has been selected
+    if not seqFilename:
+        # Trigger the file picker for selecting the sequence file
+        await pick_seqfile()
+
+    if seqFilename:
+        # If sequence file is selected, proceed to folder selection
+        def on_folder_selected(selected_folder):
+            # Use the selected folder or fallback to the default log folder
+            global experiment_folder_path
+            experiment_folder_path = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
+            
+            print(f"Selected log folder: {experiment_folder_path}")
+            
+            # Now run the sequence using the selected log folder and selected sequence file
+            data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
+            copy_data_file_to_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
+            log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')  # Use chosen folder
+            module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
+                            
+            run_start_data_logging(index=index_value.value, 
+                                    seq_csv=seqFilename, 
+                                    data_csv=data_file_path, 
+                                    log_csv=log_file_path, 
+                                    module_csv=module_csv_path,
+                                    experiment_file_path=copy_data_file_to_path)
+
+        # Trigger the folder picker after sequence file selection
+        select_save_log_folder(on_folder_selected)
+    else:
+        print("Sequence file not selected, cannot start sequence.")
 
 def stop_data_logging(target_module):
     try:
@@ -348,10 +384,6 @@ def retrieve_logs(target_module):
             target_folder = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
             data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-        
-            print(f"----------------------------retrieve_logs:{moduleID}-------------------------------------------------")
-            print(f"----------------------------target_folder:{target_folder}----------------------------------")
-            print(f"----------------------------module_csv_path:{module_csv_path}----------------------------------")
             run_retrieve_logs(moduleID,module_csv_path,target_folder,data_file_path)
             
         except Exception as e:
@@ -431,11 +463,12 @@ async def start_btn_click() -> None:
             except Exception as e:
                 print(f"Error copying sequence file: {e}")
                 
-            # Call the alfi_session function with the appropriate arguments
-            # print("--------------------------------start_btn_click-------------------------------------")
-            # print(f"--------------------------------data_file_path:{data_file_path}-------------------------------------")
-            # print(f"--------------------------------copy_data_file_to_path:{copy_data_file_to_path}-------------------------------------")
-            alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path,experiment_file_path=copy_data_file_to_path)
+            alfi_session(index=index_value.value, 
+                         seq_csv=seqFilename, 
+                         data_csv=data_file_path, 
+                         log_csv=log_file_path, 
+                         module_csv=module_csv_path,
+                         experiment_file_path=copy_data_file_to_path)
 
         # Trigger the folder picker after sequence file selection
         select_save_log_folder(on_folder_selected)
@@ -615,16 +648,85 @@ def run_stop_data_logging(module_id,serial_conf):
     cmd_args.extend(['-s', serial_conf])
     processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
     
-def run_start_data_logging(module_id,serial_conf):
-    if moduleID in processes:
-        if processes[module_id].poll() is None:
-            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
-            return
-    cmd_args = ['scripts\\SEND_START_DATA_LOGGING.py','-u', str(moduleID)]
-    cmd_args.extend(['-s', serial_conf])
-    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+def run_start_data_logging(debug=False, 
+                            seq_csv=None, 
+                            log_csv=None, 
+                            baud=None, 
+                            pause=False, 
+                            module_csv=None, 
+                            data_csv=None, 
+                            index=None, 
+                            serial_config=None,
+                            port=None,
+                            experiment_file_path = None):
+    global seqFilename
+
+    # Stop existing processes first just in case an existing alfi is running
+    # module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
     
-def alfi_session(debug=False, seq_csv=None, log_csv=None, baud=None, pause=False, module_csv=None, data_csv=None, index=None, serial_config=None, port=None,experiment_file_path = None) -> None:
+    if moduleID in processes:
+        processes[moduleID].terminate()
+        print(f"Stopped {moduleID} ALF session")
+        time.sleep(1)
+        
+    global experiment_folder_path  # Access the experiment folder path
+    
+    # Ensure we have a valid experiment folder, fallback to default log folder if not created
+    if experiment_folder_path is None:
+        experiment_folder_path = os.path.join(os.getcwd(), "log")
+
+    # Define the log file path within the experiment folder
+    log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
+
+    cmd_args = ['scripts\\SEND_START_DATA_LOGGING.py','-u', str(moduleID)]
+    
+    if debug:
+        cmd_args.append('--debug')
+    if seq_csv:
+        cmd_args.extend(['-q', seq_csv])
+    if log_csv:
+        cmd_args.extend(['-l', log_file_path])
+    if baud:
+        cmd_args.extend(['-b', str(baud)])
+    if pause:
+        cmd_args.append('-p')
+    if module_csv:
+        cmd_args.extend(['-m', module_csv])
+    if data_csv:
+        cmd_args.extend(['-d', data_csv])
+    if index is not None:
+        cmd_args.extend(['-i', str(index)])
+    if serial_config:
+        cmd_args.extend(['-s', serial_config])
+    if port:
+        cmd_args.extend(['-c', port])
+    if freeze:
+        cmd_args.append('-p')
+    if experiment_file_path:
+        cmd_args.extend(['-e', experiment_file_path])
+    # print("-------------------------------------------------------cmd_args--------------------------------------------------------")
+    # print(cmd_args)
+    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    module = modules[moduleID]
+    module.seqFilename = seq_csv
+    module.index = index
+    module.freeze = freeze
+    module.session_label = f"Sequence: {module.seqFilename}, Index = {module.index}, Freeze = {module.freeze}"
+    print(f"ALFI started sequence file for {moduleID}, index = {module.index}, seqFilename = {module.seqFilename}")
+    session_label.text = module.session_label
+    print('updated session label for module ', moduleID, ' to ', module.session_label)
+    
+def alfi_session(debug=False, 
+                 seq_csv=None, 
+                 log_csv=None, 
+                 baud=None, 
+                 pause=False, 
+                 module_csv=None, 
+                 data_csv=None, 
+                 index=None, 
+                 serial_config=None,
+                 port=None,
+                 experiment_file_path = None) -> None:
     global experiment_folder_path  # Access the experiment folder path
     
     # Ensure we have a valid experiment folder, fallback to default log folder if not created
@@ -849,10 +951,10 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
                 stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')
                 ui.space()
-                start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click(), color='green')
+                start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click, color='green')
                 stop_data_logging_button = ui.button("Stop Data Logging", on_click=stop_data_logging_btn_click(), color='red') 
-                retreive_logs_button = ui.button("Retrive Logs", on_click=retreive_log_btn_clicks(), color='red')
-                delete_all_logs_button = ui.button("Delete All Logs", on_click=delete_all_logs_btn_click(), color='red')
+                retreive_logs_button = ui.button("Retrieve Logs", on_click=retreive_log_btn_clicks(), color='red')
+                delete_all_logs_button = ui.button("Clear Cycler Logs", on_click=delete_all_logs_btn_click(), color='red')
                 ui.space()
                 ui.space()
                 index_dropdown = ui.select(label='Select Index', options=index_list).bind_value_to(index_value, "value")
