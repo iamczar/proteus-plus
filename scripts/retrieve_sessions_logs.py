@@ -62,54 +62,82 @@ def find_module_serial(moduid):
     print(f"Module with moduid {moduid} not found")
     return None
 
-def copy_all_session_logs(com_port, target_folder,data_destination_filepath):
-    """List and copy all files from the session logs folder."""
-    source_folder = "/sd/session_logs"
+def retrieve_file_over_serial(com_port, target_file, data_file):
+    """
+    Continuously requests data from the device over serial and writes it to files.
+
+    :param com_port: The COM port to communicate with the device.
+    :param target_file: The path to save the retrieved file in the target folder.
+    :param data_file: The path to save the retrieved file in the destination folder.
+    """
     try:
-        # List all files in the source folder
-        result = subprocess.run(
-            ["ampy", "--port", com_port, "ls", source_folder],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        source_files = result.stdout.strip().splitlines()
-
-        if not source_files:
-            print(f"No files found in {source_folder}")
-            return
-
-        # Copy each file
-        for source_file in source_files:
-            # Extract only the file name
-            source_file_name = os.path.basename(source_file)
-            destination_file = os.path.join(target_folder, source_file_name)
-            print(f"Copying {source_file} to {destination_file}")
-            
-            # copy file to the desired location
-            subprocess.run(
-                ["ampy", "--port", com_port, "get", source_file, destination_file],
-                check=True
-            )
-            
-            print(f"Copying {source_file} to {data_destination_filepath}")
-            # replace copy on the data folder
-            subprocess.run(
-                ["ampy", "--port", com_port, "get", source_file, data_destination_filepath],
-                check=True
-            )
-            
-            # Verify the file was created at the destination
-            if os.path.exists(destination_file):
-                print(f"File transfer successful: {destination_file}")
-            else:
-                print(f"File transfer failed or incomplete: {destination_file}")
-
-    except subprocess.CalledProcessError as e:
-        print(f"Error retrieving logs via ampy: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
         
+        print(f"target_file:{target_file}")
+        print(f"data_file:{data_file}")
+        
+        # Check if files exist and delete them
+        if os.path.exists(target_file):
+            print(f"Deleting existing file: {target_file}")
+            os.remove(target_file)
+
+        if os.path.exists(data_file):
+            print(f"Deleting existing file: {data_file}")
+            os.remove(data_file)
+        
+        # Open the serial connection
+        with serial.Serial(com_port, baudrate=115200, timeout=2) as ser:
+            print("Connected to the device.")
+
+            # Open the files for writing
+            with open(target_file, "a") as target, open(data_file, "a") as dest:
+                print("Opened files for writing.")
+
+                while True:
+                    # Send the RETRIEVE_DATA command
+                    ser.write(b"4,0\n")
+                    print("Sent RETRIEVE_DATA command.")
+
+                    # Read a line of data
+                    line = ser.readline().decode("utf-8").strip()
+
+                    if line == "555":  # Transfer complete signal
+                        print("File transfer complete.")
+                        break
+
+                    # Check if the line starts with the expected header
+                    if line.startswith("f,"):
+                        # Remove the "f," prefix before writing
+                        cleaned_line = line[2:]  # Remove "f," prefix
+                        print(f"Valid line received: {cleaned_line}")
+                        target.write(cleaned_line + "\n")
+                        dest.write(cleaned_line + "\n")
+                    else:
+                        print(f"Ignored invalid line: {line}")
+
+                    time.sleep(0.1)  # Small delay to prevent spamming
+
+            print(f"File saved to target: {target_file} and destination: {data_file}")
+
+    except Exception as e:
+        print(f"Error during file retrieval: {e}")
+
+def copy_all_session_logs(com_port, target_folder,data_destination_filepath,module_id):
+    """
+    Manages the file transfer from the device over serial.
+
+    :param com_port: The COM port to communicate with the device.
+    :param target_folder: Folder to save retrieved logs.
+    :param data_destination_filepath: Path to save logs in the data folder.
+    """
+    try:
+        # Construct file paths
+        target_file = os.path.join(target_folder, f"{module_id}_data.csv")
+        # data_file = os.path.join(data_destination_filepath, f"{module_id}_data.csv")
+        print("Starting log retrieval over serial...")
+        retrieve_file_over_serial(com_port, target_file, data_destination_filepath)
+
+    except Exception as e:
+        print(f"Error during log retrieval: {e}")
         
         
 def main():
@@ -124,11 +152,16 @@ def main():
             sys.exit(1)
         print(f"------------------------------retrieve session log COMPORT: {com_port} -----------------------------------------")
 
-        thread = threading.Thread(target=copy_all_session_logs, args=(com_port,args.target_folder,args.data_folder))
+        thread = threading.Thread(target=copy_all_session_logs, 
+                                  args=(com_port,args.target_folder,args.data_folder,args.moduid))
         thread.start()
+        thread.join()  # Ensure the thread completes
         
+    except KeyboardInterrupt:
+        stop_event.set()
+        print("Interrupted by user.")
     except Exception as e:
-        print(f"-----------------------retrieve session logs: main {e}-------------------------------------")
+        print(f"Error in main: {e}")
 
 
 if __name__ == '__main__':
