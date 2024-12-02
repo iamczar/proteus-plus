@@ -114,7 +114,7 @@ def retrieve_file_over_serial(com_port, target_file, data_file):
                     else:
                         print(f"Ignored invalid line: {line}")
 
-                    time.sleep(0.1)  # Small delay to prevent spamming
+                    time.sleep(0.01)  # Small delay to prevent spamming
 
             print(f"File saved to target: {target_file} and destination: {data_file}")
 
