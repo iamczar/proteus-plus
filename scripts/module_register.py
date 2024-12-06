@@ -19,6 +19,7 @@ import serial.tools.list_ports
 import csv
 import os
 import argparse
+import time
 
 parser = argparse.ArgumentParser(description='Register Arduino modules')
 parser.add_argument('--debug', '-d', action='store_true', help='Print debug messages')
@@ -43,32 +44,38 @@ def scan_ports():
     ports = list(serial.tools.list_ports.comports())
     if debug:
         print(ports)
-    arduino_ports = [port for port in ports if 'Arduino' in port.description]
+    arduino_ports = [port for port in ports if 'USB Serial Device' in port.description]
+    if debug:
+        for port in ports:
+            print(port.description)
     return arduino_ports
 
-def find_moduid(port):  
+def find_moduid(port):
     try:
-        ser = serial.Serial(port.device, BAUDRATE)
+        ser = serial.Serial(port.device, BAUDRATE, timeout=TIMEOUT)
     except SerialException as e:
-        if debug:
-            print(f"Could not open port: {e}")
+        print(f"Could not open port: {e}")
         return None
 
     try:
-        response = ser.readline().decode('utf-8')
+        for _ in range(100):  # Attempt to read serial port 10 times
+            line = ser.readline().decode('utf-8').strip()
+            print(f"Read line: {line}")
+            
+            # Check if line matches the expected pattern
+            if line.startswith("0,") and len(line.split(',')) >= 5:
+                moduid = line.split(',')[1]
+                if moduid.isdigit():  # Validate moduid is numeric
+                    return moduid
+            time.sleep(0.1)
+        
+            print("No matching pattern found in serial data.")
+        return None
     except Exception as e:
-        if debug:
-            print(f"Could not read line from port: {e}")
+        print(f"Error reading from port: {e}")
         return None
     finally:
         ser.close()
-
-    try:
-        return response.split(',')[1]
-    except IndexError as e:
-        if debug:
-            print(f"Could not split response: {e}")
-        return None
 
 def main():
     global CONFIG_FILE
