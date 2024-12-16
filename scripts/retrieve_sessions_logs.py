@@ -62,6 +62,20 @@ def find_module_serial(moduid):
     print(f"Module with moduid {moduid} not found")
     return None
 
+def validate_line(line):
+    try:
+        # Split the line into elements
+        elements = line.split(",")      
+        # Check if the number of elements matches the expected format
+        if len(elements) != 26:
+            print(f"line not 26: {elements}")
+            return False
+        
+        return line
+    except Exception as e:
+        return False
+    
+
 def retrieve_file_over_serial(com_port, target_file, data_file):
     """
     Continuously requests data from the device over serial and writes it to files.
@@ -108,13 +122,16 @@ def retrieve_file_over_serial(com_port, target_file, data_file):
                     if line.startswith("f,"):
                         # Remove the "f," prefix before writing
                         cleaned_line = line[2:]  # Remove "f," prefix
-                        print(f"Valid line received: {cleaned_line}")
-                        target.write(cleaned_line + "\n")
-                        dest.write(cleaned_line + "\n")
+                        
+                        valid_line = validate_line(cleaned_line)
+                        if False != valid_line:
+                            print(f"Valid line received: {valid_line}")
+                            target.write(valid_line + "\n")
+                            dest.write(valid_line + "\n")
                     else:
                         print(f"Ignored invalid line: {line}")
 
-                    time.sleep(0.1)  # Small delay to prevent spamming
+                    time.sleep(0.01)  # Small delay to prevent spamming
 
             print(f"File saved to target: {target_file} and destination: {data_file}")
 

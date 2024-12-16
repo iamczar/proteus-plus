@@ -1,3 +1,6 @@
 port,baud_rate,timeout,moduid
 COM7,115200,1,3001
 COM9,115200,1,3003
+COM6,115200,1,3004
+COM7,115200,1,3008
+

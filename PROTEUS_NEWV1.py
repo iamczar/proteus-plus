@@ -821,7 +821,7 @@ def update_line_plot() -> None:
             y_values = [module.subset[y].values for y in plot['y_values']]
             x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
             ui_plots[plot['name']].clear()
-            ui_plots[plot['name']].push(x_values, y_values)
+            ui_plots[plot['name']].push(x_values, y_values)            
             # print(f"Updating plot {plot['name']} for module {moduleID}, x_values = {x_values}, y_values = {y_values}")
 
 
@@ -940,6 +940,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_LabQ = ui.tab('q', label = 'LabQ')
             tab_advanced = ui.tab('p', label = 'ADVANCED CONTROLS')
             tab_image = ui.tab('i', label='PI&D')
+            tab_historical_view = ui.tab('h', label='ANALYSE DATA')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
@@ -1037,11 +1038,196 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     # New Image tab panel
     with ui.tab_panel(tab_image):
         ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
+            
+    # Column mapping based on Proteus structure
+    COLUMN_MAPPING = {
+        0: 'TIMESTAMP',      # Add TIMESTAMP first
+        1: 'NULLLEADER',
+        2: 'MODUID',
+        3: 'COMMAND',
+        4: 'STATEID',
+        5: 'OXYMEASURED',
+        6: 'PRESSUREMEASURED',
+        7: 'FLOWMEASURED',
+        8: 'TEMPMEASURED',
+        9: 'CIRCPUMPSPEED',
+        10: 'PRESSUREPUMPSPEED',
+        11: 'PRESSUREPID',
+        12: 'PRESSURESETPOINT',
+        13: 'PRESSUREKP',
+        14: 'PRESSUREKI',
+        15: 'PRESSUREKD',
+        16: 'OXYGENPID',
+        17: 'OXYGENSETPOINT',
+        18: 'OXYGENKP',
+        19: 'OXYGENKI',
+        20: 'OXYGENKD',
+        21: 'OXYGENMEASURED1',
+        22: 'OXYGENMEASURED2',
+        23: 'OXYGENMEASURED3',
+        24: 'OXYGENMEASURED4',
+        25: 'NULLTRAILER'
+    }
+
+    # Data Processing Function from Proteus
+    def data_processing_historical(df):
+        if df is not None:           
+            # Pump Calibration
+            PumpCal = 0.004293
+            df['Pump1_mLmin'] = df['CIRCPUMPSPEED'] * PumpCal
+            df['Pump2_mLmin'] = df['PRESSUREPUMPSPEED'] * PumpCal
+
+            # Set Points
+            df['Pressure_SP'] = df['PRESSUREPID'] * df['PRESSURESETPOINT']
+            df['Oxygen_SP'] = df['OXYGENPID'] * df['OXYGENSETPOINT']
+
+            # Rolling Averages
+            df['FLOWMEASURED_rolling_avg'] = df['FLOWMEASURED'].rolling(60).mean()
+            df['PRESSUREMEASURED_rolling_avg'] = df['PRESSUREMEASURED'].rolling(60).mean()
+
+            # Permeate Flow
+            df['PermeateFlow'] = df['Pump1_mLmin'] - df['Pump2_mLmin']
+
+            # Oxygen Uptake Rate (OUR)
+            OxySaturated = 200
+            df['OUR'] = (df['Pump2_mLmin']/1000)*(OxySaturated - df['OXYGENMEASURED2']) + \
+                        (df['PermeateFlow']/1000)*(OxySaturated - df['OXYGENMEASURED2'])
+            df['OUR_rollAvg_1min'] = df['OUR'].rolling(60).mean()
+            df['OUR_rollAvg_5min'] = df['OUR'].rolling(300).mean()
+            
+        return df
+
+    # Main Historical Data Analysis Page
+    with ui.tab_panel(tab_historical_view):
+        ui.label('Analyse Historical Data').classes('text-bold text-h6')
+
+        selected_file_label = ui.label('No file selected.')
+        selected_file_path = {'path': None}  # Mutable dictionary for the file path
+
+        # File Picker Function
+        async def pick_data_file():
+            result = await local_file_picker(os.path.dirname(__file__), multiple=False)
+            if result:
+                selected_file_path['path'] = result[0]
+                selected_file_label.text = f"Selected file: {os.path.basename(selected_file_path['path'])}"
+                print(f"Selected file: {selected_file_path['path']}")
+            else:
+                selected_file_label.text = "No file selected."
+
+        # File Picker Button
+        ui.button("Browse Data Files", on_click=pick_data_file, color="blue")
+        selected_file_label
+
+        # Time Window Slider
+        timewindow = {'value': {'min': 0.20, 'max': 0.80}}
+        ui.label("Set Time Window").classes('text-bold')
+        min_max_range = ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}) \
+            .bind_value_to(timewindow)
+
+        # Graph Display Area
+        graph_area = ui.grid(columns=3).classes('w-full')
+
+        # Load and Plot Data Function
+        async def load_and_plot_data():
+            
+            if not selected_file_path['path']:
+                print("No file selected.")
+                return
+            else:
+                print("Loading and Plotting")
+
+            try:
+                # Load the CSV file without headers
+                df = pd.read_csv(selected_file_path['path'], on_bad_lines='warn', header=None)
+                print("Original DataFrame Head:", df.head())
+                
+                #Rename columns using COLUMN_MAPPING
+                df.rename(columns=COLUMN_MAPPING, inplace=True)
+                print("Renamed Columns:", df.columns)
+                print("DataFrame Shape:", df.shape)
+
+                # Clean numeric columns
+                numeric_columns = list(COLUMN_MAPPING.values())[4:]  # From OXYMEASURED onward
+                for col in numeric_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                        
+                print("Cleaned Numeric Columns:")
+                print(df[numeric_columns].head())
+
+                # Apply Data Processing Function
+                df = data_processing_historical(df)
+                print("Processed DataFrame Head:")
+                print(df.head())
+
+                start_row = int(len(df) * timewindow['value']['min'])
+                end_row = int(len(df) * timewindow['value']['max'])
+                subset = df.iloc[start_row:end_row]
+                print(f"Subset Rows: {start_row} to {end_row}")
+  
+                try:
+                    with open(config['PLOT_DICT'], 'r') as f:
+                            history_plot_dict = json.load(f)
+                except FileNotFoundError:
+                    print("Error: The file 'plot_dict.json' was not found.")
+                except json.JSONDecodeError:
+                    print("Error: The file 'plot_dict.json' does not contain valid JSON.")
+                    
+                
+                # Clear previous graphs
+                graph_area.clear()
+
+                # Start rendering graphs dynamically from plot_dict.json
+                with graph_area:
+                    for plot_key, plot_data in history_plot_dict.items():  # Iterate through each graph configuration
+                        print(f"Graphing {plot_key}")
+                        
+                        # Find Y-axis columns that exist in the subset
+                        y_columns_found = [y for y in plot_data['y_values'] if y in subset.columns]
+                        
+                        if y_columns_found:
+                            with ui.card():
+                                # Add the title of the graph
+                                ui.label(plot_data['title']).classes('text-bold')
+                                
+                                # Create a line plot with the required number of lines and data limits
+                                line_plot = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
+                                    .with_legend(plot_data['legend'])
+                                line_plot.clear()
+                                
+                                # Use DataFrame index as X-axis
+                                x_values = subset.index.tolist()
+                                
+                                # Prepare y_values as a list of lists (each list is a series for the Y-axis)
+                                y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
+                                
+                                # Debugging outputs
+                                print(f"X Values (Length: {len(x_values)}): {x_values[:5]} ...")
+                                print(f"Y Values (Length: {len(y_values)}): {[len(y) for y in y_values]} ...")
+                                
+                                # Push data to the plot
+                                line_plot.push(x_values, y_values)
+
+
+                print("All 6 graphs have been rendered successfully.")
+
+            except Exception as e:
+                 print(f"Error loading or plotting data: {e}")
+
+        # Button to Trigger Plotting
+        ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
+
+
 
 line_updates = ui.timer(5, refresh_all)
 
 for module in modules.values():
     if module.type == 'Circulation':
         select_mod_id(module.moduleID)()
+        
+        
+        
+        
+
 
 ui.run(port=5500)
