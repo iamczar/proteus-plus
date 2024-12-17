@@ -74,18 +74,18 @@ def all_on_commands():
         pump1dir = 1
         tube_bore = 1
         pump_2_speed_ratio = 1.0        
-        ascmd1 = 1
-        ascmd2 = 1
-        ascmd3 = 1
+        as_id = 3
+        as_cmd = 2
+        as_hold_time_hrs = 10
         wristCmd = 0
-        transtime = 2
+        transtime = 1
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [
             cmd, circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
             valve6, valve7, valve8, valve9, valve10, airpump1, airpump2, pressureSP,
             oxySP, pressureKp, pressureKi, pressureKd, oxyKp, oxyKi, oxyKd, pump2dir,
-            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd,transtime
+            pump1dir, tube_bore, pump_2_speed_ratio, as_id, as_cmd, as_hold_time_hrs, wristCmd,transtime
         ]))
 
         return command_string + "\n"
@@ -94,12 +94,12 @@ def stop_cmd():
 
 def main():
     # Define the serial port and settings (adjust COM port and baudrate as needed)
-    port = 'COM6'  # Change this to the appropriate COM port
+    port = 'COM8'  # Change this to the appropriate COM port
     baudrate = 115200  # Adjust to match your device's baudrate
     expected_message = "0,3004,1001,50,0\n"  # The message to trigger sending the command
-    command = all_off_commands()
+    #command = all_off_commands()
     #command = stop_cmd()
-    #command = all_on_commands()
+    command = all_on_commands()
     # Open the serial port
     with serial.Serial(port, baudrate, timeout=1) as ser:
         print(f"Connected to {port} at {baudrate} baudrate.")
