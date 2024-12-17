@@ -30,9 +30,9 @@ def all_off_commands():
         pump1dir = 1
         tube_bore = 1
         pump_2_speed_ratio = 1.0        
-        ascmd1 = 1
-        ascmd2 = 1
-        ascmd3 = 1
+        as_id = 1
+        as_cmd = 2
+        as_hold_time_hrs = 1
         wristCmd = 0
         transtime = 2
         
@@ -41,15 +41,15 @@ def all_off_commands():
             cmd,circFlowSpeed, pressureFlowSpeed, valve1, valve2, valve3, valve4, valve5,
             valve6, valve7, valve8, valve9, valve10, airpump1, airpump2, pressureSP,
             oxySP, pressureKp, pressureKi, pressureKd, oxyKp, oxyKi, oxyKd, pump2dir,
-            pump1dir, tube_bore, pump_2_speed_ratio, ascmd1, ascmd2, ascmd3, wristCmd,transtime
+            pump1dir, tube_bore, pump_2_speed_ratio, as_id, as_cmd, as_hold_time_hrs, wristCmd,transtime
         ]))
 
         return command_string + "\n"
 
 def all_on_commands():
         cmd = 0
-        circFlowSpeed = 5000
-        pressureFlowSpeed = 5000
+        circFlowSpeed = 200
+        pressureFlowSpeed = 200
         valve1 = 1
         valve2 = 1
         valve3 = 1
