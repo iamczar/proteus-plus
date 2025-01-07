@@ -128,10 +128,14 @@ def retrieve_file_over_serial(com_port, target_file, data_file):
                             print(f"Valid line received: {valid_line}")
                             target.write(valid_line + "\n")
                             dest.write(valid_line + "\n")
+                            ser.write(b"ACK\n")  # Acknowledge valid line
+                        else:
+                            ser.write(b"NACK\n")  # Request retransmission
+                            print(f"Invalid line received: {line}")
                     else:
-                        print(f"Ignored invalid line: {line}")
-
-                    time.sleep(0.01)  # Small delay to prevent spamming
+                        ser.write(b"NACK\n")  # Request retransmission
+                        print(f"Unexpected response: {line}")
+                    #time.sleep(0.01)  # Small delay to prevent spamming
 
             print(f"File saved to target: {target_file} and destination: {data_file}")
 
