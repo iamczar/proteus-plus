@@ -138,21 +138,39 @@ def subselect(module) -> None:  ## Subselect the data frame to get (limit) numbe
     # print(f"Subselecting {module.moduleID} data frame")
     module.subset = None
     if module.data_frame is not None:
-        if len(module.data_frame) > config['PLOT_POINTS']:
-            starting_row = int(len(module.data_frame) * timewindow['value']['min'])
-            finish_row = int(len(module.data_frame) * timewindow['value']['max'])
-            #print(len(module.data_frame))
-            #print(timewindow['value']['max'])
-            #print('start and finish:')
-            #print(starting_row)
-            #print(finish_row)
-            target_rows = finish_row - starting_row
-            module.subset = module.data_frame.iloc[starting_row:finish_row:math.ceil(target_rows/(config['PLOT_POINTS']))].copy()
+        
+        """Subselect the data frame based on slider range (timewindow)."""
+        if module.data_frame is not None:
+            total_rows = len(module.data_frame)
+            start_row = int(total_rows * timewindow['value']['min'])
+            end_row = int(total_rows * timewindow['value']['max'])
+            
+            print(f"-------------------------------total_rows:{total_rows}-----------------------------------")
+            print(f"-------------------------------start_row:{start_row}-----------------------------------")
+            print(f"-------------------------------start_row:{end_row}-----------------------------------")
+            
+            # Create a subset based on row indices
+            module.subset = module.data_frame.iloc[start_row:end_row].copy()
+        
 
-        else:
-            # Select the last 'config['PLOT_POINTS']' number of rows
-            module.subset = module.data_frame[-config['PLOT_POINTS']:].copy()
-    #print(module.subset)
+        ## old logic
+        
+        
+    #     if len(module.data_frame) > config['PLOT_POINTS']:
+    #         starting_row = int(len(module.data_frame) * timewindow['value']['min'])
+    #         finish_row = int(len(module.data_frame) * timewindow['value']['max'])
+    #         #print(len(module.data_frame))
+    #         #print(timewindow['value']['max'])
+    #         #print('start and finish:')
+    #         #print(starting_row)
+    #         #print(finish_row)
+    #         target_rows = finish_row - starting_row
+    #         module.subset = module.data_frame.iloc[starting_row:finish_row:math.ceil(target_rows/(config['PLOT_POINTS']))].copy()
+
+    #     else:
+    #         # Select the last 'config['PLOT_POINTS']' number of rows
+    #         module.subset = module.data_frame[-config['PLOT_POINTS']:].copy()
+    # #print(module.subset)
 
 def module_list_update() -> None:   ## Create the modules from the serial_config file
     global moduleID
@@ -173,8 +191,8 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module = Module(moduleID, seqFilename=None, index=1, data_file=data_file)
                     modules[moduleID] = module
                     circ_modules.append(module.moduleID)
-                    load_new_rows(module)
                     subselect(module)
+                    load_new_rows(module)
                     data_processing(module.subset)
                 elif int(moduleID)>=config["LEM_ID_LIMIT"]:
                     moduleID = row[3]
@@ -819,7 +837,8 @@ def update_line_plot() -> None:
         # Check if module.subset is not None and has length greater than 0
         if module.subset is not None and len(module.subset) > 0:
             y_values = [module.subset[y].values for y in plot['y_values']]
-            x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
+            #x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
+            x_values = module.subset.index.values  # Use the index instead of 'TIME'
             ui_plots[plot['name']].clear()
             ui_plots[plot['name']].push(x_values, y_values)            
             # print(f"Updating plot {plot['name']} for module {moduleID}, x_values = {x_values}, y_values = {y_values}")

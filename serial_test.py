@@ -31,7 +31,7 @@ def all_off_commands():
         tube_bore = 1
         pump_2_speed_ratio = 1.0        
         as_id = 1
-        as_cmd = 2
+        as_cmd = 1
         as_hold_time_hrs = 1
         wristCmd = 0
         transtime = 2
@@ -48,8 +48,8 @@ def all_off_commands():
 
 def all_on_commands():
         cmd = 0
-        circFlowSpeed = 200
-        pressureFlowSpeed = 200
+        circFlowSpeed = 5000
+        pressureFlowSpeed = 5000
         valve1 = 1
         valve2 = 1
         valve3 = 1
@@ -74,11 +74,11 @@ def all_on_commands():
         pump1dir = 1
         tube_bore = 1
         pump_2_speed_ratio = 1.0        
-        as_id = 2
-        as_cmd = 1
+        as_id = 3
+        as_cmd = 2
         as_hold_time_hrs = 20
         wristCmd = 0
-        transtime = 2
+        transtime = 20
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [
