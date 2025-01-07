@@ -76,9 +76,9 @@ def all_on_commands():
         pump_2_speed_ratio = 1.0        
         as_id = 3
         as_cmd = 2
-        as_hold_time_hrs = 20
+        as_hold_time_hrs = 10
         wristCmd = 0
-        transtime = 20
+        transtime = 1
         
         # Create a comma-separated string of the values
         command_string = ",".join(map(str, [
@@ -94,7 +94,7 @@ def stop_cmd():
 
 def main():
     # Define the serial port and settings (adjust COM port and baudrate as needed)
-    port = 'COM6'  # Change this to the appropriate COM port
+    port = 'COM8'  # Change this to the appropriate COM port
     baudrate = 115200  # Adjust to match your device's baudrate
     expected_message = "0,3004,1001,50,0\n"  # The message to trigger sending the command
     #command = all_off_commands()
