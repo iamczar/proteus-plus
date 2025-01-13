@@ -14,6 +14,7 @@ import json
 from typing import Callable
 from pathlib import Path
 import shutil
+import numpy as np
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -48,7 +49,7 @@ def data_processing(df):
 
         # Convert 'TIME' to datetime
         df['TIME'] = pd.to_datetime(df['TIME'])
-        df['TIME'] = (df['TIME'] - df['TIME'].iloc[0]).dt.total_seconds() / 3600
+        #df['TIME'] = (df['TIME'] - df['TIME'].iloc[0]).dt.total_seconds() / 3600
         # PumpCal = 0.003125
         PumpCal = 0.004293
         df['Pump1_mLmin'] = (df['CIRCPUMPSPEED'])*PumpCal
@@ -145,9 +146,9 @@ def subselect(module) -> None:  ## Subselect the data frame to get (limit) numbe
             start_row = int(total_rows * timewindow['value']['min'])
             end_row = int(total_rows * timewindow['value']['max'])
             
-            print(f"-------------------------------total_rows:{total_rows}-----------------------------------")
-            print(f"-------------------------------start_row:{start_row}-----------------------------------")
-            print(f"-------------------------------start_row:{end_row}-----------------------------------")
+            # print(f"-------------------------------total_rows:{total_rows}-----------------------------------")
+            # print(f"-------------------------------start_row:{start_row}-----------------------------------")
+            # print(f"-------------------------------start_row:{end_row}-----------------------------------")
             
             # Create a subset based on row indices
             module.subset = module.data_frame.iloc[start_row:end_row].copy()
@@ -837,11 +838,25 @@ def update_line_plot() -> None:
         # Check if module.subset is not None and has length greater than 0
         if module.subset is not None and len(module.subset) > 0:
             y_values = [module.subset[y].values for y in plot['y_values']]
-            #x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
-            x_values = module.subset.index.values  # Use the index instead of 'TIME'
+            x_values = module.subset.index.values  # Use the index for x-axis
+            
             ui_plots[plot['name']].clear()
             ui_plots[plot['name']].push(x_values, y_values)            
-            # print(f"Updating plot {plot['name']} for module {moduleID}, x_values = {x_values}, y_values = {y_values}")
+
+            # Customize x-axis labels for better readability
+            ax = ui_plots[plot['name']].fig.gca()
+            
+            # # Format x-axis labels as datetime
+            formatted_labels = module.subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
+                       
+            # Increase number of ticks
+            num_ticks = min(100, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
+            tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)  # Evenly spaced positions
+            ax.set_xticks(x_values[tick_positions])
+            ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
+
+            # Adjust layout to prevent label cutoff
+            ui_plots[plot['name']].fig.tight_layout()
 
 
 def select_mod_id(value) -> Callable[[], None]: # Used to select the active module by mod ID.
@@ -995,7 +1010,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                     line_plot = ui.line_plot(n=plot['number_of_lines'], limit=config['PLOT_POINTS'] ) \
                         .with_legend(plot['legend'])
                     ax = line_plot.fig.gca()  # Get the current Axes instance on the current figure
-                    ax.set_xlabel('Time (hours)')
+                    ax.set_xlabel('Time (Absolute)')
                     ax.set_ylabel(plot['y_label'])
                     ax.set_title(plot['title'])
                     # if 'y_limits' in plot:
@@ -1235,7 +1250,6 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
         # Button to Trigger Plotting
         ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
-
 
 
 line_updates = ui.timer(5, refresh_all)
