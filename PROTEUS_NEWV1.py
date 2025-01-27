@@ -850,7 +850,7 @@ def update_line_plot() -> None:
             formatted_labels = module.subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
                        
             # Increase number of ticks
-            num_ticks = min(100, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
+            num_ticks = min(30, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
             tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)  # Evenly spaced positions
             ax.set_xticks(x_values[tick_positions])
             ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
@@ -1075,7 +1075,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             
     # Column mapping based on Proteus structure
     COLUMN_MAPPING = {
-        0: 'TIMESTAMP',      # Add TIMESTAMP first
+        0: 'TIME',      # Add TIMESTAMP first
         1: 'NULLLEADER',
         2: 'MODUID',
         3: 'COMMAND',
@@ -1105,7 +1105,10 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
     # Data Processing Function from Proteus
     def data_processing_historical(df):
-        if df is not None:           
+        if df is not None:
+            
+            df['TIME'] = pd.to_datetime(df['TIME'])
+            
             # Pump Calibration
             PumpCal = 0.004293
             df['Pump1_mLmin'] = df['CIRCPUMPSPEED'] * PumpCal
@@ -1163,7 +1166,6 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
         # Load and Plot Data Function
         async def load_and_plot_data():
-            
             if not selected_file_path['path']:
                 print("No file selected.")
                 return
@@ -1174,18 +1176,24 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 # Load the CSV file without headers
                 df = pd.read_csv(selected_file_path['path'], on_bad_lines='warn', header=None)
                 print("Original DataFrame Head:", df.head())
-                
-                #Rename columns using COLUMN_MAPPING
+
+                # Rename columns using COLUMN_MAPPING
                 df.rename(columns=COLUMN_MAPPING, inplace=True)
                 print("Renamed Columns:", df.columns)
                 print("DataFrame Shape:", df.shape)
 
+                # Convert TIME to datetime
+                df['TIME'] = pd.to_datetime(df['TIME'], errors='coerce')
+                if df['TIME'].isnull().any():
+                    print("Warning: Some invalid timestamps were found and dropped.")
+                    df = df.dropna(subset=['TIME'])
+
                 # Clean numeric columns
-                numeric_columns = list(COLUMN_MAPPING.values())[4:]  # From OXYMEASURED onward
+                numeric_columns = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
                 for col in numeric_columns:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                        
+
                 print("Cleaned Numeric Columns:")
                 print(df[numeric_columns].head())
 
@@ -1194,20 +1202,23 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 print("Processed DataFrame Head:")
                 print(df.head())
 
+                # Subset the data
                 start_row = int(len(df) * timewindow['value']['min'])
                 end_row = int(len(df) * timewindow['value']['max'])
                 subset = df.iloc[start_row:end_row]
                 print(f"Subset Rows: {start_row} to {end_row}")
-  
+
+                # Load plot configuration
                 try:
                     with open(config['PLOT_DICT'], 'r') as f:
-                            history_plot_dict = json.load(f)
+                        history_plot_dict = json.load(f)
                 except FileNotFoundError:
                     print("Error: The file 'plot_dict.json' was not found.")
+                    return
                 except json.JSONDecodeError:
                     print("Error: The file 'plot_dict.json' does not contain valid JSON.")
-                    
-                
+                    return
+
                 # Clear previous graphs
                 graph_area.clear()
 
@@ -1215,38 +1226,56 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 with graph_area:
                     for plot_key, plot_data in history_plot_dict.items():  # Iterate through each graph configuration
                         print(f"Graphing {plot_key}")
-                        
+
                         # Find Y-axis columns that exist in the subset
                         y_columns_found = [y for y in plot_data['y_values'] if y in subset.columns]
-                        
+
                         if y_columns_found:
-                            with ui.card():
+                            with ui.grid(columns=1).classes('items-start'):  # Use ui.grid for better layout
                                 # Add the title of the graph
-                                ui.label(plot_data['title']).classes('text-bold')
-                                
-                                # Create a line plot with the required number of lines and data limits
-                                line_plot = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
+                                # ui.label(plot_data['title']).classes('text-bold')
+            
+                                line_plot_his = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
                                     .with_legend(plot_data['legend'])
-                                line_plot.clear()
                                 
-                                # Use DataFrame index as X-axis
-                                x_values = subset.index.tolist()
-                                
-                                # Prepare y_values as a list of lists (each list is a series for the Y-axis)
+                                # Prepare x_values as absolute time and y_values as data series
+                                #x_values = subset['TIME'].values  # Use absolute time for x-axis
+                        
+                                # Prepare x_values as absolute time and y_values as data series
+                                x_values = subset['TIME'].values  # Use absolute time for x-axis
                                 y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
-                                
-                                # Debugging outputs
-                                print(f"X Values (Length: {len(x_values)}): {x_values[:5]} ...")
-                                print(f"Y Values (Length: {len(y_values)}): {[len(y) for y in y_values]} ...")
-                                
+
                                 # Push data to the plot
-                                line_plot.push(x_values, y_values)
+                                line_plot_his.clear()
+                                line_plot_his.push(x_values, y_values)
 
+                                # Customize x-axis labels
+                                a = line_plot_his.fig.gca()
+                                a.set_xlabel('Time (Absolute)')
+                                a.set_ylabel(plot_data['y_label'])
+                                a.set_title(plot_data['title'])
 
-                print("All 6 graphs have been rendered successfully.")
+                                # Format x-axis labels as datetime
+                                formatted_labels = subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
+
+                                # Reduce tick density
+                                num_ticks = min(20, len(x_values))
+                                tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)
+                                ax.set_xticks(tick_positions)
+                                ax.set_xticklabels(formatted_labels[tick_positions], rotation=45, ha='right')
+                                
+                                # Adjust font size
+                                for label in ax.get_xticklabels():
+                                    label.set_fontsize(8)  # Reduce font size for better spacing
+                                
+                                # Ensure the plot adjusts for rotated labels
+                                line_plot_his.fig.subplots_adjust(bottom=0.5)  # Adjust bottom margin for readability
+                                line_plot_his.fig.tight_layout()
+
+                print("All graphs have been rendered successfully.")
 
             except Exception as e:
-                 print(f"Error loading or plotting data: {e}")
+                print(f"Error loading or plotting data: {e}")
 
         # Button to Trigger Plotting
         ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
