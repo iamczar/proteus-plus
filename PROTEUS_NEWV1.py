@@ -837,26 +837,33 @@ def update_line_plot() -> None:
     for plot in plot_dict.values():
         # Check if module.subset is not None and has length greater than 0
         if module.subset is not None and len(module.subset) > 0:
+
             y_values = [module.subset[y].values for y in plot['y_values']]
-            x_values = module.subset.index.values  # Use the index for x-axis
-            
+            #x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
+            x_values = module.subset.index.values  # Use the index instead of 'TIME'
             ui_plots[plot['name']].clear()
-            ui_plots[plot['name']].push(x_values, y_values)            
+            ui_plots[plot['name']].push(x_values, y_values)   
 
-            # Customize x-axis labels for better readability
-            ax = ui_plots[plot['name']].fig.gca()
+            # y_values = [module.subset[y].values for y in plot['y_values']]
+            # x_values = module.subset.index.values  # Use the index for x-axis
             
-            # # Format x-axis labels as datetime
-            formatted_labels = module.subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
-                       
-            # Increase number of ticks
-            num_ticks = min(30, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
-            tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)  # Evenly spaced positions
-            ax.set_xticks(x_values[tick_positions])
-            ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
+            # ui_plots[plot['name']].clear()
+            # ui_plots[plot['name']].push(x_values, y_values)            
 
-            # Adjust layout to prevent label cutoff
-            ui_plots[plot['name']].fig.tight_layout()
+            # # Customize x-axis labels for better readability
+            # ax = ui_plots[plot['name']].fig.gca()
+            
+            # # # Format x-axis labels as datetime
+            # formatted_labels = module.subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
+                       
+            # # Increase number of ticks
+            # num_ticks = min(100, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
+            # tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)  # Evenly spaced positions
+            # ax.set_xticks(x_values[tick_positions])
+            # ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
+
+            # # Adjust layout to prevent label cutoff
+            # ui_plots[plot['name']].fig.tight_layout()
 
 
 def select_mod_id(value) -> Callable[[], None]: # Used to select the active module by mod ID.
@@ -1000,8 +1007,8 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             with ui.grid(columns=1).classes('items-start'):
                 ui.label(text='Set Time Window')
                 module = modules[moduleID]
-                # slider = ui.slider(min=0, max=1, step=0.01, value=0).bind_value_to(module.timewindow, 'value')
-                min_max_range = ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}).bind_value_to(timewindow).on('mouseup',(refresh_all))
+                #slider = ui.slider(min=0, max=1, step=0.01, value=0).bind_value_to(module.timewindow, 'value')
+                ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}).bind_value_to(timewindow).on('mouseup',(refresh_all))
                 # ui.label().bind_text_from(min_max_range, 'value',
                 #           backward=lambda v: f'min: {v["min"]}, max: {v["max"]}')
 
@@ -1104,35 +1111,35 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     }
 
     # Data Processing Function from Proteus
-    def data_processing_historical(df):
-        if df is not None:
+    def data_processing_historical(dfh):
+        if dfh is not None:
             
-            df['TIME'] = pd.to_datetime(df['TIME'])
+            dfh['TIME'] = pd.to_datetime(dfh['TIME'])
             
             # Pump Calibration
             PumpCal = 0.004293
-            df['Pump1_mLmin'] = df['CIRCPUMPSPEED'] * PumpCal
-            df['Pump2_mLmin'] = df['PRESSUREPUMPSPEED'] * PumpCal
+            dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * PumpCal
+            dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * PumpCal
 
             # Set Points
-            df['Pressure_SP'] = df['PRESSUREPID'] * df['PRESSURESETPOINT']
-            df['Oxygen_SP'] = df['OXYGENPID'] * df['OXYGENSETPOINT']
+            dfh['Pressure_SP'] = dfh['PRESSUREPID'] * dfh['PRESSURESETPOINT']
+            dfh['Oxygen_SP'] = dfh['OXYGENPID'] * dfh['OXYGENSETPOINT']
 
             # Rolling Averages
-            df['FLOWMEASURED_rolling_avg'] = df['FLOWMEASURED'].rolling(60).mean()
-            df['PRESSUREMEASURED_rolling_avg'] = df['PRESSUREMEASURED'].rolling(60).mean()
+            dfh['FLOWMEASURED_rolling_avg'] = dfh['FLOWMEASURED'].rolling(60).mean()
+            dfh['PRESSUREMEASURED_rolling_avg'] = dfh['PRESSUREMEASURED'].rolling(60).mean()
 
             # Permeate Flow
-            df['PermeateFlow'] = df['Pump1_mLmin'] - df['Pump2_mLmin']
+            dfh['PermeateFlow'] = dfh['Pump1_mLmin'] - dfh['Pump2_mLmin']
 
             # Oxygen Uptake Rate (OUR)
             OxySaturated = 200
-            df['OUR'] = (df['Pump2_mLmin']/1000)*(OxySaturated - df['OXYGENMEASURED2']) + \
-                        (df['PermeateFlow']/1000)*(OxySaturated - df['OXYGENMEASURED2'])
-            df['OUR_rollAvg_1min'] = df['OUR'].rolling(60).mean()
-            df['OUR_rollAvg_5min'] = df['OUR'].rolling(300).mean()
+            dfh['OUR'] = (dfh['Pump2_mLmin']/1000)*(OxySaturated - dfh['OXYGENMEASURED2']) + \
+                        (dfh['PermeateFlow']/1000)*(OxySaturated - dfh['OXYGENMEASURED2'])
+            dfh['OUR_rollAvg_1min'] = dfh['OUR'].rolling(60).mean()
+            dfh['OUR_rollAvg_5min'] = dfh['OUR'].rolling(300).mean()
             
-        return df
+        return dfh
 
     # Main Historical Data Analysis Page
     with ui.tab_panel(tab_historical_view):
@@ -1153,13 +1160,12 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
         # File Picker Button
         ui.button("Browse Data Files", on_click=pick_data_file, color="blue")
-        selected_file_label
 
         # Time Window Slider
-        timewindow = {'value': {'min': 0.20, 'max': 0.80}}
-        ui.label("Set Time Window").classes('text-bold')
-        min_max_range = ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}) \
-            .bind_value_to(timewindow)
+        historicaltimewindow = {'value': {'min': 0.20, 'max': 0.80}}
+        ui.label("Set Time Window").classes('text-bold')      
+        ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}) \
+            .bind_value_to(historicaltimewindow)
 
         # Graph Display Area
         graph_area = ui.grid(columns=3).classes('w-full')
@@ -1174,38 +1180,38 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
             try:
                 # Load the CSV file without headers
-                df = pd.read_csv(selected_file_path['path'], on_bad_lines='warn', header=None)
-                print("Original DataFrame Head:", df.head())
+                dfh = pd.read_csv(selected_file_path['path'], on_bad_lines='warn', header=None)
+                print("Original DataFrame Head:", dfh.head())
 
                 # Rename columns using COLUMN_MAPPING
-                df.rename(columns=COLUMN_MAPPING, inplace=True)
-                print("Renamed Columns:", df.columns)
-                print("DataFrame Shape:", df.shape)
+                dfh.rename(columns=COLUMN_MAPPING, inplace=True)
+                print("Renamed Columns:", dfh.columns)
+                print("DataFrame Shape:", dfh.shape)
 
                 # Convert TIME to datetime
-                df['TIME'] = pd.to_datetime(df['TIME'], errors='coerce')
-                if df['TIME'].isnull().any():
+                dfh['TIME'] = pd.to_datetime(dfh['TIME'], errors='coerce')
+                if dfh['TIME'].isnull().any():
                     print("Warning: Some invalid timestamps were found and dropped.")
-                    df = df.dropna(subset=['TIME'])
+                    dfh = dfh.dropna(subset=['TIME'])
 
                 # Clean numeric columns
                 numeric_columns = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
                 for col in numeric_columns:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    if col in dfh.columns:
+                        dfh[col] = pd.to_numeric(dfh[col], errors='coerce').fillna(0)
 
                 print("Cleaned Numeric Columns:")
-                print(df[numeric_columns].head())
+                print(dfh[numeric_columns].head())
 
                 # Apply Data Processing Function
-                df = data_processing_historical(df)
+                dfh = data_processing_historical(dfh)
                 print("Processed DataFrame Head:")
-                print(df.head())
+                print(dfh.head())
 
                 # Subset the data
-                start_row = int(len(df) * timewindow['value']['min'])
-                end_row = int(len(df) * timewindow['value']['max'])
-                subset = df.iloc[start_row:end_row]
+                start_row = int(len(dfh) * historicaltimewindow['value']['min'])
+                end_row = int(len(dfh) * historicaltimewindow['value']['max'])
+                subset = dfh.iloc[start_row:end_row]
                 print(f"Subset Rows: {start_row} to {end_row}")
 
                 # Load plot configuration
@@ -1231,46 +1237,69 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                         y_columns_found = [y for y in plot_data['y_values'] if y in subset.columns]
 
                         if y_columns_found:
-                            with ui.grid(columns=1).classes('items-start'):  # Use ui.grid for better layout
+
+                            with ui.card():
                                 # Add the title of the graph
-                                # ui.label(plot_data['title']).classes('text-bold')
-            
-                                line_plot_his = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
+                                ui.label(plot_data['title']).classes('text-bold')
+                                
+                                # Create a line plot with the required number of lines and data limits
+                                line_plot = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
                                     .with_legend(plot_data['legend'])
+                                line_plot.clear()
                                 
-                                # Prepare x_values as absolute time and y_values as data series
-                                #x_values = subset['TIME'].values  # Use absolute time for x-axis
-                        
-                                # Prepare x_values as absolute time and y_values as data series
-                                x_values = subset['TIME'].values  # Use absolute time for x-axis
+                                # Use DataFrame index as X-axis
+                                x_values = subset.index.tolist()
+                                
+                                # Prepare y_values as a list of lists (each list is a series for the Y-axis)
                                 y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
-
+                                
+                                # Debugging outputs
+                                print(f"X Values (Length: {len(x_values)}): {x_values[:5]} ...")
+                                print(f"Y Values (Length: {len(y_values)}): {[len(y) for y in y_values]} ...")
+                                
                                 # Push data to the plot
-                                line_plot_his.clear()
-                                line_plot_his.push(x_values, y_values)
+                                line_plot.push(x_values, y_values)
 
-                                # Customize x-axis labels
-                                a = line_plot_his.fig.gca()
-                                a.set_xlabel('Time (Absolute)')
-                                a.set_ylabel(plot_data['y_label'])
-                                a.set_title(plot_data['title'])
-
-                                # Format x-axis labels as datetime
-                                formatted_labels = subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
-
-                                # Reduce tick density
-                                num_ticks = min(20, len(x_values))
-                                tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)
-                                ax.set_xticks(tick_positions)
-                                ax.set_xticklabels(formatted_labels[tick_positions], rotation=45, ha='right')
+                            # with ui.grid(columns=1).classes('items-start'):  # Use ui.grid for better layout
+                            #     # Add the title of the graph
+                            #     # ui.label(plot_data['title']).classes('text-bold')
+            
+                            #     line_plot_his = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
+                            #         .with_legend(plot_data['legend'])
                                 
-                                # Adjust font size
-                                for label in ax.get_xticklabels():
-                                    label.set_fontsize(8)  # Reduce font size for better spacing
+                            #     # Prepare x_values as absolute time and y_values as data series
+                            #     #x_values = subset['TIME'].values  # Use absolute time for x-axis
+                        
+                            #     # Prepare x_values as absolute time and y_values as data series
+                            #     x_values = subset['TIME'].values  # Use absolute time for x-axis
+                            #     y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
+
+                            #     # Push data to the plot
+                            #     line_plot_his.clear()
+                            #     line_plot_his.push(x_values, y_values)
+
+                            #     # Customize x-axis labels
+                            #     a = line_plot_his.fig.gca()
+                            #     a.set_xlabel('Time (Absolute)')
+                            #     a.set_ylabel(plot_data['y_label'])
+                            #     a.set_title(plot_data['title'])
+
+                            #     # Format x-axis labels as datetime
+                            #     formatted_labels = subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
+
+                            #     # Reduce tick density
+                            #     num_ticks = min(20, len(x_values))
+                            #     tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)
+                            #     ax.set_xticks(tick_positions)
+                            #     ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
                                 
-                                # Ensure the plot adjusts for rotated labels
-                                line_plot_his.fig.subplots_adjust(bottom=0.5)  # Adjust bottom margin for readability
-                                line_plot_his.fig.tight_layout()
+                            #     # Adjust font size
+                            #     for label in ax.get_xticklabels():
+                            #         label.set_fontsize(8)  # Reduce font size for better spacing
+                                
+                            #     # Ensure the plot adjusts for rotated labels
+                            #     line_plot_his.fig.subplots_adjust(bottom=0.5)  # Adjust bottom margin for readability
+                            #     line_plot_his.fig.tight_layout()
 
                 print("All graphs have been rendered successfully.")
 
