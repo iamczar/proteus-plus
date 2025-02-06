@@ -15,6 +15,8 @@ from typing import Callable
 from pathlib import Path
 import shutil
 import numpy as np
+import plotly.graph_objects as go
+from plotly_resampler import FigureResampler
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -133,7 +135,7 @@ light_blue = '#D9E3F0'
 ############################################################################################################
 ################################################ FUNCTIONS #################################################
 
-
+MAX_DISPLAY_SAMPLES = 10000  # Limit for displayed points
 
 def subselect(module) -> None:  ## Subselect the data frame to get (limit) number of rows
     # print(f"Subselecting {module.moduleID} data frame")
@@ -144,34 +146,9 @@ def subselect(module) -> None:  ## Subselect the data frame to get (limit) numbe
         if module.data_frame is not None:
             total_rows = len(module.data_frame)
             start_row = int(total_rows * timewindow['value']['min'])
-            end_row = int(total_rows * timewindow['value']['max'])
-            
-            # print(f"-------------------------------total_rows:{total_rows}-----------------------------------")
-            # print(f"-------------------------------start_row:{start_row}-----------------------------------")
-            # print(f"-------------------------------start_row:{end_row}-----------------------------------")
-            
+            end_row = int(total_rows * timewindow['value']['max'])           
             # Create a subset based on row indices
             module.subset = module.data_frame.iloc[start_row:end_row].copy()
-        
-
-        ## old logic
-        
-        
-    #     if len(module.data_frame) > config['PLOT_POINTS']:
-    #         starting_row = int(len(module.data_frame) * timewindow['value']['min'])
-    #         finish_row = int(len(module.data_frame) * timewindow['value']['max'])
-    #         #print(len(module.data_frame))
-    #         #print(timewindow['value']['max'])
-    #         #print('start and finish:')
-    #         #print(starting_row)
-    #         #print(finish_row)
-    #         target_rows = finish_row - starting_row
-    #         module.subset = module.data_frame.iloc[starting_row:finish_row:math.ceil(target_rows/(config['PLOT_POINTS']))].copy()
-
-    #     else:
-    #         # Select the last 'config['PLOT_POINTS']' number of rows
-    #         module.subset = module.data_frame[-config['PLOT_POINTS']:].copy()
-    # #print(module.subset)
 
 def module_list_update() -> None:   ## Create the modules from the serial_config file
     global moduleID
@@ -202,7 +179,6 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module.type = 'LEM'
                     modules[moduleID] = module
                     lem_module=module.moduleID
-    #print(f"module_list_update:moduleID:{moduleID}")
 
 
 def load_new_rows(module) -> None:
@@ -844,27 +820,6 @@ def update_line_plot() -> None:
             ui_plots[plot['name']].clear()
             ui_plots[plot['name']].push(x_values, y_values)   
 
-            # y_values = [module.subset[y].values for y in plot['y_values']]
-            # x_values = module.subset.index.values  # Use the index for x-axis
-            
-            # ui_plots[plot['name']].clear()
-            # ui_plots[plot['name']].push(x_values, y_values)            
-
-            # # Customize x-axis labels for better readability
-            # ax = ui_plots[plot['name']].fig.gca()
-            
-            # # # Format x-axis labels as datetime
-            # formatted_labels = module.subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
-                       
-            # # Increase number of ticks
-            # num_ticks = min(100, len(x_values))  # Display up to 20 ticks or fewer if there are fewer data points
-            # tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)  # Evenly spaced positions
-            # ax.set_xticks(x_values[tick_positions])
-            # ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
-
-            # # Adjust layout to prevent label cutoff
-            # ui_plots[plot['name']].fig.tight_layout()
-
 
 def select_mod_id(value) -> Callable[[], None]: # Used to select the active module by mod ID.
     def inner() -> None:
@@ -1080,245 +1035,159 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     with ui.tab_panel(tab_image):
         ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
             
-    # Column mapping based on Proteus structure
+    # 🔹 Column mapping based on Proteus structure
     COLUMN_MAPPING = {
-        0: 'TIME',      # Add TIMESTAMP first
-        1: 'NULLLEADER',
-        2: 'MODUID',
-        3: 'COMMAND',
-        4: 'STATEID',
-        5: 'OXYMEASURED',
-        6: 'PRESSUREMEASURED',
-        7: 'FLOWMEASURED',
-        8: 'TEMPMEASURED',
-        9: 'CIRCPUMPSPEED',
-        10: 'PRESSUREPUMPSPEED',
-        11: 'PRESSUREPID',
-        12: 'PRESSURESETPOINT',
-        13: 'PRESSUREKP',
-        14: 'PRESSUREKI',
-        15: 'PRESSUREKD',
-        16: 'OXYGENPID',
-        17: 'OXYGENSETPOINT',
-        18: 'OXYGENKP',
-        19: 'OXYGENKI',
-        20: 'OXYGENKD',
-        21: 'OXYGENMEASURED1',
-        22: 'OXYGENMEASURED2',
-        23: 'OXYGENMEASURED3',
-        24: 'OXYGENMEASURED4',
-        25: 'NULLTRAILER'
+        0: 'TIME', 1: 'NULLLEADER', 2: 'MODUID', 3: 'COMMAND', 4: 'STATEID',
+        5: 'OXYMEASURED', 6: 'PRESSUREMEASURED', 7: 'FLOWMEASURED', 8: 'TEMPMEASURED',
+        9: 'CIRCPUMPSPEED', 10: 'PRESSUREPUMPSPEED', 11: 'PRESSUREPID', 12: 'PRESSURESETPOINT',
+        13: 'PRESSUREKP', 14: 'PRESSUREKI', 15: 'PRESSUREKD', 16: 'OXYGENPID',
+        17: 'OXYGENSETPOINT', 18: 'OXYGENKP', 19: 'OXYGENKI', 20: 'OXYGENKD',
+        21: 'OXYGENMEASURED1', 22: 'OXYGENMEASURED2', 23: 'OXYGENMEASURED3',
+        24: 'OXYGENMEASURED4', 25: 'NULLTRAILER'
     }
 
-    # Data Processing Function from Proteus
-    def data_processing_historical(dfh):
-        if dfh is not None:
-            
-            dfh['TIME'] = pd.to_datetime(dfh['TIME'])
-            
-            # Pump Calibration
-            PumpCal = 0.004293
-            dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * PumpCal
-            dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * PumpCal
+    # 🔹 Data Processing Function
+    def process_data(dfh):
+        if dfh is None or dfh.empty:
+            print("Error: DataFrame is empty or invalid.")
+            return None
 
-            # Set Points
-            dfh['Pressure_SP'] = dfh['PRESSUREPID'] * dfh['PRESSURESETPOINT']
-            dfh['Oxygen_SP'] = dfh['OXYGENPID'] * dfh['OXYGENSETPOINT']
+        dfh['TIME'] = pd.to_datetime(dfh['TIME'], errors='coerce')
+        dfh = dfh.dropna(subset=['TIME'])  # Remove invalid timestamps
 
-            # Rolling Averages
-            dfh['FLOWMEASURED_rolling_avg'] = dfh['FLOWMEASURED'].rolling(60).mean()
-            dfh['PRESSUREMEASURED_rolling_avg'] = dfh['PRESSUREMEASURED'].rolling(60).mean()
+        # Pump Calibration
+        pump_cal = 0.004293
+        dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * pump_cal
+        dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * pump_cal
 
-            # Permeate Flow
-            dfh['PermeateFlow'] = dfh['Pump1_mLmin'] - dfh['Pump2_mLmin']
+        # Set Points
+        dfh['Pressure_SP'] = dfh['PRESSUREPID'] * dfh['PRESSURESETPOINT']
+        dfh['Oxygen_SP'] = dfh['OXYGENPID'] * dfh['OXYGENSETPOINT']
 
-            # Oxygen Uptake Rate (OUR)
-            OxySaturated = 200
-            dfh['OUR'] = (dfh['Pump2_mLmin']/1000)*(OxySaturated - dfh['OXYGENMEASURED2']) + \
-                        (dfh['PermeateFlow']/1000)*(OxySaturated - dfh['OXYGENMEASURED2'])
-            dfh['OUR_rollAvg_1min'] = dfh['OUR'].rolling(60).mean()
-            dfh['OUR_rollAvg_5min'] = dfh['OUR'].rolling(300).mean()
-            
+        # Rolling Averages
+        dfh['FLOWMEASURED_rolling_avg'] = dfh['FLOWMEASURED'].rolling(60).mean()
+        dfh['PRESSUREMEASURED_rolling_avg'] = dfh['PRESSUREMEASURED'].rolling(60).mean()
+
+        # Permeate Flow
+        dfh['PermeateFlow'] = dfh['Pump1_mLmin'] - dfh['Pump2_mLmin']
+
+        # Oxygen Uptake Rate (OUR)
+        oxy_saturated = 200
+        dfh['OUR'] = ((dfh['Pump2_mLmin'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']) +
+                    (dfh['PermeateFlow'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']))
+        dfh['OUR_rollAvg_1min'] = dfh['OUR'].rolling(60).mean()
+        dfh['OUR_rollAvg_5min'] = dfh['OUR'].rolling(300).mean()
+
         return dfh
 
-    # Main Historical Data Analysis Page
+
+    # 🔹 File Picker Function
+    async def pick_data_file():
+        result = await local_file_picker(os.path.dirname(__file__), multiple=False)
+        if result:
+            selected_file_path['path'] = result[0]
+            selected_file_label.text = f"Selected file: {os.path.basename(selected_file_path['path'])}"
+            print(f"Selected file: {selected_file_path['path']}")
+        else:
+            selected_file_label.text = "No file selected."
+
+    # 🔹 Optimized Data Loading with Chunking
+    def load_csv_in_chunks(filepath, chunk_size=50000):
+        chunks = []
+        for chunk in pd.read_csv(filepath, on_bad_lines='warn', header=None, low_memory=False, chunksize=chunk_size):
+            chunk.rename(columns=COLUMN_MAPPING, inplace=True)
+            chunk['TIME'] = pd.to_datetime(chunk['TIME'], errors='coerce')
+            chunk.dropna(subset=['TIME'], inplace=True)
+            chunks.append(chunk)
+        
+        return pd.concat(chunks, ignore_index=True)
+
+    # 🔹 Load and Plot Data with Optimization
+    async def load_and_plot_data():
+        if not selected_file_path['path']:
+            print("No file selected.")
+            return
+
+        print("Loading and Plotting Data...")
+        try:
+            dfh = load_csv_in_chunks(selected_file_path['path'])
+            
+            # Convert numeric columns
+            numeric_cols = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
+            dfh[numeric_cols] = dfh[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+
+            # Process Data
+            dfh = process_data(dfh)
+
+            # Load plot configuration
+            try:
+                with open(config['PLOT_DICT'], 'r') as f:
+                    history_plot_dict = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                print("Error: Invalid or missing 'plot_dict.json'.")
+                return
+
+            # Clear previous graphs
+            graph_area.clear()
+
+            # 🔹 Generate and Render Plots with `plotly-resampler`
+            with graph_area:
+                with ui.grid(columns=3).classes('items-start'):
+                    for plot in history_plot_dict.values():
+                        traces = []
+
+                        for y in plot['y_values']:
+                            if y in dfh.columns:
+                                x_values = dfh['TIME'].values
+                                y_values = dfh[y].values
+                                new_trace = go.Scatter(
+                                    x=x_values,
+                                    y=y_values,
+                                    mode='lines',
+                                    name=y
+                                )
+                                traces.append(new_trace)
+
+                        fig = FigureResampler(go.Figure())
+                        for trace in traces:
+                            fig.add_trace(trace, max_n_samples=5000)  # Limit displayed points dynamically
+
+                        fig.update_layout(
+                            width=600, height=500,
+                            xaxis_title="Time (Absolute)",
+                            yaxis_title=plot['y_label'],
+                            title=plot['title'],
+                            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+                            margin=dict(l=20, r=20, t=25, b=20),
+                        )
+
+                        # Add the resampled Plotly figure to NiceGUI
+                        ui.plotly(fig)
+
+        except Exception as e:
+            print(f"Error loading or plotting data: {e}")
+
+    # 🔹 UI Setup for Historical Data Tab
     with ui.tab_panel(tab_historical_view):
         ui.label('Analyse Historical Data').classes('text-bold text-h6')
 
+        # File Selection UI
         selected_file_label = ui.label('No file selected.')
-        selected_file_path = {'path': None}  # Mutable dictionary for the file path
-
-        # File Picker Function
-        async def pick_data_file():
-            result = await local_file_picker(os.path.dirname(__file__), multiple=False)
-            if result:
-                selected_file_path['path'] = result[0]
-                selected_file_label.text = f"Selected file: {os.path.basename(selected_file_path['path'])}"
-                print(f"Selected file: {selected_file_path['path']}")
-            else:
-                selected_file_label.text = "No file selected."
-
-        # File Picker Button
+        selected_file_path = {'path': None}
         ui.button("Browse Data Files", on_click=pick_data_file, color="blue")
 
-        # Time Window Slider
-        historicaltimewindow = {'value': {'min': 0.20, 'max': 0.80}}
-        ui.label("Set Time Window").classes('text-bold')      
-        ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}) \
-            .bind_value_to(historicaltimewindow)
-
-        # Graph Display Area
-        graph_area = ui.grid(columns=3).classes('w-full')
-
-        # Load and Plot Data Function
-        async def load_and_plot_data():
-            if not selected_file_path['path']:
-                print("No file selected.")
-                return
-            else:
-                print("Loading and Plotting")
-
-            try:
-                # Load the CSV file without headers
-                dfh = pd.read_csv(selected_file_path['path'], on_bad_lines='warn', header=None)
-                print("Original DataFrame Head:", dfh.head())
-
-                # Rename columns using COLUMN_MAPPING
-                dfh.rename(columns=COLUMN_MAPPING, inplace=True)
-                print("Renamed Columns:", dfh.columns)
-                print("DataFrame Shape:", dfh.shape)
-
-                # Convert TIME to datetime
-                dfh['TIME'] = pd.to_datetime(dfh['TIME'], errors='coerce')
-                if dfh['TIME'].isnull().any():
-                    print("Warning: Some invalid timestamps were found and dropped.")
-                    dfh = dfh.dropna(subset=['TIME'])
-
-                # Clean numeric columns
-                numeric_columns = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
-                for col in numeric_columns:
-                    if col in dfh.columns:
-                        dfh[col] = pd.to_numeric(dfh[col], errors='coerce').fillna(0)
-
-                print("Cleaned Numeric Columns:")
-                print(dfh[numeric_columns].head())
-
-                # Apply Data Processing Function
-                dfh = data_processing_historical(dfh)
-                print("Processed DataFrame Head:")
-                print(dfh.head())
-
-                # Subset the data
-                start_row = int(len(dfh) * historicaltimewindow['value']['min'])
-                end_row = int(len(dfh) * historicaltimewindow['value']['max'])
-                subset = dfh.iloc[start_row:end_row]
-                print(f"Subset Rows: {start_row} to {end_row}")
-
-                # Load plot configuration
-                try:
-                    with open(config['PLOT_DICT'], 'r') as f:
-                        history_plot_dict = json.load(f)
-                except FileNotFoundError:
-                    print("Error: The file 'plot_dict.json' was not found.")
-                    return
-                except json.JSONDecodeError:
-                    print("Error: The file 'plot_dict.json' does not contain valid JSON.")
-                    return
-
-                # Clear previous graphs
-                graph_area.clear()
-
-                # Start rendering graphs dynamically from plot_dict.json
-                with graph_area:
-                    for plot_key, plot_data in history_plot_dict.items():  # Iterate through each graph configuration
-                        print(f"Graphing {plot_key}")
-
-                        # Find Y-axis columns that exist in the subset
-                        y_columns_found = [y for y in plot_data['y_values'] if y in subset.columns]
-
-                        if y_columns_found:
-
-                            with ui.card():
-                                # Add the title of the graph
-                                ui.label(plot_data['title']).classes('text-bold')
-                                
-                                # Create a line plot with the required number of lines and data limits
-                                line_plot = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
-                                    .with_legend(plot_data['legend'])
-                                line_plot.clear()
-                                
-                                # Use DataFrame index as X-axis
-                                x_values = subset.index.tolist()
-                                
-                                # Prepare y_values as a list of lists (each list is a series for the Y-axis)
-                                y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
-                                
-                                # Debugging outputs
-                                print(f"X Values (Length: {len(x_values)}): {x_values[:5]} ...")
-                                print(f"Y Values (Length: {len(y_values)}): {[len(y) for y in y_values]} ...")
-                                
-                                # Push data to the plot
-                                line_plot.push(x_values, y_values)
-
-                            # with ui.grid(columns=1).classes('items-start'):  # Use ui.grid for better layout
-                            #     # Add the title of the graph
-                            #     # ui.label(plot_data['title']).classes('text-bold')
-            
-                            #     line_plot_his = ui.line_plot(n=len(y_columns_found), limit=len(subset)) \
-                            #         .with_legend(plot_data['legend'])
-                                
-                            #     # Prepare x_values as absolute time and y_values as data series
-                            #     #x_values = subset['TIME'].values  # Use absolute time for x-axis
-                        
-                            #     # Prepare x_values as absolute time and y_values as data series
-                            #     x_values = subset['TIME'].values  # Use absolute time for x-axis
-                            #     y_values = [subset[y_column].fillna(0).values for y_column in y_columns_found]
-
-                            #     # Push data to the plot
-                            #     line_plot_his.clear()
-                            #     line_plot_his.push(x_values, y_values)
-
-                            #     # Customize x-axis labels
-                            #     a = line_plot_his.fig.gca()
-                            #     a.set_xlabel('Time (Absolute)')
-                            #     a.set_ylabel(plot_data['y_label'])
-                            #     a.set_title(plot_data['title'])
-
-                            #     # Format x-axis labels as datetime
-                            #     formatted_labels = subset['TIME'].dt.strftime('%Y-%m-%d %H:%M:%S').values
-
-                            #     # Reduce tick density
-                            #     num_ticks = min(20, len(x_values))
-                            #     tick_positions = np.linspace(0, len(x_values) - 1, num_ticks, dtype=int)
-                            #     ax.set_xticks(tick_positions)
-                            #     ax.set_xticklabels(formatted_labels[tick_positions], rotation=90)
-                                
-                            #     # Adjust font size
-                            #     for label in ax.get_xticklabels():
-                            #         label.set_fontsize(8)  # Reduce font size for better spacing
-                                
-                            #     # Ensure the plot adjusts for rotated labels
-                            #     line_plot_his.fig.subplots_adjust(bottom=0.5)  # Adjust bottom margin for readability
-                            #     line_plot_his.fig.tight_layout()
-
-                print("All graphs have been rendered successfully.")
-
-            except Exception as e:
-                print(f"Error loading or plotting data: {e}")
+        # Graph Display Area (3 columns, 2 rows)
+        graph_area = ui.column().classes('w-full')
 
         # Button to Trigger Plotting
         ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
 
 
+            
 line_updates = ui.timer(5, refresh_all)
 
 for module in modules.values():
     if module.type == 'Circulation':
         select_mod_id(module.moduleID)()
         
-        
-        
-        
-
-
 ui.run(port=5500)
