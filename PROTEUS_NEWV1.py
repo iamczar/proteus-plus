@@ -17,6 +17,9 @@ import shutil
 import numpy as np
 import plotly.graph_objects as go
 from plotly_resampler import FigureResampler
+import signal
+import sys
+import psutil  # Requires `pip install psutil`
 
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
@@ -135,20 +138,12 @@ light_blue = '#D9E3F0'
 ############################################################################################################
 ################################################ FUNCTIONS #################################################
 
-MAX_DISPLAY_SAMPLES = 10000  # Limit for displayed points
-
 def subselect(module) -> None:  ## Subselect the data frame to get (limit) number of rows
-    # print(f"Subselecting {module.moduleID} data frame")
-    module.subset = None
+    """Always selects the last 10,000 rows from module.data_frame for plotting.
+    If there are fewer than 10,000 rows, it displays all available data."""
     if module.data_frame is not None:
-        
-        """Subselect the data frame based on slider range (timewindow)."""
-        if module.data_frame is not None:
-            total_rows = len(module.data_frame)
-            start_row = int(total_rows * timewindow['value']['min'])
-            end_row = int(total_rows * timewindow['value']['max'])           
-            # Create a subset based on row indices
-            module.subset = module.data_frame.iloc[start_row:end_row].copy()
+        # Always take the last 10,000 rows or fewer if not available
+        module.subset = module.data_frame.iloc[-10_000:].copy()
 
 def module_list_update() -> None:   ## Create the modules from the serial_config file
     global moduleID
@@ -157,7 +152,6 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
     global lem_module
     modules = {}
     circ_modules = []
-    what = config['SERIAL_CONFIG']
     with open(config['SERIAL_CONFIG'], mode='r') as file:
         reader = csv.reader(file)
         next(reader)
@@ -169,8 +163,8 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module = Module(moduleID, seqFilename=None, index=1, data_file=data_file)
                     modules[moduleID] = module
                     circ_modules.append(module.moduleID)
-                    subselect(module)
                     load_new_rows(module)
+                    subselect(module)
                     data_processing(module.subset)
                 elif int(moduleID)>=config["LEM_ID_LIMIT"]:
                     moduleID = row[3]
@@ -182,31 +176,20 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
 
 
 def load_new_rows(module) -> None:
-
     if module.data_frame is None:
         start_row = 0
     else:    
         start_row = module.data_file_row
-    #print(f"Loading new rows for {module.moduleID} from row {start_row}")
-    
+
     if not os.path.exists(module.data_file):
-        print(f"{module.data_file} not found. No new rows loaded.")
+        print(f"❌ {module.data_file} not found. No new rows loaded.")
         return 
     
-    try:
-        new_rows = pd.read_csv(module.data_file, names=config['COLNAMES'], skiprows=range(0, start_row + 1), on_bad_lines='skip')
-    except FileNotFoundError:
-        print(f"{module.data_file} not found, creating file.")
-        open(module.data_file, 'w').close()
-        new_rows = pd.DataFrame(columns=config['COLNAMES'])
-    
-    print(new_rows)
+    new_rows = pd.read_csv(module.data_file, names=config['COLNAMES'], skiprows=range(0, start_row + 1), on_bad_lines='skip')
+
     if not new_rows.empty:
-    #    print(new_rows)
         module.data_frame = pd.concat([module.data_frame, new_rows], ignore_index=True)
-        module.data_file_row = module.data_file_row + len(new_rows)
-    if module.subset is not None:    
-        update_line_plot()
+        module.data_file_row += len(new_rows)
 
 def scan_for_modules() -> Callable[[], None]:  ## Scan for modules, this will start the module_register.py script
     def inner() -> None:
@@ -266,28 +249,6 @@ def stop_btn_click() -> None:
         threading.Thread(target=stop_experiment(target_module), daemon=True).start()
     return inner
 
-# def start_data_logging(target_module):
-#     try:
-#         module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-#         if target_module in processes:
-#             processes[target_module].terminate()
-#             print(f"-----------------------------------------Stopped {target_module} ALF session------------------------------------------------------")
-#             time.sleep(1)
-#         else:
-#             print(f"-----------------------------------------Target module not in process {target_module}------------------------------------------------------")
-
-#         print(f"-----------------------------------------calling run_start_data_logging ------------------------------------------------------")
-#         #run_start_data_logging(moduleID,module_csv_path)
-                    
-#         run_start_data_logging(index=index_value.value, 
-#                          seq_csv=seqFilename, 
-#                          data_csv=data_file_path, 
-#                          log_csv=log_file_path, 
-#                          module_csv=module_csv_path,
-#                          experiment_file_path=copy_data_file_to_pat)
-
-#     except Exception as e:
-#         print(f"stop_experiment:ERROR: {e}")
         
 
 async def start_data_logging_btn_click() -> None:
@@ -418,13 +379,7 @@ def freeze_btn_click() -> None:
             freeze_button.text = "Freeze Off"
     return inner
 
-# def start_btn_click() -> None:
-#     def inner() -> None:
-#         data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-#         log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
-#         module_csv_path= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-#         alfi_session(index=index_value.value, seq_csv=seqFilename, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv_path)
-#     return inner
+
 
 experiment_folder_path = None
 async def start_btn_click() -> None:
@@ -786,7 +741,30 @@ def count_rows(csv_file):
             pass
     return i
 
+
+# ✅ Add button to toggle graph updates
+def toggle_pause():
+    global paused
+    paused = not paused  # Flip pause state
+
+    # ✅ Update button text and color dynamically
+    if paused:
+        pause_button.text = "Resume Graphs"
+        pause_button.props('color=orange')
+        print("⏸ Graph updates paused.")
+    else:
+        pause_button.text = "Pause Graphs"
+        pause_button.props('color=green')
+        print("▶️ Graph updates resumed.")
+
+paused = False  # ✅ Track whether updates are paused
 def refresh_all() -> None:
+    global paused
+
+    if paused:
+        print("⏸ Graph updates paused.")
+        return  # ✅ Stop refreshing if paused
+    
     for module in modules.values():
         if module.type == 'Circulation':
             color = 'blue' if moduleID == module.moduleID else 'lightblue'
@@ -800,7 +778,6 @@ def refresh_all() -> None:
     subselect(module)
     data_processing(module.subset)
     update_line_plot()
-    #print('Running Processes: ',processes)
     for process in list(processes.keys()):
         if processes[process].poll() is None:
             print(f"Process {process} is still running.")
@@ -809,16 +786,79 @@ def refresh_all() -> None:
             del processes[process]
 
 def update_line_plot() -> None:
-    module = modules[moduleID]
-    for plot in plot_dict.values():
-        # Check if module.subset is not None and has length greater than 0
-        if module.subset is not None and len(module.subset) > 0:
+    module = modules.get(moduleID)
+        
+    if module is None or module.subset is None or module.subset.empty:
+        print(f"❌ ERROR: No data in module.subset for module {moduleID}")
+        return  # Stop execution if there's no data
 
-            y_values = [module.subset[y].values for y in plot['y_values']]
-            #x_values = module.subset['TIME'].values  # 'TIME' is already datetime 
-            x_values = module.subset.index.values  # Use the index instead of 'TIME'
-            ui_plots[plot['name']].clear()
-            ui_plots[plot['name']].push(x_values, y_values)   
+    # print("🖼️ Updating UI plots...")  # Debugging log
+
+    # Clear existing UI elements to prevent duplication
+    module_control_graph_.clear()
+
+    with module_control_graph_:
+        with ui.grid(columns=3).classes('items-start'):  # ✅ Display plots in 3 columns
+            for plot in plot_dict.values():
+                # print(f"📊 Plotting: {plot['name']}")  # Debugging log
+
+                # Extract x and y values
+                x_values = module.subset['TIME'].values if 'TIME' in module.subset else module.subset.index.values
+                y_values = [module.subset[y].values for y in plot['y_values'] if y in module.subset]
+
+                # Debugging: Check data size
+                # print(f"📈 Data Size: {len(x_values)} samples")
+
+                # Limit to last 10,000 samples
+                max_samples = 10_000
+                if len(x_values) > max_samples:
+                    x_values = x_values[-max_samples:]
+                    y_values = [y[-max_samples:] for y in y_values]
+
+                # Handle empty data
+                if len(x_values) == 0 or all(len(y) == 0 for y in y_values):
+                    print(f"⚠️ WARNING: Empty x_values or y_values for {plot['name']}")
+                    continue
+
+                # Check if the figure already exists
+                if plot['name'] in ui_plots:
+                    fig = ui_plots[plot['name']]
+                    fig.data = []  # Clear old traces
+
+                    for i, y in enumerate(y_values):
+                        fig.add_trace(go.Scatter(x=x_values, y=y, mode='lines', name=plot['y_values'][i]))
+
+                    fig.update_layout(
+                        width=600, height=500,
+                        xaxis_title="Time (Absolute)",
+                        yaxis_title=plot['y_label'],
+                        title=plot['title'],
+                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+                        margin=dict(l=20, r=20, t=25, b=20),
+                    )
+                else:
+                    # Create a new figure if it doesn't exist
+                    fig = FigureResampler(go.Figure())
+
+                    for i, y in enumerate(y_values):
+                        fig.add_trace(go.Scatter(x=x_values, y=y, mode='lines', name=plot['y_values'][i]))
+
+                    fig.update_layout(
+                        width=600, height=500,
+                        xaxis_title="Time (Absolute)",
+                        yaxis_title=plot['y_label'],
+                        title=plot['title'],
+                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+                        margin=dict(l=20, r=20, t=25, b=20),
+                    )
+
+                    # Store in dictionary and render in UI
+                    ui_plots[plot['name']] = fig
+
+                # ✅ Display in UI within the 3-column layout
+                ui.plotly(fig)
+
+    # print("✅ Finished updating all plots.")  # Debugging confirmation
 
 
 def select_mod_id(value) -> Callable[[], None]: # Used to select the active module by mod ID.
@@ -891,6 +931,28 @@ def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LE
             moduleID=active_circulation_module
     return inner
 
+def shutdown_app():
+    """Stops all Python processes related to Proteus and exits the UI safely."""
+    print("⚠️ Shutting down Proteus...")
+
+    # ✅ Kill Proteus-related processes
+    current_pid = os.getpid()  # Get the current script's PID
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['name'] == 'python.exe' or proc.info['name'] == 'python3':  # Match Python processes
+                if proc.info['pid'] != current_pid:  # Avoid killing the current process
+                    print(f"💀 Killing process {proc.info['pid']}: {' '.join(proc.info['cmdline'])}")
+                    proc.terminate()  # Graceful shutdown
+                    time.sleep(1)
+                    if proc.is_running():
+                        proc.kill()  # Force kill if still running
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
+    # ✅ Shutdown NiceGUI properly
+    print("💥 Exiting Proteus UI...")
+    os._exit(0)  # Immediate termination of the Python script
+
 
 ############################################################################################################
 ##########################################  SETUP AND RUN  #################################################
@@ -947,6 +1009,8 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
                 start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
                 stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')
+                pause_button = ui.button("Pause Graphs", on_click=toggle_pause, color='green')
+                
                 ui.space()
                 start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click, color='green')
                 stop_data_logging_button = ui.button("Stop Data Logging", on_click=stop_data_logging_btn_click(), color='red') 
@@ -956,28 +1020,12 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 ui.space()
                 index_dropdown = ui.select(label='Select Index', options=index_list).bind_value_to(index_value, "value")
                 freeze_button=ui.button("Index Freeze Off", on_click=freeze_btn_click(), color='orange')
+                shutdown_button = ui.button("Shutdown", on_click=shutdown_app, color="red")
                 session_label = ui.label('')
                 ui.space()
                 ui.space()
-            with ui.grid(columns=1).classes('items-start'):
-                ui.label(text='Set Time Window')
-                module = modules[moduleID]
-                #slider = ui.slider(min=0, max=1, step=0.01, value=0).bind_value_to(module.timewindow, 'value')
-                ui.range(min=0, max=1, step=0.01, value={'min': 0.00, 'max': 1.00}).bind_value_to(timewindow).on('mouseup',(refresh_all))
-                # ui.label().bind_text_from(min_max_range, 'value',
-                #           backward=lambda v: f'min: {v["min"]}, max: {v["max"]}')
 
-            with ui.grid(columns=3).classes('items-start'):
-                for plot in plot_dict.values():
-                    line_plot = ui.line_plot(n=plot['number_of_lines'], limit=config['PLOT_POINTS'] ) \
-                        .with_legend(plot['legend'])
-                    ax = line_plot.fig.gca()  # Get the current Axes instance on the current figure
-                    ax.set_xlabel('Time (Absolute)')
-                    ax.set_ylabel(plot['y_label'])
-                    ax.set_title(plot['title'])
-                    # if 'y_limits' in plot:
-                    #     ax.set_ylim(plot['y_limits'])  # Correctly set y-axis limits here
-                    ui_plots[plot['name']] = line_plot
+            module_control_graph_= ui.column().classes('w-full')
 
     with ui.tab_panel(tab_advanced):
         ui.button('Scan for Modules', on_click=scan_for_modules())

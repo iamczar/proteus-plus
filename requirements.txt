@@ -6,3 +6,4 @@ pyserial
 adafruit-ampy
 plotly
 plotly-resampler
+psutil
