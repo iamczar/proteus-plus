@@ -777,7 +777,7 @@ def refresh_all() -> None:
         print(f"Data file updated for module {moduleID}, data file row = {module.data_file_row}")
     subselect(module)
     data_processing(module.subset)
-    update_line_plot()
+    update_line_plot(module)
     for process in list(processes.keys()):
         if processes[process].poll() is None:
             print(f"Process {process} is still running.")
@@ -785,8 +785,8 @@ def refresh_all() -> None:
             print(f"Process {process} has terminated.")
             del processes[process]
 
-def update_line_plot() -> None:
-    module = modules.get(moduleID)
+def update_line_plot(module) -> None:
+    #module = modules.get(moduleID)
         
     if module is None or module.subset is None or module.subset.empty:
         print(f"❌ ERROR: No data in module.subset for module {moduleID}")
@@ -867,7 +867,8 @@ def select_mod_id(value) -> Callable[[], None]: # Used to select the active modu
         moduleID = value
         print(f"Module ID selected: {moduleID}")
         session_label.text = modules[moduleID].session_label
-        update_line_plot()
+        module = modules[moduleID]
+        update_line_plot(module)
     return inner
 
 async def pick_seqfile() -> None: # uses local_file_picker to select files for sequences
