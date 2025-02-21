@@ -72,7 +72,7 @@ def serial_listen_thread(serial_conn):
             while '\n' in buffer:
                 line, buffer = buffer.split('\n', 1)  # Split on the first newline
                 rx_data = line.strip()  # Remove leading/trailing whitespaces
-                print(f"SEND_STOP:serial_listen_thread: Received: {repr(rx_data)}")
+                #print(f"SEND_STOP:serial_listen_thread: Received: {repr(rx_data)}")
                 if rx_data == "111":
                     print(f"ACK RX:{rx_data}serial_listen_thread:closing serial port and terminating the thread")
                     serial_conn.close()
@@ -98,7 +98,7 @@ def main():
     keeprunning = True
 
     try:
-        print(f"------------------------------SEND_STOP-----------------------------------------")
+        print(f"---------------------SEND_STOP sent-----------------------------------------")
         serial = find_module_serial(args.moduid)
         if not serial:
             print(f"Failed to find serial connection for moduid {args.moduid}")
@@ -108,7 +108,7 @@ def main():
         thread.start()
         
     except Exception as e:
-        print(f"-----------------------SEND_STOP: main {e}-------------------------------------")
+        print(f"-----------------------SEND_STOP threading fault: main {e}-------------------------------------")
 
 
 if __name__ == '__main__':

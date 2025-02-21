@@ -31,7 +31,7 @@
         "number_of_lines": 2,
         "y_values" : ["PRESSUREMEASURED","PRESSURESETPOINT"],
         "legend": ["Measured","Setpoint"],
-        "y_label": "Pressure (bar)",
+        "y_label": "Pressure (mbar)",
         "title": "Pressure",
         "y_limits": null
     },

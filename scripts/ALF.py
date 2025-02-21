@@ -25,7 +25,7 @@ def load_config():
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
-            print('Alf loaded config: ', config)
+            #print('Alf loaded config: ', config)
     except FileNotFoundError:
         print(f"Configuration file {config_file} not found.")
     except json.JSONDecodeError:
@@ -61,95 +61,6 @@ if debug:
 ############################################ COMMUNICATION PROTOCOL POSITIONS ########################################################
 
 
-# COMPOS = {
-#     "nullLeader": 0,
-#     "modId": 1,
-#     "command": 2,
-#     "stateId": 3,
-#     "circFlow": 4,
-#     "pressureFlow": 5,
-#     "valve1": 6,
-#     "valve2": 7,
-#     "valve3": 8,
-#     "valve4": 9,
-#     "valve5": 10,
-#     "valve6": 11,
-#     "valve7": 12,
-#     "valve8": 13,
-#     "valve9": 14,
-#     "valve10": 15,
-#     "valve11": 16,
-#     "valve12": 17,
-#     "valve13": 18,
-#     "valve14": 19,
-#     "valve15": 20,
-#     "valve16": 21,
-#     "transTimeFlag": 22,
-#     "transTimeSp": 23,
-#     "pressureSP": 24,
-#     "oxySP": 25,
-#     "presInterval": 26,
-#     "flowInterval": 27,
-#     "oxyInterval": 28,
-#     "reportInterval": 29,
-#     "oxyTemp": 30,
-#     "oxyCircChannel": 31,
-#     "pumpSpeedRatio": 32,
-#     "circPumpCal": 33,
-#     "pressurePumpCal": 34,
-#     "pressureKp": 35,
-#     "pressureKi": 36,
-#     "pressureKd": 37,
-#     "oxyKp": 38,
-#     "oxyKi": 39,
-#     "oxyKd": 40,
-#     "flowInstalled": 41,
-#     "pressureInstalled": 42,
-#     "oxyInstalled": 43,
-#     "activeOxyChannel1": 44,
-#     "activeOxyChannel2": 45,
-#     "activeOxyChannel3": 46,
-#     "activeOxyChannel4": 47,
-#     "pump1Cw": 48,
-#     "pump2Cw": 49,
-#     "pump3Cw": 50,
-#     "pump4Cw": 51,
-#     "pump1DirPin": 52,
-#     "pump1StepPin": 53,
-#     "pump2DirPin": 54,
-#     "pump2StepPin": 55,
-#     "pump3DirPin": 56,
-#     "pump3StepPin": 57,
-#     "pump4DirPin": 58,
-#     "pump4StepPin": 59,
-#     "valve1Pin": 60,
-#     "valve2Pin": 61,
-#     "valve3Pin": 62,
-#     "valve4Pin": 63,
-#     "valve5Pin": 64,
-#     "valve6Pin": 65,
-#     "valve7Pin": 66,
-#     "valve8Pin": 67,
-#     "valve9Pin": 68,
-#     "valve10Pin": 69,
-#     "valve11Pin": 70,
-#     "valve12Pin": 71,
-#     "valve13Pin": 72,
-#     "valve14Pin": 73,
-#     "valve15Pin": 74,
-#     "valve16Pin": 75,
-#     "oxyConfigParameter": 76,
-#     "pressure0Address": 77,
-#     "pressureChannel": 78,
-#     "flow0Address": 79,
-#     "dispensePara": 80,
-#     "dispenseVolumeSP": 81,
-#     "pcBaudRate": 82,
-#     "oxyBaudRate": 83,
-#     "pressureBaudRate": 84,
-#     "flagCheck": 85,
-#     "nullTrailer": 86,
-# }
 
 
 COMPOS = {
@@ -326,7 +237,11 @@ def log_and_report(moduid, line, ser):
 
         # Print a message to the console with the timestamp, moduid, and the line
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{timestamp}: Module {moduid} reported: {line}")
+        print(f" Module {moduid} reported: {line}")
+        if "1515" not in line:
+            message=(str(timestamp)+str(line[35:0]))
+            print(message)
+            
     except Exception as e:
         print(f"An error occurred while logging and reporting for module {moduid}: {e}")
 
@@ -355,7 +270,8 @@ def serial_listen(ser):
             # Process the complete message
             command_control(message, ser)
     except Exception as e:
-        print(f"An error occurred while listening to the serial port: {e}")
+        pass
+        #print(f"An error occurred while listening to the serial port: {e}")
 
 def command_control(message, ser):
     #print(f"command_control:msg:{message}")
@@ -365,7 +281,8 @@ def command_control(message, ser):
             print(f"Received message: {message}")
         values = message.split(',')
         if debug:
-            print(f"Split message into values: {values}")
+            None
+            #print(f"Split message into values: {values}")
         
         # Check if the message contains enough values
         if len(values) >= 3:
@@ -378,9 +295,19 @@ def command_control(message, ser):
                     print("Failed to extract moduid and command")
                 return
         else:
-            print(f"Message does not contain enough values: {message}")
+            if "INFO" in message:
+                if "Free" not in message and "out of range" not in message:
+                    print(f"cycler info:{message[28:]}")
+            if "ERROR" in message:
+                None
+                #print(f"cycler error: {message[35:]}")
+            if "Memory" in message:
+                None
+            #else:
+            #    print(f"command too short: {message[35:]}")
     except Exception as e:
-        print(f"An error occurred while processing the message: {e}")
+        print(e)
+
 
     get_or_create_module(moduid)
     log_and_report(moduid, message, ser)
@@ -388,7 +315,7 @@ def command_control(message, ser):
     # Call a different function based on the command
     if command == COMMANDS['MODSTATEREQUEST']:
         # if debug:
-        print("Calling handle_mod_state_request")
+        #print("Calling handle_mod_state_request")
         handle_mod_state_request(moduid, message, ser)
     elif command == COMMANDS['MODSTATEREPLY']:
         # if debug:
@@ -403,13 +330,13 @@ def handle_mod_state_request(moduid, line, ser):
     # Split the line into values
     values = line.split(',')
     #if debug:
-    print(f"handle_mod_state_request:Split line into values: {values}")
+    #print(f"parsed command: {values}")
 
     # Check if the line contains enough values
     if len(values) >= 4:
         moduid, command, transtype= map(int, values[1:4])
         #if debug:
-        print(f"handle_mod_state_request:Extracted moduid and command: {moduid}, {command}, {transtype}")
+        #print(f"handle_mod_state_request:Extracted moduid and command: {moduid}, {command}, {transtype}")
 
         # Find the module with the given moduid
         module = next((m for m in modules if m.moduid == moduid), None)
@@ -565,7 +492,7 @@ def find_module_serial(moduid):
     print(f"Searching for module with moduid {moduid}")
     serials = []
     full_path = args.module_csv
-    print(f"------------------------------------find_module_serial: full_path: {full_path}----------------------------------")
+    print(f"looking up modules configured in {full_path}----------------------------------")
    
     with open(full_path, 'r') as file:
         reader = csv.DictReader(file)

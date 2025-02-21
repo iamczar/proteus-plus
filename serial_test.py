@@ -48,8 +48,8 @@ def all_off_commands():
 
 def all_on_commands():
         cmd = 0
-        circFlowSpeed = 5000
-        pressureFlowSpeed = 5000
+        circFlowSpeed = 1000
+        pressureFlowSpeed = -1
         valve1 = 1
         valve2 = 1
         valve3 = 1
@@ -94,7 +94,7 @@ def stop_cmd():
 
 def main():
     # Define the serial port and settings (adjust COM port and baudrate as needed)
-    port = 'COM8'  # Change this to the appropriate COM port
+    port = 'COM6'  # Change this to the appropriate COM port
     baudrate = 115200  # Adjust to match your device's baudrate
     expected_message = "0,3004,1001,50,0\n"  # The message to trigger sending the command
     #command = all_off_commands()
