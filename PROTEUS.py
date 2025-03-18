@@ -21,6 +21,9 @@ import signal
 import sys
 import psutil  # Requires `pip install psutil`
 
+from tabs.software_update_tab import load_software_update_tab
+
+
 ###########################################################################################################
 ############################################# LOAD CONFIG ################################################
 
@@ -1113,6 +1116,12 @@ except json.JSONDecodeError:
 
 ui.page_title('PROTEUS')
 
+def load_resources():
+    print("loadding resources")
+    app.add_static_files('/ui_images', 'ui_images')
+    
+load_resources()
+
 with ui.header(elevated=True).style('background-color: #697689').classes('items-left justify-between h-12.5'):
     with ui.row().classes('w-full'):
         for module in modules.values():
@@ -1129,6 +1138,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_advanced = ui.tab('p', label = 'ADVANCED CONTROLS')
             tab_image = ui.tab('i', label='PI&D')
             tab_historical_view = ui.tab('h', label='ANALYSE DATA')
+            tab_software_update = ui.tab('f', label='Software Update')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
@@ -1212,9 +1222,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     # New Image tab panel
     with ui.tab_panel(tab_image):
         ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
-            
-
-
+        
     # 🔹 UI Setup for Historical Data Tab
     with ui.tab_panel(tab_historical_view):
         ui.label('Analyse Historical Data').classes('text-bold text-h6')
@@ -1230,7 +1238,8 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
         # Button to Trigger Plotting
         ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
 
-
+    with ui.tab_panel(tab_software_update):
+        load_software_update_tab()
             
 line_updates = ui.timer(5, refresh_all)
 
