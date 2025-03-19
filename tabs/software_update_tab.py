@@ -1,5 +1,36 @@
 from nicegui import ui
 import asyncio
+import os
+import requests
+
+VERSION_FILE = "version.txt"  # Local version file
+UPDATE_URL = "https://raw.githubusercontent.com/iamczar/proteus-plus/master/version.txt"
+ZIP_URL = "https://github.com/iamczar/proteus-plus/archive/refs/tags/v1.0.zip"
+
+GITHUB_API_RELEASES = "https://api.github.com/repos/iamczar/proteus-plus/releases/latest"
+
+# Define version files and update URLs for each software
+SOFTWARES = {
+    "Proteus": {
+        "version_file": "protues_version.txt",
+        "update_url": "https://raw.githubusercontent.com/iamczar/proteus-plus/master/protues_version.txt",
+        "zip_url": "https://github.com/iamczar/proteus-plus/archive/refs/tags/v1.0.zip",
+    },
+    "Alpha+ Software": {
+        "version_file": "alpha_software_version.txt",
+        "update_url": "https://raw.githubusercontent.com/iamczar/alpha-plus-software/master/version.txt",
+        "zip_url": "https://github.com/iamczar/alpha-plus-software/archive/refs/tags/v1.0.zip",
+    },
+    "Alpha+ Firmware": {
+        "version_file": "alpha_firmware_version.txt",
+        "update_url": "https://raw.githubusercontent.com/iamczar/alpha-plus-firmware/master/version.txt",
+        "zip_url": "https://github.com/iamczar/alpha-plus-firmware/archive/refs/tags/v1.0.zip",
+    }
+}
+
+
+
+
 
 def load_software_update_tab():
     with ui.tab_panel('f'):  # Must match the tab key in main.py
@@ -33,7 +64,18 @@ def load_software_update_tab():
                         align-items: center;  
                         justify-content: center;  
                         position: relative;
+                        
                     ">
+                        <!-- Top-left label -->
+                        <span id="protues-update-status" style="
+                            position: absolute;
+                            top: 10px; 
+                            left: 10px; 
+                            font-size: 16px; 
+                            font-weight: bold;
+                            color: black;
+                    "></span>
+                        
                         <img id="update-icon" src="/ui_images/anticlockwise-arrow.png" style="
                             width: 100px; 
                             height: 100px;
@@ -42,14 +84,55 @@ def load_software_update_tab():
                     </div>
                 ''')
 
-
 # Placeholder functions (you can replace them with real update logic)
 async def check_for_updates():
     show_spinner()
     start_spinner()
-    await asyncio.sleep(3)  # Wait 3 seconds (non-blocking)
+    
+    await check_updates_for_protues()
+    # await check_updates_for_alpha_plus_software()
+    # await check_updates_for_alpha_plus_firmware()
+    
+    await asyncio.sleep(1)  # Wait 3 seconds (non-blocking)
     stop_spinner()
     hide_spinner()
+    
+async def check_updates_for_protues():
+    try:
+        latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
+        current_version = get_current_version_of_proteus(SOFTWARES["Proteus"]["version_file"])
+        
+        print(f"latest_version: {latest_version}")
+        print(f"current_version: {current_version}")
+
+        if latest_version and latest_version > current_version:
+            msg = f"New version of Protues Plus is available :  {latest_version}"
+            print(msg)
+            proteus_update_status(msg)
+        else:
+            msg = "Proteus is up to date."
+            print(msg)
+            proteus_update_status(msg)
+    except Exception as e:
+        print(f"Error checking updates: {e}")
+    
+    
+def get_current_version_of_proteus(version_file):
+    """Reads the current version from the local version.txt file."""
+    if os.path.exists(version_file):
+        with open(version_file, "r") as f:
+            return f.read().strip()
+    return "0.0"  # Default version if file doesn't exist
+
+def get_latest_version_of_proteus(update_url):
+    """Fetches the latest version from GitHub."""
+    try:
+        response = requests.get(update_url)
+        if response.status_code == 200:
+            return response.text.strip()
+    except Exception as e:
+        print(f"Failed to fetch latest version: {e}")
+    return None
 
     
 def start_spinner():
@@ -97,6 +180,15 @@ def hide_spinner():
         if (icon) {
             icon.style.display = 'none';  // Hide it
         }
+    """)
+    
+def proteus_update_status(msg):
+    """Updates the UI label inside the white box."""
+    ui.run_javascript(f"""
+        let statusElement = document.getElementById('protues-update-status');
+        if (statusElement) {{
+            statusElement.textContent = "{msg}";
+        }}
     """)
 
 
