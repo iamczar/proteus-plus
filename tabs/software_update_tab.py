@@ -4,11 +4,6 @@ import os
 import requests
 import zipfile
 
-
-VERSION_FILE = "version.txt"  # Local version file
-UPDATE_URL = "https://raw.githubusercontent.com/iamczar/proteus-plus/master/version.txt"
-ZIP_URL = "https://github.com/iamczar/proteus-plus/archive/refs/tags/v1.0.zip"
-
 GITHUB_API_RELEASES = "https://api.github.com/repos/iamczar/proteus-plus/releases/latest"
 
 # Define version files and update URLs for each software
