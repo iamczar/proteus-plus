@@ -306,7 +306,10 @@ async def on_update_click_proteus():
     latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
     # download the files
     zip_url_base = SOFTWARES["Proteus"]["zip_url"]
-    zip_url = f"{zip_url_base}v{latest_version}.zip"
+    zip_url = f"{zip_url_base}{latest_version}.zip"
+    
+    print(zip_url)
+    
     zip_path = await download_proteus_update(zip_url)
     await asyncio.sleep(1) 
     if zip_path:
