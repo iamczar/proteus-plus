@@ -11,7 +11,7 @@ SOFTWARES = {
     "Proteus": {
         "version_file": "proteus_version.txt",
         "update_url": "https://raw.githubusercontent.com/iamczar/proteus-plus/master/proteus_version.txt",
-        "zip_url": "https://github.com/iamczar/proteus-plus/archive/refs/tags/v1.0.zip",
+        "zip_url": "https://github.com/iamczar/proteus-plus/archive/refs/tags/",
     },
     "Alpha+ Software": {
         "version_file": "alpha_software_version.txt",
@@ -303,8 +303,10 @@ async def extract_update(zip_path: str, extract_to='.'):
 
 async def on_update_click_proteus():
     
+    latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
     # download the files
-    zip_url = SOFTWARES["Proteus"]["zip_url"]
+    zip_url_base = SOFTWARES["Proteus"]["zip_url"]
+    zip_url = f"{zip_url_base}v{latest_version}.zip"
     zip_path = await download_proteus_update(zip_url)
     await asyncio.sleep(1) 
     if zip_path:
