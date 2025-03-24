@@ -3,6 +3,7 @@ import asyncio
 import os
 import requests
 import zipfile
+import shutil
 
 GITHUB_API_RELEASES = "https://api.github.com/repos/iamczar/proteus-plus/releases/latest"
 
@@ -11,7 +12,7 @@ SOFTWARES = {
     "Proteus": {
         "version_file": "proteus_version.txt",
         "update_url": "https://raw.githubusercontent.com/iamczar/proteus-plus/master/proteus_version.txt",
-        "zip_url": "https://github.com/iamczar/proteus-plus/archive/refs/tags/",
+        "zip_url": "https://github.com/iamczar/proteus-plus/archive/refs/tags/v1.0.zip",
     },
     "Alpha+ Software": {
         "version_file": "alpha_software_version.txt",
@@ -291,25 +292,56 @@ async def download_proteus_update(zip_url: str, save_path='proteus_update.zip'):
     return None
 
 async def extract_update(zip_path: str, extract_to='.'):
-    """Extracts the zip file to the specified directory."""
+    """Extracts ZIP and replaces files into current directory without deleting folders."""
     try:
+        # Step 1: Extract ZIP to current dir
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_to)
-        print(f"Extracted update to {extract_to}")
+
+        print(f"✅ Extracted update to {extract_to}")
+
+        # Step 2: Find extracted folder (e.g., 'proteus-plus-1.0')
+        extracted_folder = next(
+            (f for f in os.listdir(extract_to)
+             if os.path.isdir(os.path.join(extract_to, f)) and 'proteus' in f.lower()),
+            None
+        )
+
+        if not extracted_folder:
+            print("⚠️ No extracted subfolder found.")
+            return False
+
+        source_dir = os.path.join(extract_to, extracted_folder)
+
+        # Step 3: Walk all files and copy one-by-one
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                src_file = os.path.join(root, file)
+                relative_path = os.path.relpath(src_file, source_dir)
+                dst_file = os.path.join(extract_to, relative_path)
+
+                dst_folder = os.path.dirname(dst_file)
+                if not os.path.exists(dst_folder):
+                    os.makedirs(dst_folder)
+
+                print(f"📄 Copying: {relative_path}")
+                shutil.copy2(src_file, dst_file)
+
+        # Step 4: Cleanup
+        shutil.rmtree(source_dir)
+        os.remove(zip_path)
+        print("🧹 Cleaned up extracted folder and ZIP.")
+
         return True
+
     except Exception as e:
-        print(f"Error extracting update: {e}")
+        print(f"❌ Error during file replacement: {e}")
         return False
 
 async def on_update_click_proteus():
     
-    latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
     # download the files
-    zip_url_base = SOFTWARES["Proteus"]["zip_url"]
-    zip_url = f"{zip_url_base}{latest_version}.zip"
-    
-    print(zip_url)
-    
+    zip_url = SOFTWARES["Proteus"]["zip_url"]
     zip_path = await download_proteus_update(zip_url)
     await asyncio.sleep(1) 
     if zip_path:
