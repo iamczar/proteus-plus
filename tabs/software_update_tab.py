@@ -35,7 +35,15 @@ button_refs = {}
 
 def highlight_selected_button(selected_key):
     for key, btn in button_refs.items():
+        if key in ["update-proteus-btn", "restart-proteus-btn"]:
+            continue  # Don't recolor the control buttons
         btn.props('color=green' if key == selected_key else 'color=blue')
+
+    # 🔁 Control visibility properly
+    is_proteus = selected_key == "proteus"
+    button_refs["update-proteus-btn"].set_visibility(is_proteus)
+    button_refs["restart-proteus-btn"].set_visibility(is_proteus)
+
 
 def load_software_update_tab():
     with ui.tab_panel('f'):  # Must match the tab key in main.py
@@ -81,7 +89,11 @@ def load_software_update_tab():
                     ui.html('<div id="software-dynamic-content" style="width: 100%; height: 100%;"></div>')
 
                     # 🟩 Button 1 (center bottom)
-                    ui.button("Update", on_click=handle_update_click_proteus, color="green").style('''
+                    button_refs["update-proteus-btn"] = ui.button(
+                        "Update", 
+                        on_click=handle_update_click_proteus, 
+                        color="green"
+                    ).style('''
                         position: absolute;
                         bottom: 20px;
                         left: 50%;
@@ -91,9 +103,15 @@ def load_software_update_tab():
                         font-weight: bold;
                         border: 2px solid black;
                     ''')
+                    
+                    button_refs["update-proteus-btn"].set_visibility(False) 
 
                     # 🟩 Button 2 (bottom-right)
-                    ui.button("Restart", on_click=handle_restart_click_proteus, color="green").style('''
+                    button_refs["restart-proteus-btn"] = ui.button(
+                        "Restart", 
+                        on_click=handle_restart_click_proteus, 
+                        color="green"
+                    ).style('''
                         position: absolute;
                         bottom: 20px;
                         right: 20px;
@@ -102,9 +120,7 @@ def load_software_update_tab():
                         font-weight: bold;
                         border: 2px solid black;
                     ''')
-
-            
-            
+                    button_refs["restart-proteus-btn"].set_visibility(False) 
 
 # Placeholder functions (you can replace them with real update logic)
 async def check_for_updates():
