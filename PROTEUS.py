@@ -1144,7 +1144,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_image = ui.tab('i', label='P&ID')
             tab_historical_view = ui.tab('h', label='ANALYSE DATA')
             tab_lem = ui.tab('l', label = 'LEM')
-	    tab_software_update = ui.tab('f', label='Software Update')
+            tab_software_update = ui.tab('f', label='Software Update')
             tab_about=ui.tab('a', label= 'About Proteus')
 
 
