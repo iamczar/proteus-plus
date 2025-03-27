@@ -60,7 +60,7 @@ def find_moduid(port):
     try:
         for _ in range(100):  # Attempt to read serial port 10 times
             line = ser.readline().decode('utf-8').strip()
-            print(f"Read line: {line}")
+            #print(f"Read line: {line}")
             
             # Check if line matches the expected pattern
             if line.startswith("0,") and len(line.split(',')) >= 5:
@@ -69,7 +69,7 @@ def find_moduid(port):
                     return moduid
             time.sleep(0.1)
         
-            print("No matching pattern found in serial data.")
+            print(".....")
         return None
     except Exception as e:
         print(f"Error reading from port: {e}")

@@ -21,15 +21,15 @@ config = {}
 
 def load_config():
     global config
-    config_file = 'config.json' 
+    config_file = 'configs/config.json' 
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
             #print('Alf loaded config: ', config)
     except FileNotFoundError:
-        print(f"Configuration file {config_file} not found.")
+        print(f"ALF: Configuration file {config_file} not found.")
     except json.JSONDecodeError:
-        print(f"Configuration file {config_file} is not a valid JSON file.")
+        print(f"ALF: Configuration file {config_file} is not a valid JSON file.")
 
 load_config()
 
@@ -55,8 +55,8 @@ target.add_argument('-u','--moduid', type=int, help='moduid', metavar='')
 args = parser.parse_args()
 
 debug = args.debug
-if debug:
-    print(args)
+#if debug:
+    #print(args)
 
 ############################################ COMMUNICATION PROTOCOL POSITIONS ########################################################
 
@@ -199,7 +199,7 @@ def load_sequence(moduid, debug=False):
                     print(entry)
 
     except Exception as e:
-        print(f"An error occurred while loading the sequence for module {moduid}: {e}")
+        print(f"ALF: An error occurred while loading the sequence for module {moduid}: {e}")
 
     return data_matrix
 
@@ -212,7 +212,7 @@ def get_or_create_module(moduid):
         module.sequence = []
         module.sequence_stage = ((args.index)-1) if args.index else 0
         modules.append(module)
-        print(f"Created new module: {moduid}")
+        print(f"ALF: Created new module: {moduid}")
         module.sequence=load_sequence(moduid)
         if debug:
             print(module.sequence)
@@ -237,13 +237,13 @@ def log_and_report(moduid, line, ser):
 
         # Print a message to the console with the timestamp, moduid, and the line
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        print(f" Module {moduid} reported: {line}")
+        print(f" ALF:  Module {moduid} reported: {line}")
         if "1515" not in line:
-            message=(str(timestamp)+str(line[35:0]))
+            message=(str(timestamp)+str(line[5:0]))
             print(message)
             
     except Exception as e:
-        print(f"An error occurred while logging and reporting for module {moduid}: {e}")
+        print(f"ALF: An error occurred while logging and reporting for module {moduid}: {e}")
 
 
 ######################################################## COMS ########################################################
@@ -289,15 +289,15 @@ def command_control(message, ser):
             try:
                 moduid, command = map(int, values[1:3])
                 if debug:
-                    print(f"Extracted moduid and command: {moduid}, {command}")
+                    print(f"ALF: Extracted moduid and command: {moduid}, {command}")
             except ValueError:
                 if debug:
-                    print("Failed to extract moduid and command")
+                    print("ALF: Failed to extract moduid and command")
                 return
         else:
             if "INFO" in message:
                 if "Free" not in message and "out of range" not in message:
-                    print(f"cycler info:{message[28:]}")
+                    print(f"ALF: cycler info:{message[33:]}")
             if "ERROR" in message:
                 None
                 #print(f"cycler error: {message[35:]}")
@@ -342,7 +342,7 @@ def handle_mod_state_request(moduid, line, ser):
         module = next((m for m in modules if m.moduid == moduid), None)
         if module is not None:
             if debug:
-                print(f"handle_mod_state_request:Found module with moduid: {moduid}")
+                print(f"ALF: handle_mod_state_request:Found module {moduid}")
 
             if transtype==TRANSTYPE['VOLUME']:   ######################################################### VOLUME TRANSITION 
                 # Check if there's a next sequence stage
@@ -350,26 +350,26 @@ def handle_mod_state_request(moduid, line, ser):
                     # Update the module's sequence stage
                     module.sequence_stage += 1
                     if debug:
-                        print(f"Updated module's sequence stage to: {module.sequence_stage}")
+                        print(f"ALF: Updated module's sequence stage to: {module.sequence_stage}")
 
                     # Get the next sequence
                     next_sequence = module.sequence[module.sequence_stage]
                     if debug:
-                        print(f"Next sequence: {next_sequence}")
+                        print(f"ALF: Next sequence: {next_sequence}")
 
                     # Send the sequence to the Arduino
                     next_sequence_str = ','.join(next_sequence)
-                    print(f"sending sequence: {next_sequence_str}")
+                    print(f"ALF: sending sequence: {next_sequence_str}")
                     
                     ser.write((next_sequence_str + "\n").encode())
                     if debug:
-                        print(f"Sent next sequence to Arduino: {next_sequence_str}")
+                        print(f"ALF: Sent next sequence to Arduino: {next_sequence_str}")
 
                         # Send next state (null), and then exit.
 
                 else:
                     if debug:
-                        print ("No next sequence stage")
+                        print ("ALF: No next sequence stage")
 
             if not args.pause or transtype == TRANSTYPE['MODWAKE']: ######################################## ALL OTHER TRANSITIONS
                 # Check if there's a next sequence stage
@@ -377,24 +377,24 @@ def handle_mod_state_request(moduid, line, ser):
                     # Update the module's sequence stage
                     module.sequence_stage += 1
                     if debug:
-                        print(f"Updated module's sequence stage to: {module.sequence_stage}")
+                        print(f"ALF: Updated module's sequence stage to: {module.sequence_stage}")
 
                     # Get the next sequence
                     next_sequence = module.sequence[module.sequence_stage]
                     if debug:
-                        print(f"Next sequence: {next_sequence}")
+                        print(f"ALF: Next sequence: {next_sequence}")
 
                     # Send the sequence to the Arduino
                     next_sequence_str = ','.join(next_sequence)
                     ser.write((next_sequence_str + "\n").encode())
                     if debug:
-                        print(f"Sent next sequence to Arduino: {next_sequence_str}")
+                        print(f"ALF: Sent next sequence to Arduino: {next_sequence_str}")
                 else:
                     if debug:
-                        print ("No next sequence stage")
+                        print ("ALF: No next sequence stage")
         else:
             if debug:
-                print(f"Module with moduid {moduid} not found")
+                None    #print(f"ALF: Module with moduid {moduid} not found")
 
 def handle_mod_state_reply(moduid, line, ser):
 
@@ -416,13 +416,13 @@ def handle_mod_state_reply(moduid, line, ser):
                 if sequencevalues == datavalues:
                     # Log the match
                     if debug:
-                        print(f"Match in reply for module {moduid}")
+                        print(f"ALF: Match in reply for module {moduid}")
 
                 # Call the log_and_report function with the received reply and the current datetime
                 log_and_report(line)
         else:
             if debug:
-                print(f"Mismatch in reply for module {moduid}")
+                print(f"ALF: Mismatch in reply for module {moduid}")
 
             # Resend the state
             next_sequence = module.sequence[module.sequence_stage]
@@ -459,9 +459,9 @@ def handle_mod_data_report(moduid, line, ser):
 
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         if debug:
-            print(f"{timestamp}: Module {moduid} data: {line}")
+            print(f"ALF: {timestamp}: Module {moduid} data: {line}")
     except Exception as e:
-        print(f"An error occurred while handling module data report for module {moduid}: {e}")
+        print(f"ALF: An error occurred while handling module data report for module {moduid}: {e}")
 
 def load_serial_ports(filename):
     serials = []
@@ -474,25 +474,28 @@ def load_serial_ports(filename):
                     port = row['port']
                     baudrate=int(row['baud_rate'])
 
-                    print(f"load_serial_ports : port: {port}")
-                    print(f"load_serial_ports : baudrate: {baudrate}")
+                    print(f"ALF: load_serial_ports : port: {port}")
+                    print(f"ALF: load_serial_ports : baudrate: {baudrate}")
 
                     ser = serial.Serial(port=row['port'], baudrate=int(row['baud_rate']), timeout=int(row['timeout']))
                     ser.moduid = int(row['moduid'])
                     serials.append(ser)
                 except (ValueError, serial.SerialException) as e:
-                    print(f"An error occurred while setting up the serial port: {e}")
+                    print(f"ALF: An error occurred while setting up the serial port: {e}")
                 except FileNotFoundError:
-                    print(f"The file {filename} was not found.")
+                    print(f"ALF: The file {filename} was not found.")
                 except Exception as e:
-                    print(f"An error occurred while loading the serial ports: {e}") 
+                    print(f"ALF: An error occurred while loading the serial ports: {e}") 
     return serials
 
 def find_module_serial(moduid):
-    print(f"Searching for module with moduid {moduid}")
+    if moduid != 1001:
+        print(f"ALF: Searching for module with moduid {moduid}")
+    if moduid == 1001:
+        print(f"ALF: dummy module connected")
     serials = []
     full_path = args.module_csv
-    print(f"looking up modules configured in {full_path}----------------------------------")
+    #print(f"ALF: looking up modules configured in {full_path}----------------------------------")
    
     with open(full_path, 'r') as file:
         reader = csv.DictReader(file)
@@ -502,15 +505,15 @@ def find_module_serial(moduid):
                     port = row['port']
                     baudrate = int(row['baud_rate'])
 
-                    print(f"find_module_serial: port: {port}")
-                    print(f"find_module_serial: baudrate: {baudrate}")
+                    print(f"ALF: connecting to: module {moduid} using port: {port}, baudrate: {baudrate}")
 
                     ser = serial.Serial(port=row['port'], baudrate=int(row['baud_rate']), timeout=int(row['timeout']))
                     ser.moduid = int(row['moduid'])
                     serials.append(ser)
                 except (ValueError, serial.SerialException) as e:
-                    print(f"An error occurred while setting up the serial port: {e}")
-    print(f"Module with moduid {moduid} not found")
+                    print(f"ALF: An error occurred while setting up the serial port: {e}")
+    
+    #print(f"ALF: Module with moduid {moduid} not found")
     return serials
 
 ###################################################### THREADS ########################################################
@@ -539,7 +542,7 @@ def main():
         ser = serial.Serial(port=args.port, baudrate=args.baud, timeout=1)
         serials.append(ser)
     elif args.moduid:
-        print(f"main:args.moduid: {args.moduid}")
+        #print(f"ALF: main:args.moduid: {args.moduid}")
         serials= find_module_serial(args.moduid)
     else:
         serials = load_serial_ports(args.serial_config)
@@ -558,23 +561,23 @@ def main():
             line=sys.stdin.readline().strip()
             if line == "exit":
                 keeprunning = False
-                print("Exiting...")
+                print("ALF: Exiting...")
             line=sys.stdin.readline().strip()
             if line == "pause":
                 args.pause = True
-                print("Paused...")
+                print("ALF: Paused...")
             line=sys.stdin.readline().strip()
             if line == "resume":
                 args.pause = False
-                print("Resumed...")
+                print("ALF: Resumed...")
     except KeyboardInterrupt:
         keeprunning = False
-        print("Exiting...")
+        print("ALF: Exiting...")
     finally:
-        print("Terminate Signal Received")
+        print("ALF: Terminate Signal Received")
         for ser in serials:
             if ser.is_open:
-                print(f"Closing serial port {ser.name}")
+                print(f"ALF: Closing serial port {ser.name}")
                 ser.close()
 
 if __name__ == '__main__':
