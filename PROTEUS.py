@@ -784,6 +784,7 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
     subselect(module)
     data_processing(module.subset)
     update_line_plot()
+    LAN_ID=''
     for url in app.urls:
         if '192' in url:
             LAN_ID=url
