@@ -59,7 +59,7 @@ def load_software_update_tab():
             with ui.column().classes('items-start gap-2'):
                 button_refs["proteus"] = ui.button(
                     "Proteus Plus", 
-                    on_click=lambda: [highlight_selected_button("proteus"), load_proteus_update_page()]
+                    on_click=load_proteus_update_page
                 ).style("width: 100px; height: 100px;")
 
                 button_refs["alpha_software"] = ui.button(
@@ -149,9 +149,6 @@ async def check_updates_for_protues():
     try:
         latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
         current_version = get_current_version_of_proteus(SOFTWARES["Proteus"]["version_file"])
-        
-        print(f"latest_version: {latest_version}")
-        print(f"current_version: {current_version}")
 
         if latest_version and latest_version > current_version:
             msg = f"New version of Protues Plus is available :  {latest_version}"
@@ -263,13 +260,21 @@ def load_html_content(file_path):
         return "<p>Error loading content</p>"
 
 # ✅ **Function to Load the Proteus Update Page**
-def load_proteus_update_page():
+async def load_proteus_update_page():
+    
+    highlight_selected_button("proteus")
+    
     """Loads the Proteus update page dynamically into the white box and updates version info."""
     html_content = load_html_content(PROTEUS_UPDATE_PAGE)
 
     current_version = get_current_version_of_proteus(SOFTWARES["Proteus"]["version_file"])
     latest_version = get_latest_version_of_proteus(SOFTWARES["Proteus"]["update_url"])
-
+    
+    msg = None
+    if latest_version > current_version:
+        msg = f"New version of Protues Plus is available :  {latest_version}"
+    else:
+        msg = f"Proteus is up to date. {current_version}"
     js_command = f"""
         document.getElementById('software-dynamic-content').innerHTML = `{html_content}`;
 
@@ -281,6 +286,7 @@ def load_proteus_update_page():
         }}, 50);
     """
     ui.run_javascript(js_command)
+    await update_html_text_by_id('update-message-proteus',msg)
 
 def install_update():
     print("Installing update...")
