@@ -796,8 +796,6 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
     data_processing(module.subset)
     update_line_plot()
 
-
-    
     for process in list(processes.keys()):
         if processes[process].poll() is None:
             print(f"Process {process} is still running.")
@@ -956,10 +954,6 @@ def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LE
             moduleID=active_circulation_module
     return inner
 
-
-
-
-
 def load_csv_in_chunks(filepath, chunk_size=50000):# 🔹 Optimized Data Loading with Chunking
     chunks = []
     for chunk in pd.read_csv(filepath, on_bad_lines='warn', header=None, low_memory=False, chunksize=chunk_size):
@@ -1048,17 +1042,14 @@ def show_confirmation_dialog():
 
     dialog.open()  # Open the dialog
 
-
 def handle_yes (dialog):
     # What happens when "Yes" is clicked
     #print("oi")
     dialog.close()
     time.sleep(1)
-    print("dying")
+    print("getting here")
     ui.run_javascript('window.close()')
     #shutdown_app()
-
-
 
 def shutdown_app():
     """Stops all Python processes related to Proteus and exits the UI safely."""
@@ -1087,6 +1078,25 @@ def shutdown_app():
     print("💥 Exiting Proteus UI...")
     
     os._exit(0)  # Immediate termination of the Python script
+    
+# used on restart button on the update tab
+def terminate_all_processes():
+    print("🧹 Terminating tracked subprocesses...")
+    for name, proc in processes.items():
+        try:
+            print(f"💀 Terminating '{name}'")
+            proc.terminate()
+            proc.wait(timeout=3)
+        except Exception as e:
+            print(f"⚠️ Could not terminate '{name}': {e}")
+    
+async def restart_proteus():
+    terminate_all_processes()
+    print("🔁 Restarting PROTEUS.py now...")
+    ui.run_javascript('window.close()')
+    await asyncio.sleep(1)  # ⏳ Let the browser process it
+    os.execl(sys.executable, sys.executable, *sys.argv)
+
 
 
 ############################################################################################################
@@ -1200,8 +1210,6 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     # New Image tab panel
     with ui.tab_panel(tab_image):
         ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
-            
-
 
     # 🔹 UI Setup for Historical Data Tab
     with ui.tab_panel(tab_historical_view):
@@ -1223,10 +1231,9 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
         ui.label("Proteus cycler software.").classes('justify-self-center')
         ui.label(proteus_version).classes('justify-self-center')
         ui.label("Copyright Cellular Agriculture 2025").classes('justify-self-center')
-            
-
+        
     with ui.tab_panel(tab_software_update):
-        load_software_update_tab()
+        load_software_update_tab(on_restart=restart_proteus)
             
 line_updates = ui.timer(5, refresh_all)
 

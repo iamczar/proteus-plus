@@ -45,7 +45,11 @@ def highlight_selected_button(selected_key):
     button_refs["restart-proteus-btn"].set_visibility(is_proteus)
 
 
-def load_software_update_tab():
+_restart_callback = None
+def load_software_update_tab(on_restart=None):
+    global _restart_callback
+    _restart_callback = on_restart
+    
     with ui.tab_panel('f'):  # Must match the tab key in main.py
         with ui.row().classes('w-full justify-between p-4 gap-8'):  
             # Column 1: "Check for Updates" Button (Square)
@@ -159,7 +163,6 @@ async def check_updates_for_protues():
     except Exception as e:
         print(f"Error checking updates: {e}")
     
-    
 def get_current_version_of_proteus(version_file):
     """Reads the current version from the local version.txt file."""
     try:
@@ -182,7 +185,6 @@ def get_latest_version_of_proteus(update_url):
     except Exception as e:
         print(f"Failed to fetch latest version: {e}")
     return None
-
     
 async def start_spinner():
     ui.run_javascript("""
@@ -205,7 +207,6 @@ async def start_spinner():
             styleSheet.insertRule(keyframes, styleSheet.cssRules.length);
         }
     """)
-
 
 async def stop_spinner():
     ui.run_javascript("""
@@ -382,9 +383,8 @@ async def on_update_click_proteus():
             print(msg)
             await update_html_text_by_id('update-message-proteus',msg)
 
-def on_restart_click_proteus():
-    print("Restart button clicked! on proteus")
-    # Add restart logic (e.g., os.system('reboot') or similar)
+async def on_restart_click_proteus():
+    pass
     
 async def handle_update_click_proteus():
     
@@ -399,5 +399,11 @@ async def handle_update_click_proteus():
     return "OK"
 
 async def handle_restart_click_proteus():
-    on_restart_click_proteus()
-    return "OK"
+    await update_html_text_by_id('update-message-proteus', "Restarting Proteus...")
+    await asyncio.sleep(1)
+    
+    if _restart_callback:
+        print("🚨 Calling restart callback (kills subprocesses + restarts)...")
+        await _restart_callback()
+    else:
+        print("⚠️ No restart callback set.")
