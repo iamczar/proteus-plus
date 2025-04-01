@@ -22,6 +22,7 @@ import sys
 import psutil  # Requires `pip install psutil`
 
 from tabs.software_update_tab import load_software_update_tab
+from tabs.test_tab.test_tab import load_test_tab
 
 
 ###########################################################################################################
@@ -1140,6 +1141,7 @@ with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100')
             tab_image = ui.tab('i', label='PI&D')
             tab_historical_view = ui.tab('h', label='ANALYSE DATA')
             tab_software_update = ui.tab('f', label='Software Update')
+            tab_test_data = ui.tab('t', label='Test Data')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
@@ -1241,7 +1243,9 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
     with ui.tab_panel(tab_software_update):
         load_software_update_tab()
-            
+    with ui.tab_panel(tab_test_data):
+        load_test_tab("tab_test_data")
+
 line_updates = ui.timer(5, refresh_all)
 
 for module in modules.values():
