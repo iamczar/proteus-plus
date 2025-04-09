@@ -25,7 +25,7 @@ def generate_data():
 df = generate_data()
 
 # Sidebar filters
-st.sidebar.image("assets/cell_ag_logo.png", width=100)
+
 st.sidebar.header("Filter Reports")
 start_date = st.sidebar.date_input("Start date", df["date"].min())
 end_date = st.sidebar.date_input("End date", df["date"].max())
