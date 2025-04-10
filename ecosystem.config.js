@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "streamlit-app",
-      script: "./venv/Scripts/python.exe",
+      script: "./venv/Scripts/pythonw.exe",
       args: "-m streamlit run main.py",
       cwd: __dirname + "/proteus-ui",
       autorestart: false
