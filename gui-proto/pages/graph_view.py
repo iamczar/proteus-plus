@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+
 from io import BytesIO
 from common.utils import fixed_footer
 from common.utils import random_color
+from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Graph View", layout="wide")
-
 st.title("Graph View")
+
+# Module selection
+ModuleManager().select_module()
 
 
 @st.cache_data
