@@ -1,0 +1,57 @@
+{
+    "Dissolved Oxygen": {
+        "name": "Dissolved Oxygen",
+        "number_of_lines": 4,
+        "y_values" : ["OXYGENMEASURED1", "OXYGENMEASURED2", "OXYGENMEASURED3", "OXYGENSETPOINT"],
+        "legend": ["Ch 1", "Ch 2", "Ch 3", "SP"],
+        "y_label": "Dissolved oxygen (uMoL/L)",
+        "title": "Dissolved oxygen",
+        "y_limits": [0, 220]
+    },
+    "Pumps": {
+        "name": "Pumps",
+        "number_of_lines": 2,
+        "y_values" : ["Pump1_mLmin","Pump2_mLmin"],
+        "legend": ["Feed pump","Retentate pump"],
+        "y_label": "Pump speed (mL/min)",
+        "title": "Pump speeds",
+        "y_limits": null
+    },
+    "Flow": {
+        "name": "Flow",
+        "number_of_lines": 3,
+        "y_values" : ["FLOWMEASURED","FLOWMEASURED_rolling_avg", "Pump2_mLmin"],
+        "legend": ["ICS flow rate", "Flow Rolling AVG", "P2 setting"],
+        "y_label": "Flow rate (mL/min)",
+        "title": "Flow rate",
+        "y_limits": null
+    },
+    "Pressure": {
+        "name": "Pressure",
+        "number_of_lines": 2,
+        "y_values" : ["PRESSUREMEASURED","PRESSURESETPOINT"],
+        "legend": ["Measured","Setpoint"],
+        "y_label": "Pressure (mbar)",
+        "title": "Pressure",
+        "y_limits": null
+    },
+    "Pressure PID": {
+        "name": "Pressure PID",
+        "number_of_lines": 3,
+        "y_values" : ["PRESSUREKP", "PRESSUREKI", "PRESSUREKD"],
+        "legend": ["K$_P$", "K$_I$", "K$_D$"],
+        "y_label": "Gain",
+        "title": "Pressure PID",
+        "y_limits": null
+    },
+    "Oxygen PID": {
+        "name": "Oxygen PID",
+        "number_of_lines": 3,
+        "y_values" : ["OXYGENKP", "OXYGENKI", "OXYGENKD"],
+        "legend": ["K$_P$", "K$_I$", "K$_D$"],
+        "y_label": "Gain",
+        "title": "Oxygen PID",
+        "y_limits": null
+    }
+}
+
