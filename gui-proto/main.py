@@ -19,24 +19,23 @@ LOGO_URL_SMALL = "assets/cell_ag_logo_small.png"
 st.logo(
     LOGO_URL_LARGE,
     icon_image=LOGO_URL_SMALL,
-    size = "Large"
-    
+    size="large"
 )
 
 pg = st.navigation(
     {
-    "Home": [
-        dashboard_page
-    ],
-    "Resources": [
-        experiments_page,
-        graph_view,
-        cycler_logs
-    ],
-    "System": [
-        settings_page,
-        system_logs,
-    ]
+        "Home": [
+            dashboard_page
+        ],
+        "Resources": [
+            experiments_page,
+            graph_view,
+            cycler_logs
+        ],
+        "System": [
+            settings_page,
+            system_logs,
+        ]
     }
 )
 
