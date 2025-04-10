@@ -1,0 +1,47 @@
+services:
+  proteus-ui:
+    build:
+      context: proteus-ui
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    restart: always
+    environment:
+      - PYTHONBUFFERED=1
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    ports:
+      - "1883:1883"    # MQTT standard port
+      - "9001:9001"    # WebSocket support (optional)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+    environment:
+      - PYTHONBUFFERED=1
+    networks:
+      - proteus-network
+
+  dummy-module:
+    build:
+      context: dummy-producer-consumer
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - PYTHONBUFFERED=1
+    depends_on:
+      - mosquitto
+    networks:
+      - proteus-network
+
+  test-module:
+    build:
+      context: test-module
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - PYTHONBUFFERED=1
+
+networks:
+  proteus-network:
+    driver: bridge

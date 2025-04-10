@@ -17,7 +17,7 @@ LOGO_URL_LARGE = "assets/cell_ag_logo_big.png"
 LOGO_URL_SMALL = "assets/cell_ag_logo_small.png"
 
 st.logo(
-    LOGO_URL_LARGE,
+    LOGO_URL_SMALL,
     icon_image=LOGO_URL_SMALL,
     size="large"
 )
