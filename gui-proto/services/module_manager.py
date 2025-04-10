@@ -29,7 +29,7 @@ class ModuleManager(metaclass=Singleton):
 
                 # Multiselect that is *bound* to session state
                 st.segmented_control(
-                    label="Module Selection",
+                    label="Module Selection:",
                     options=["All", "9001", "2501", "3006"],
                     key="selected_module",  # this binds the value, no need for `default`
                     selection_mode="single"
