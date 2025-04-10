@@ -15,7 +15,7 @@ class ModuleManager(metaclass=Singleton):
     def __init__(self):
         self.current_page = None
         self.selected_modules = "All"
-        print("ctor called")
+        # TODO: remove All from options
 
     def select_module(self):
         col1, col2 = st.columns([1, 1])
