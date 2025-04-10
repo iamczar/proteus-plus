@@ -1,0 +1,9 @@
+[theme]
+base = "light"
+primaryColor = "#1c7e52"
+backgroundColor = "#f3f8f6"
+secondaryBackgroundColor = "#e6f1ec"
+textColor = "#262730"
+
+[server]
+port = 8081

@@ -1,0 +1,9 @@
+nicegui
+pandas
+matplotlib
+pywin32
+pyserial
+adafruit-ampy
+plotly
+plotly-resampler
+psutil

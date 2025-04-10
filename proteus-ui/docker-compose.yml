@@ -1,0 +1,8 @@
+services:
+  proteus-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    restart: always
