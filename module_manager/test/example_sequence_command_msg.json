@@ -1,6 +1,6 @@
 {
-    "msg_id": "experiment-manager",
-    "msg": {
+    "message_id": "experiment-manager",
+    "message": {
       "circFlow": 1, // int
       "pressureFlow": 1, // int
       "valve1": false,

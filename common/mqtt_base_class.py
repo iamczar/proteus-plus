@@ -5,7 +5,7 @@ from helper import Helper
 from logger import Logger
 
 
-class ModuleBaseClass(ABC):
+class MqttBaseClass(ABC):
 
     def __init__(self, mqtt_client: mqtt.Client,sub_topics:List[Tuple[str,int]],logger:Logger):
         try:
