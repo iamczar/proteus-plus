@@ -1,15 +1,14 @@
 from typing import List, Tuple
 import paho.mqtt.client as mqtt_client
 from common.helper import Helper
-from common.module_base_class import ModuleBaseClass
+from common.mqtt_base_class import MqttBaseClass
 from common.logger import Logger
 
-class SerialManager(ModuleBaseClass):
+class ModuleManager(MqttBaseClass):
     def __init__(self,mqtt_client:mqtt_client,
                  sub_topics:List[Tuple[str,int]],
                  valid_incoming_msg_ids:list,
                  logger:Logger):
-        
         try:
             super().__init__(mqtt_client,sub_topics,logger)
             self.valid_incoming_msg_ids = valid_incoming_msg_ids
