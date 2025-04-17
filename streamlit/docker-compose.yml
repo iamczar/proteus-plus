@@ -1,0 +1,10 @@
+services:
+  streamlit-playground:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    restart: always
+    environment:
+      - PYTHONBUFFERED=1
