@@ -8,6 +8,32 @@ st.set_page_config(page_title="Dashboard", layout="wide")
 
 st.title("Dashboard")
 
+# Custom CSS for the container
+st.markdown("""
+    <style>
+    .soft-container {
+        background-color: #e6f1ec;
+        padding: 1.5em;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 1em;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+with st.container():
+    # Everything rendered inside HTML using markdown
+    st.markdown("""
+        <div class="soft-container">
+            <h3>Soft Background Container</h3>
+            <p>This container has its own background color and padding.</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Place the button visually below or insert a styled HTML button here too
+    st.button("Native Button (outside styled box)")
+
+
 # Sample data generation
 @st.cache_data
 def generate_data():

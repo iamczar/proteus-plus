@@ -5,13 +5,13 @@ import numpy as np
 from io import BytesIO
 from common.utils import fixed_footer
 from common.utils import random_color
-from services.module_manager import ModuleManager
+from services.module_settings import render_module_settings
 
 st.set_page_config(page_title="Graph View", layout="wide")
 st.title("Graph View")
 
 # Module selection
-ModuleManager().select_module()
+render_module_settings()
 
 
 @st.cache_data
