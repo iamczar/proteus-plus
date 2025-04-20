@@ -6,7 +6,7 @@ from common.utils import fixed_footer
 
 st.set_page_config(page_title="Dashboard", layout="wide")
 
-st.title("Dashboard")
+# st.title("Dashboard")
 
 # Custom CSS for the container
 st.markdown("""
@@ -25,7 +25,7 @@ with st.container():
     # Everything rendered inside HTML using markdown
     st.markdown("""
         <div class="soft-container">
-            <h3>Soft Background Container</h3>
+            <h3>Dashboard</h3>
             <p>This container has its own background color and padding.</p>
         </div>
     """, unsafe_allow_html=True)

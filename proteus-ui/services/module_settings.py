@@ -4,11 +4,28 @@ from common.utils import show_toast
 
 def update_module_id():
     st.session_state.module_id = st.session_state.temp_module_id
-    show_toast(f"Selected module: **{st.session_state.module_id}**", "info")
+    # show_toast(f"Selected module: **{st.session_state.module_id}**", "info")
 
 
 def scan_for_modules():
     show_toast("Scanning for modules...", "info")
+
+
+@st.dialog("Select Module ID")
+def select_module_dialog():
+    st.write(f'Active module ID is {f'**{st.session_state.module_id}**'}')
+    # Operation Mode with session state
+    available_modules = [None, 1001, 3006, 2501, 2502]
+    selected_mode = st.selectbox(
+        "Select Module ID",
+        available_modules,
+        key="temp_module_id",
+        on_change=update_module_id,
+        index=available_modules.index(st.session_state.module_id)
+    )
+
+    st.button("Scan for Modules", on_click=scan_for_modules)
+    st.rerun()
 
 
 @st.dialog("System Shutdown")
@@ -32,19 +49,9 @@ def render_module_settings():
     if 'module_id' not in st.session_state:
         st.session_state.module_id = None
     st.sidebar.header("Module Settings")
+    st.sidebar.metric("Active Module", st.session_state.module_id)
 
-    # Operation Mode with session state
-    available_modules = [None, 1001, 3006, 2501, 2502]
-    selected_mode = st.sidebar.selectbox(
-        "Module ID",
-        available_modules,
-        key="temp_module_id",
-        on_change=update_module_id,
-        index=available_modules.index(st.session_state.module_id)
-    )
-
-    st.sidebar.button("Scan for Modules", on_click=scan_for_modules)
-    st.sidebar.button("Shutdown System", on_click=shutdown_dialog)
+    st.sidebar.button("Change Module ID", on_click=select_module_dialog, type="primary")
 
     # Return current settings
     return {
