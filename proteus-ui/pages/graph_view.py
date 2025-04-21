@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+
 from io import BytesIO
 from common.utils import fixed_footer
 from common.utils import random_color
+from services.module_settings import render_module_settings
 
 st.set_page_config(page_title="Graph View", layout="wide")
-
 st.title("Graph View")
+
+# Module selection
+render_module_settings()
 
 
 @st.cache_data
@@ -33,6 +37,7 @@ def generate_data():
 
 
 df = generate_data()
+table_titles = ["Oxygen Pressure", "PressureKi", "PressureKd", "PressureKp", "Temperature", "Pump Speed"]
 
 # Generate data for 6 charts
 charts_data = [pd.DataFrame({
@@ -43,11 +48,10 @@ charts_data = [pd.DataFrame({
 # Layout: 3 rows × 2 columns
 for row in range(3):  # 3 rows
     col1, col2 = st.columns(2)
-
     with col1:
-        st.subheader(f"Chart {row * 2 + 1}")
+        st.subheader(f"{table_titles[row * 2]}")
         st.line_chart(charts_data[row * 2].set_index('x'), color=colors[row * 2])
 
     with col2:
-        st.subheader(f"Chart {row * 2 + 2}")
+        st.subheader(f"{table_titles[row * 2 + 1]}")
         st.line_chart(charts_data[row * 2 + 1].set_index('x'), color=colors[row * 2 + 1])

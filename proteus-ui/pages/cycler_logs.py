@@ -1,17 +1,20 @@
 ﻿import time
-from datetime import datetime
-
 import streamlit as st
 
-st.set_page_config(page_title="Cycler Logs", layout="wide")
+from datetime import datetime
+from services.module_settings import render_module_settings
 
+st.set_page_config(page_title="Cycler Logs", layout="wide")
 st.title("Cycler Logs")
+
+# Module selection
+render_module_settings()
 
 # Custom CSS to create a scrollable log box
 log_box_css = """
 <style>
 .log-box {
-    background-color: #f5f5f5;
+    background-color: #e6f1ec;
     color: #1B481B;
     padding: 1em;
     border-radius: 8px;
