@@ -6,4 +6,5 @@ pyserial
 adafruit-ampy
 plotly
 plotly-resampler
+pywebview
 psutil

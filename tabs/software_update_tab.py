@@ -138,7 +138,6 @@ async def check_for_updates():
     ui.run_javascript(js_command)
     
     await show_spinner()
-    await start_spinner()
     
     
     await check_updates_for_protues()
@@ -146,7 +145,6 @@ async def check_for_updates():
     # await check_updates_for_alpha_plus_firmware()
     
     await asyncio.sleep(1)  # Wait 3 seconds (non-blocking)
-    await stop_spinner()
     await hide_spinner()
     
 async def check_updates_for_protues():
@@ -391,10 +389,8 @@ async def handle_update_click_proteus():
     print("Update in progress...")
     await update_html_text_by_id('update-message-proteus',"Update in progress...")    
     await show_spinner()
-    await start_spinner()
     await asyncio.sleep(1) 
     await on_update_click_proteus()
-    await stop_spinner()
     await hide_spinner()
     return "OK"
 

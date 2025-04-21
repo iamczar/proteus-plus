@@ -31,7 +31,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-
 ######################################################## MODULES ########################################################
 
 def find_module_serial(moduid):
