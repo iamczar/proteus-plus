@@ -17,17 +17,7 @@ render_module_settings()
 @st.fragment
 def create_new_experiment():
     if st.button("New Experiment"):
-        result = random.choice(["success", "error", "warning", "info"])
-        # if result == "success":
-        #     show_toast("Operation completed successfully!", "success")
-        # if result == "error":
-        #     show_toast("**Error**: Oops! Something went wrong. This event has been recorded in the logs.", "error")
-        # if result == "warning":
-        #     show_toast(
-        #         "**Warning**: Incomplete input. Please try again. Lorem ipsum dolor sit amet. Consectetur adipiscing elit.",
-        #         "warning")
-        # if result == "info":
-        #     show_toast("Informational message.", "info")
+        pass
 
 
 # Functions
