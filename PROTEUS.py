@@ -5,23 +5,87 @@ import os
 import pandas as pd
 import subprocess
 import sys
-#import math
-#import numpy as np
+import math
+import numpy as np
 from datetime import datetime
-from resource.local_file_picker import local_file_picker
+from local_file_picker import local_file_picker
 import csv
 import json
 from typing import Callable
 from pathlib import Path
-import asyncio
 import shutil
-#import numpy as np
+import numpy as np
 import plotly.graph_objects as go
 from plotly_resampler import FigureResampler #requires 'pip install psutil
 import signal
 import sys
 import psutil  # Requires `pip install psutil`
+
 from tabs.software_update_tab import load_software_update_tab
+
+
+###########################################################################################################
+############################################# LOAD CONFIG ################################################
+
+config = {}
+
+def load_config():
+    global config
+    config_file = 'config.json' 
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+            #print('Proteus loaded config: ', config)
+            #print("Proteus loaded config")
+    except FileNotFoundError:
+        print(f"Configuration file {config_file} not found.")
+    except json.JSONDecodeError:
+        print(f"Configuration file {config_file} is not a valid JSON file.")
+
+
+###########################################################################################################
+############################################# DATA PROCESSING #############################################
+
+
+def data_processing(df): 
+    if df is not None:
+                ###########################################################################
+                ##########################  user instruction!  ############################
+                ################  insert any required data processing here!  ##############
+                ###########################################################################
+
+
+        # Convert 'TIME' to datetime
+        df['TIME'] = pd.to_datetime(df['TIME'])
+        #df['TIME'] = (df['TIME'] - df['TIME'].iloc[0]).dt.total_seconds() / 3600
+        # PumpCal = 0.003125
+        PumpCal = 0.004293
+        df['Pump1_mLmin'] = (df['CIRCPUMPSPEED'])*PumpCal
+        df['Pump2_mLmin'] = (df['PRESSUREPUMPSPEED'])*PumpCal
+
+        df['Pressure_SP'] = (df['PRESSUREPID'])*(df['PRESSURESETPOINT'])
+        df['Oxygen_SP'] = (df['OXYGENPID'])*(df['OXYGENSETPOINT'])
+
+        # Calculate the rolling average over 10 data points
+        df['FLOWMEASURED_rolling_avg'] = df['FLOWMEASURED'].rolling(60).mean()
+
+        # Calculate the rolling average over 10 data points
+        df['PRESSUREMEASURED_rolling_avg'] = df['PRESSUREMEASURED'].rolling(60).mean()
+
+        # Calculate the permeate flow rate
+        df['PermeateFlow'] = df['Pump1_mLmin'] - df['Pump2_mLmin']
+
+
+        # df['trueflow'] =df['FLOWMEASURED']*flowcal
+
+        OxySaturated = 200
+        # Calculate the OUR
+        df['OUR'] = (df['Pump2_mLmin']/1000)*(OxySaturated-df['OXYGENMEASURED2']) + (df['PermeateFlow']/1000)*(OxySaturated-df['OXYGENMEASURED2'])
+        df['OUR_rollAvg_1min'] = df['OUR'].rolling(60).mean()
+        df['OUR_rollAvg_5min'] = df['OUR'].rolling(300).mean()
+
+        return
+
 
 ###########################################################################################################
 ############################################## CLASSES ####################################################
@@ -44,7 +108,7 @@ class Module:
         self.timewindow = {'value':{ 'min': 0.20, 'max': 0.80}}
         self.type='Circulation'
 
-
+timewindow = {'value':{ 'min': 0.20, 'max': 0.80}}
 
 class ValueContainer:
     def __init__(self, value):
@@ -52,12 +116,13 @@ class ValueContainer:
 
     def value_changed(self, new_value):
         print(f'Selected value: {new_value.value}')
-        #index = new_value.value
+        index = new_value.value
         self.value = new_value
 
 
+
 ###################################################################################################
-####################################### variables ##############################################
+####################################### DICTIONARIES ##############################################
 
 index_value = ValueContainer(1)
 index_list = [i for i in range(1, 24)]
@@ -68,14 +133,11 @@ modules = {}
 circ_modules = []
 ui_plots = {}
 lem_module = None
-experiment_folder_path =  os.path.join(os.getcwd(), "log")
+experiment_folder_path = None
 paused = False  
-timewindow = {'value':{ 'min': 0.20, 'max': 0.80}}
+
 # COLOURS
 light_blue = '#D9E3F0'
-config = {}
-moduleID=1001
-proteus_version="version 250325.1"
 
     # 🔹 Column mapping based on Proteus structure
 COLUMN_MAPPING = {
@@ -87,93 +149,6 @@ COLUMN_MAPPING = {
     21: 'OXYGENMEASURED1', 22: 'OXYGENMEASURED2', 23: 'OXYGENMEASURED3',
     24: 'OXYGENMEASURED4', 25: 'NULLTRAILER'
 }
-
-
-
-###########################################################################################################
-############################################# LOAD CONFIG ################################################
-
-
-
-def load_config():
-    global config
-    config_file = 'configs/config.json'
-    try:
-        config = json.load(open(config_file, 'r'))
-           #print('Proteus loaded config: ', config)
-    except FileNotFoundError:
-        print(f"Configuration file {config_file} was not found.")
-    except json.JSONDecodeError:
-        print(f"Configuration file {config_file} is not a valid JSON file.")
-
-
-###########################################################################################################
-############################################# DATA PROCESSING #############################################
-
-
-def data_processing(df): 
-    if df is not None:
-        # Convert 'TIME' to datetime
-        df['TIME'] = pd.to_datetime(df['TIME'])
-        # Pump Calibration
-        PumpCal = 0.004293
-        df['Pump1_mLmin'] = (df['CIRCPUMPSPEED'])*PumpCal
-        df['Pump2_mLmin'] = (df['PRESSUREPUMPSPEED'])*PumpCal
-
-        df['Pressure_SP'] = (df['PRESSUREPID'])*(df['PRESSURESETPOINT'])
-        df['Oxygen_SP'] = (df['OXYGENPID'])*(df['OXYGENSETPOINT'])
-
-        # Calculate the rolling average
-        df['FLOWMEASURED_rolling_avg'] = df['FLOWMEASURED'].rolling(60).mean()
-
-        # Calculate the rolling average 
-        df['PRESSUREMEASURED_rolling_avg'] = df['PRESSUREMEASURED'].rolling(60).mean()
-
-        # Calculate the permeate flow rate
-        df['PermeateFlow'] = df['Pump1_mLmin'] - df['Pump2_mLmin']
-        # df['trueflow'] =df['FLOWMEASURED']*flowcal
-
-        OxySaturated = 200
-        # Calculate the OUR
-        df['OUR'] = (df['Pump2_mLmin']/1000)*(OxySaturated-df['OXYGENMEASURED2']) + (df['PermeateFlow']/1000)*(OxySaturated-df['OXYGENMEASURED2'])
-        df['OUR_rollAvg_1min'] = df['OUR'].rolling(60).mean()
-        df['OUR_rollAvg_5min'] = df['OUR'].rolling(300).mean()
-
-        return
-# same method but for historical data.
-#should remove and use same method, passing dfh or df
-
-def process_data(dfh): # 🔹 Data Processing Function
-    if dfh is None or dfh.empty:
-        print("Error: DataFrame is empty or invalid.")
-        return None
-
-    dfh['TIME'] = pd.to_datetime(dfh['TIME'], errors='coerce')
-    dfh = dfh.dropna(subset=['TIME'])  # Remove invalid timestamps
-
-    # Pump Calibration
-    pump_cal = 0.004293
-    dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * pump_cal
-    dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * pump_cal
-
-    # Set Points
-    dfh['Pressure_SP'] = dfh['PRESSUREPID'] * dfh['PRESSURESETPOINT']
-    dfh['Oxygen_SP'] = dfh['OXYGENPID'] * dfh['OXYGENSETPOINT']
-
-    # Rolling Averages
-    dfh['FLOWMEASURED_rolling_avg'] = dfh['FLOWMEASURED'].rolling(60).mean()
-    dfh['PRESSUREMEASURED_rolling_avg'] = dfh['PRESSUREMEASURED'].rolling(60).mean()
-
-    # Permeate Flow
-    dfh['PermeateFlow'] = dfh['Pump1_mLmin'] - dfh['Pump2_mLmin']
-
-    # Oxygen Uptake Rate (OUR)
-    oxy_saturated = 200
-    dfh['OUR'] = ((dfh['Pump2_mLmin'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']) + (dfh['PermeateFlow'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']))
-    dfh['OUR_rollAvg_1min'] = dfh['OUR'].rolling(60).mean()
-    dfh['OUR_rollAvg_5min'] = dfh['OUR'].rolling(300).mean()
-
-    return dfh
 
 
 ############################################################################################################
@@ -199,7 +174,7 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
         for row in reader:
             if len(row) >= 4 and row[3]:
                 moduleID = row[3]
-                if int(moduleID)<config["LEM_ID_LIMIT"]:   #instruments with an ID >9000 (LEM LIMIT) are LEM modules
+                if int(moduleID)<config["LEM_ID_LIMIT"]:
                     data_file = os.path.join(config["DATA_FOLDER"], f'{moduleID}_data.csv')
                     module = Module(moduleID, seqFilename=None, index=1, data_file=data_file)
                     modules[moduleID] = module
@@ -214,6 +189,7 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     module.type = 'LEM'
                     modules[moduleID] = module
                     lem_module=module.moduleID
+
 
 def load_new_rows(module) -> None:
     if module.data_frame is None:
@@ -233,17 +209,14 @@ def load_new_rows(module) -> None:
 
 def scan_for_modules() -> Callable[[], None]:  ## Scan for modules, this will start the module_register.py script
     def inner() -> None:
-        global modules
         log.push("Scanning for modules...")
         if processes == {}:
             process = subprocess.Popen([sys.executable, config['MODULE_REGISTER_PATH'], '-s', '-c', config['SERIAL_CONFIG']])
         else:
             log.push("process already running, restart Proteus to scan again")
-        #clear modules
+        global modules
         modules = {}
         module_list_update()
-        message=(f"modules found are {list(modules)}")
-        log.push(message)
     return inner
 
 def null_session(target_module) -> None:   ## the 'Stop' button function, it stops the pumps and returns the valves to their 'off' state by running ALF with the null sequence
@@ -294,19 +267,21 @@ def stop_btn_click() -> None:
 
 async def start_data_logging_btn_click() -> None:
     global seqFilename
-    global experiment_folder_path
 
     # First, check if the sequence file has been selected
     if not seqFilename:
         # Trigger the file picker for selecting the sequence file
-        log.push("awaiting a sequence file")
         await pick_seqfile()
 
     if seqFilename:
         # If sequence file is selected, proceed to folder selection
-        def update_paths_to_save_locations(selected_folder):
+        def on_folder_selected(selected_folder):
             # Use the selected folder or fallback to the default log folder
-
+            global experiment_folder_path
+            experiment_folder_path = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
+            
+            print(f"Selected log folder: {experiment_folder_path}")
+            
             # Now run the sequence using the selected log folder and selected sequence file
             data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
             copy_data_file_to_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
@@ -321,7 +296,7 @@ async def start_data_logging_btn_click() -> None:
                                     experiment_file_path=copy_data_file_to_path)
 
         # Trigger the folder picker after sequence file selection
-        select_save_log_folder(callback=update_paths_to_save_locations,start_directory=experiment_folder_path,text= "choose where you want to log the data. \nCurrently "+experiment_folder_path)
+        select_save_log_folder(on_folder_selected)
     else:
         print("Sequence file not selected, cannot start sequence.")
 
@@ -371,28 +346,24 @@ def delete_all_logs_btn_click() -> None:
     return inner
 
 def retrieve_logs(target_module):
-    """Retrieve all files from the selected cycler's SD card, to a selected folder."""
-    print("retrieving logs")
-    #setup the actions that will happen when the correct save location is chosen.
-    def update_paths_to_save_locations(selected_folder): 
+    """Retrieve all files from the specified folder on the SD card."""
+    def on_folder_selected(selected_folder):
+        
         try:
             # Use the selected folder or fallback to the default log folder
             target_folder = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
             module_csv_path = os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
             data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-            print("set files logs")
             run_retrieve_logs(moduleID,module_csv_path,target_folder,data_file_path)
-            print("retrieved logs")
             
         except Exception as e:
             error_msg = f"-------------Error: retrieve_logs: {e}"
             print(error_msg)
 
     # Trigger the folder picker for selecting the destination folder
-    print("callback defined")
-    select_save_log_folder(callback=update_paths_to_save_locations,start_directory=experiment_folder_path,text= "choose where you want to save the data. \nCurrently "+experiment_folder_path)
+    select_save_log_folder(on_folder_selected)
     
-def retrieve_log_btn_clicks() -> None:
+def retreive_log_btn_clicks() -> None:
     def inner():
         target_module = moduleID
         threading.Thread(target=retrieve_logs(target_module), daemon=True).start()
@@ -432,14 +403,13 @@ async def start_btn_click() -> None:
 
     if seqFilename:
         # If sequence file is selected, proceed to folder selection
-        #def on_folder_selected(selected_folder):
-        # Use the selected folder or fallback to the default log folder
-        def update_start_path(selected_folder):
+        def on_folder_selected(selected_folder):
             # Use the selected folder or fallback to the default log folder
             global experiment_folder_path
             experiment_folder_path = selected_folder if selected_folder else os.path.join(os.getcwd(), "log")
             
-                        
+            print(f"Selected log folder: {experiment_folder_path}")
+            
             # Now run the sequence using the selected log folder and selected sequence file
             data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
             copy_data_file_to_path = os.path.join(experiment_folder_path, f'{moduleID}_data.csv')
@@ -450,12 +420,10 @@ async def start_btn_click() -> None:
             try:
                 sequence_dest_path = os.path.join(experiment_folder_path, os.path.basename(seqFilename))
                 shutil.copy(seqFilename, sequence_dest_path)
+                print(f"Sequence file copied to: {sequence_dest_path}")
             except Exception as e:
                 print(f"Error copying sequence file: {e}")
-        
-            log.push(f"Sequence file copied to: {sequence_dest_path}")
-            experiment_file.set_text("Experiment filed in :" + experiment_folder_path)
-            
+                
             alfi_session(index=index_value.value, 
                          seq_csv=seqFilename, 
                          data_csv=data_file_path, 
@@ -463,14 +431,23 @@ async def start_btn_click() -> None:
                          module_csv=module_csv_path,
                          experiment_file_path=copy_data_file_to_path)
 
-
-    # Trigger the folder picker after sequence file selection
-        
-        select_save_log_folder(callback=update_start_path,start_directory=experiment_folder_path,text= "Choose the experiment folder you wish to use. \nCurrently "+experiment_folder_path)
-        
+        # Trigger the folder picker after sequence file selection
+        select_save_log_folder(on_folder_selected)
     else:
         print("Sequence file not selected, cannot start sequence.")
 
+def mass_start_btn_click() -> None:
+    def inner() -> None:
+        print(f"Starting mass balance session") 
+        processes['mass_balance'] = subprocess.Popen([sys.executable, config['MASS_BALANCE_PATH']])
+    return inner
+
+def mass_stop_btn_click() -> None:
+    def inner() -> None:
+        if 'mass_balance' in processes:
+            processes['mass_balance'].communicate(b"exit\n")
+            print(f"Stopped mass balance session")
+    return inner
 
 def purge_btn_click() -> None:
     def inner() -> None:
@@ -509,14 +486,12 @@ async def create_experiment_folder(dialog, folder_name: str) -> None:
         print("Error: Folder name cannot be empty.")
     
     dialog.close()  # Close the dialog once folder creation process is done
-
-
-
-def select_save_log_folder(callback, start_directory: str = os.getcwd(),text='default text')->None:
-    """ use to select a directory to save data."""
-    print("start_directory sent "+start_directory)
-    current_directory = Path(start_directory).expanduser()
     
+def select_save_log_folder(callback, start_directory: str = os.getcwd()) -> None:
+    """Custom folder picker to select a directory to save logs."""
+
+    current_directory = Path(start_directory).expanduser()
+
     def update_file_grid():
         """Updates the UI grid to show the contents of the current directory."""
         folder_contents = list(current_directory.glob('*'))
@@ -550,8 +525,8 @@ def select_save_log_folder(callback, start_directory: str = os.getcwd(),text='de
         folder_dialog.close()
 
     # Create the dialog to display folder contents
-    with ui.dialog().classes('flex justify-center items-center') as folder_dialog, ui.card():
-        ui.label(f'{text} ').classes('text-center')
+    with ui.dialog() as folder_dialog, ui.card():
+        ui.label(f'Select Folder (current: {current_directory})')
 
         file_grid = ui.aggrid({
             'columnDefs': [{'field': 'name', 'headerName': 'File'}],
@@ -563,9 +538,36 @@ def select_save_log_folder(callback, start_directory: str = os.getcwd(),text='de
             ui.button('Select', on_click=handle_select)
 
     update_file_grid()  # Load the initial directory contents
-    folder_dialog.open()  # Open the
-    #print("the current directory is ",current_directory)
- 
+    folder_dialog.open()  # Open the dialog
+
+def labq_session(debug=False, pump_head=None, tube_size=None, direction=None, speed=None, flow_rate=None, full_speed_running=False, start_pump=False, stop_pump=False) -> None:  
+    if 'labq' in processes:
+        if processes['labq'].poll() is None:
+            print("LabQ script already running.")
+            return     
+    cmd_args = [config['LABQ_FILEPATH']]
+    if debug:
+        cmd_args.append('--debug')
+    if pump_head:
+        cmd_args.extend(['--pump_head', str(pump_head)])
+    if tube_size:
+        cmd_args.extend(['--tube_size', str(tube_size)])
+    if direction:
+        cmd_args.extend(['--direction', str(direction)])
+    if speed:
+        cmd_args.extend(['--speed', str(speed)])
+    if flow_rate:
+        cmd_args.extend(['--flow_rate', str(flow_rate)])
+    if full_speed_running:
+        cmd_args.append('--full_speed_running')
+    if start_pump:
+        cmd_args.append('--start_pump')
+    if stop_pump:
+        cmd_args.append('--stop_pump')
+
+    print(cmd_args)
+    processes['labq'] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    print(f"LabQ script started.")
     
 def run_retrieve_logs(module_id,serial_conf,target_folder,data_folder):
     if moduleID in processes:
@@ -764,28 +766,15 @@ def toggle_pause():# ✅ Add button to toggle graph updates
 
 def refresh_all() -> None:# ✅ Track whether updates are paused
     global paused
-    module_list_update()
-    module_set.clear()
-    with module_set:
-        for module in modules.values():
-            if module.type == 'Circulation':
-                module.button = ui.button(module.moduleID, on_click=select_mod_id(module.moduleID), color = 'blue' if moduleID == module.moduleID else 'lightblue')
-                
-    #update the url displayed
-    if len(app.urls)>=2:
-        for url in app.urls:
-            if '192' in url:
-                LAN_ID=url
-        url_tag.set_text('available on the internal LAN on '+LAN_ID)
-    if len(app.urls)==1:
-            url_tag.set_text('standalone version. No remote access')
-    if paused:
-        log.push("⏸ Graph updates paused.")
-        return  # ✅ Stop refreshing if paused
-    if modules=={}:
-        log.push("no modules are connected.")
-        return  # ✅ continue without refresh as there are no modules 
 
+    if paused:
+        print("⏸ Graph updates paused.")
+        return  # ✅ Stop refreshing if paused
+    
+    for module in modules.values():
+        if module.type == 'Circulation':
+            color = 'blue' if moduleID == module.moduleID else 'lightblue'
+            module.button.props(f'color={color}')
     module = modules[moduleID]
     module.len_of_datafile= count_rows(module.data_file)
     if module.len_of_datafile > module.data_file_row:
@@ -795,7 +784,11 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
     subselect(module)
     data_processing(module.subset)
     update_line_plot()
-
+    for url in app.urls:
+        if '192' in url:
+            LAN_ID=url
+    url_tag.set_text('available on the internal LAN on '+LAN_ID)
+    
     for process in list(processes.keys()):
         if processes[process].poll() is None:
             print(f"Process {process} is still running.")
@@ -889,20 +882,15 @@ def select_mod_id(value) -> Callable[[], None]: # Used to select the active modu
 
 async def pick_seqfile() -> None: # uses local_file_picker to select files for sequences
     global seqFilename
-    result = await local_file_picker(os.path.join(os.getcwd(), "sequences"),text="Double-click to choose a sequence to run", multiple=True)        
+    result = await local_file_picker(cwd, multiple=True)        
     seqFilename = result[0] if result else ""
-    sequence_file.text = f"Sequence: {os.path.basename(seqFilename)}" if seqFilename else ""
+    sequence_button.text = f"Sequence: {os.path.basename(seqFilename)}" if seqFilename else ""
     print(f"Selected file: {seqFilename}")
-    
-async def pick_data_file():# 🔹 File Picker Function
-    result = await local_file_picker(os.path.dirname(__file__), multiple=False)
-    if result:
-        selected_file_path['path'] = result[0]
-        selected_file_label.text = f"Selected file: {os.path.basename(selected_file_path['path'])}"
-        print(f"Selected file: {selected_file_path['path']}")
-    else:
-        selected_file_label.text = "No file selected."
 
+def pump_calibration() -> Callable[[], None]: # Used to calibrate the pumps
+    def inner() -> None:
+        print("Pump calibration")
+    return inner
 
 def build_lem_seq(media, circ_module, volume) -> None: # Used to build the LEM sequence
     df = pd.read_csv(config['LEM_SEQ_PATH'])
@@ -953,6 +941,48 @@ def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LE
             alfi_session(seq_csv=config['LEM_SEQ_PATH'], module_csv=module_csv_path)
             moduleID=active_circulation_module
     return inner
+
+def process_data(dfh): # 🔹 Data Processing Function
+    if dfh is None or dfh.empty:
+        print("Error: DataFrame is empty or invalid.")
+        return None
+
+    dfh['TIME'] = pd.to_datetime(dfh['TIME'], errors='coerce')
+    dfh = dfh.dropna(subset=['TIME'])  # Remove invalid timestamps
+
+    # Pump Calibration
+    pump_cal = 0.004293
+    dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * pump_cal
+    dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * pump_cal
+
+    # Set Points
+    dfh['Pressure_SP'] = dfh['PRESSUREPID'] * dfh['PRESSURESETPOINT']
+    dfh['Oxygen_SP'] = dfh['OXYGENPID'] * dfh['OXYGENSETPOINT']
+
+    # Rolling Averages
+    dfh['FLOWMEASURED_rolling_avg'] = dfh['FLOWMEASURED'].rolling(60).mean()
+    dfh['PRESSUREMEASURED_rolling_avg'] = dfh['PRESSUREMEASURED'].rolling(60).mean()
+
+    # Permeate Flow
+    dfh['PermeateFlow'] = dfh['Pump1_mLmin'] - dfh['Pump2_mLmin']
+
+    # Oxygen Uptake Rate (OUR)
+    oxy_saturated = 200
+    dfh['OUR'] = ((dfh['Pump2_mLmin'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']) +
+                (dfh['PermeateFlow'] / 1000) * (oxy_saturated - dfh['OXYGENMEASURED2']))
+    dfh['OUR_rollAvg_1min'] = dfh['OUR'].rolling(60).mean()
+    dfh['OUR_rollAvg_5min'] = dfh['OUR'].rolling(300).mean()
+
+    return dfh
+
+async def pick_data_file():# 🔹 File Picker Function
+    result = await local_file_picker(os.path.dirname(__file__), multiple=False)
+    if result:
+        selected_file_path['path'] = result[0]
+        selected_file_label.text = f"Selected file: {os.path.basename(selected_file_path['path'])}"
+        print(f"Selected file: {selected_file_path['path']}")
+    else:
+        selected_file_label.text = "No file selected."
 
 def load_csv_in_chunks(filepath, chunk_size=50000):# 🔹 Optimized Data Loading with Chunking
     chunks = []
@@ -1028,37 +1058,14 @@ async def load_and_plot_data():# 🔹 Load and Plot Data with Optimization
     except Exception as e:
         print(f"Error loading or plotting data: {e}")
 
-#####shutdown processes###########################################################################################
 
 
-def show_confirmation_dialog():
-    # Create a confirmation dialog
-    with ui.dialog() as dialog:
-        with ui.card():
-            ui.label("Are you sure?").classes('text-lg text-center')
-        with ui.row().classes('w-full justify-center'):
-            ui.button('No', on_click=dialog.close,color='green')  # Close the dialog if No
-            ui.button('Yes', on_click=handle_yes(dialog), color='red')
 
-    dialog.open()  # Open the dialog
 
-def handle_yes (dialog):
-    # What happens when "Yes" is clicked
-    #print("oi")
-    dialog.close()
-    time.sleep(1)
-    print("getting here")
-    ui.run_javascript('window.close()')
-    #shutdown_app()
 
 def shutdown_app():
     """Stops all Python processes related to Proteus and exits the UI safely."""
-
-    print("stopping ALF session...")
-    
-    stop_data_logging_btn_click()       
     print("⚠️ Shutting down Proteus...")
-       
 
     # ✅ Kill Proteus-related processes
     current_pid = os.getpid()  # Get the current script's PID
@@ -1076,27 +1083,7 @@ def shutdown_app():
 
     # ✅ Shutdown NiceGUI properly
     print("💥 Exiting Proteus UI...")
-    
     os._exit(0)  # Immediate termination of the Python script
-    
-# used on restart button on the update tab
-def terminate_all_processes():
-    print("🧹 Terminating tracked subprocesses...")
-    for name, proc in processes.items():
-        try:
-            print(f"💀 Terminating '{name}'")
-            proc.terminate()
-            proc.wait(timeout=3)
-        except Exception as e:
-            print(f"⚠️ Could not terminate '{name}': {e}")
-    
-async def restart_proteus():
-    terminate_all_processes()
-    print("🔁 Restarting PROTEUS.py now...")
-    ui.run_javascript('window.close()')
-    await asyncio.sleep(1)  # ⏳ Let the browser process it
-    os.execl(sys.executable, sys.executable, *sys.argv)
-
 
 
 ############################################################################################################
@@ -1136,47 +1123,41 @@ def load_resources():
 load_resources()
 
 with ui.header(elevated=True).style('background-color: #697689').classes('items-left justify-between h-12.5'):
-    with ui.row().classes('w-full') as module_set:
+    with ui.row().classes('w-full'):
         for module in modules.values():
             if module.type == 'Circulation':
                 module.button = ui.button(module.moduleID, on_click=select_mod_id(module.moduleID), color=light_blue)
-    ui.button('Scan for Modules', on_click=scan_for_modules())
-    shutdown_button = ui.button("Shutdown", on_click=show_confirmation_dialog, color="red")
-    url_tag=ui.label("going online shortly..." ).style('font-size:130%')
-    ui.space()
-    ui.space()
-    session_label = ui.label('').style('font-size:130%')
-        
+        shutdown_button = ui.button("Shutdown", on_click=shutdown_app, color="red")
+        url_tag=ui.label("going online shortly..." ).style('font-size:150%')
 with ui.footer(fixed=True).style('background-color: #a9b1be').props('width=100'):
     with ui.row().classes('w-full'):
         with ui.tabs() as tabs:
             tab_graphs = ui.tab('g', label = 'Module Control')
-            tab_image = ui.tab('i', label='P&ID')
-            tab_historical_view = ui.tab('h', label='ANALYSE DATA')
             tab_lem = ui.tab('l', label = 'LEM')
+            tab_LabQ = ui.tab('q', label = 'LabQ')
+            tab_advanced = ui.tab('p', label = 'ADVANCED CONTROLS')
+            tab_image = ui.tab('i', label='PI&D')
+            tab_historical_view = ui.tab('h', label='ANALYSE DATA')
             tab_software_update = ui.tab('f', label='Software Update')
-            tab_about=ui.tab('a', label= 'About Proteus')
 
 
 with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     with ui.tab_panel(tab_graphs): 
         with ui.grid(columns=1).classes('items-start'):       
             with ui.grid(columns=5).classes('items-start'):
-                new_experiment=ui.button("Select/New Experiment", on_click=open_new_experiment_dialog, color='blue')
-                experiment_file=ui.label('no experiment yet').classes('col-span-2 border p-1')
-                experiment_file.style('font-size:120%')
+                new_experiment=ui.button("New Experiment", on_click=open_new_experiment_dialog, color='blue')
+                sequence_button=ui.button('Select sequence', on_click=pick_seqfile)
                 start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
-                stop_button = ui.button("Stop Cycler", on_click=stop_btn_click(), color='red')
-                
-                sequence_button=ui.button('Select sequence', on_click=pick_seqfile, color='blue')
-                sequence_file=ui.label('no sequence yet').classes('col-span-2 border p-1')
-                sequence_file.style('font-size:120%')  
-                start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click, color='green')
-                stop_data_logging_button = ui.button("Stop Data Logging", on_click=stop_data_logging_btn_click(), color='red')
-                
+                stop_button = ui.button("STOP", on_click=stop_btn_click(), color='red')
                 pause_button = ui.button("Pause Graphs", on_click=toggle_pause, color='green')
-                retreive_logs_button = ui.button("Retrieve Logs", on_click=retrieve_log_btn_clicks(), color='red')
+                
+                experiment_file=ui.label('no experiment yet').classes('col-span-3 border p-1')
+                experiment_file.style('font-size:120%')
+                start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click, color='green')
+                stop_data_logging_button = ui.button("Stop Data Logging", on_click=stop_data_logging_btn_click(), color='red') 
+                retreive_logs_button = ui.button("Retrieve Logs", on_click=retreive_log_btn_clicks(), color='red')
                 delete_all_logs_button = ui.button("Clear Cycler Logs", on_click=delete_all_logs_btn_click(), color='red')
+                session_label = ui.label('')
                 freeze_button=ui.button("Index Freeze Off", on_click=freeze_btn_click(), color='orange')
                 index_dropdown = ui.select(label='Select Index', options=index_list).bind_value_to(index_value, "value")
                 
@@ -1186,6 +1167,12 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             log.style('background-color: #f0f0f0; color: #333;')
             module_control_graph_= ui.column().classes('w-full')
 
+    with ui.tab_panel(tab_advanced):
+        ui.button('Scan for Modules', on_click=scan_for_modules())
+        ui.button('Calibrate Pump', on_click=pump_calibration())
+        ui.button('RELOAD DATA', on_click=purge_btn_click(), color='red')
+        ui.button('Start Mass Balance', on_click=mass_start_btn_click())
+        ui.button('Stop Mass Balance', on_click=mass_stop_btn_click())
 
     with ui.tab_panel(tab_lem):
         media_list=config['MEDIA_LIST']
@@ -1206,14 +1193,39 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 for module in circ_modules:
                     ui.button(f'DISPENSE', on_click=lem_dispense(media_list[i],module), color=light_blue)
 
+    with ui.tab_panel(tab_LabQ):
+        with ui.grid(columns=4).classes('items-start'):
+            labq_start = ui.button("Start Pump", on_click=lambda: labq_session(start_pump=True), color='green')
+            labq_stop = ui.button("Stop Pump", on_click=lambda: labq_session(stop_pump=True), color='red')
+            ui.space()
+            labq_full_speed = ui.button("Full Speed Running", on_click=lambda: labq_session(full_speed_running=True), color='red')
+            labq_direction = ui.button("Pump Clockwise", on_click=lambda: labq_session(direction=1), color='orange')
+            labq_direction = ui.button("Pump Counter-Clockwise", on_click=lambda: labq_session(direction=0), color='orange')
+            ui.space()
+            ui.space()
+            ui.space()
+            ui.space()
+            ui.space()
+            ui.space()
+            labq_speed = ui.number(label='Speed (RPM)', value=0, format='%.2f')
+            labq_session_btn = ui.button("Confirm", on_click=lambda: labq_session(speed=labq_speed.value), color='orange')
+            ui.space()
+            ui.space()
+            labq_flow_rate = ui.number(label='Flow Rate (mL/min)', value=0, format='%.2f')
+            labq_session_btn = ui.button("Confirm", on_click=lambda: labq_session(flow_rate=labq_flow_rate.value), color='orange')
+            ui.space()
+            ui.space()
+            labq_tubing = ui.select(label='Select Tubing', options=tubing_list)
+            labq_session_btn = ui.button("Confirm", on_click=lambda: labq_session(tube_size=labq_tubing.value), color='orange')
+            ui.space()
 
     # New Image tab panel
     with ui.tab_panel(tab_image):
         ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
-
+        
     # 🔹 UI Setup for Historical Data Tab
     with ui.tab_panel(tab_historical_view):
-        ui.label('Analyse Historical Data')
+        ui.label('Analyse Historical Data').classes('text-bold text-h6')
 
         # File Selection UI
         selected_file_label = ui.label('No file selected.')
@@ -1225,19 +1237,14 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
         # Button to Trigger Plotting
         ui.button("Load and Plot Data", on_click=load_and_plot_data, color="green")
-    
-    # About  tab panel
-    with ui.tab_panel(tab_about):
-        ui.label("Proteus cycler software.").classes('justify-self-center')
-        ui.label(proteus_version).classes('justify-self-center')
-        ui.label("Copyright Cellular Agriculture 2025").classes('justify-self-center')
-        
+
     with ui.tab_panel(tab_software_update):
-        load_software_update_tab(on_restart=restart_proteus)
+        load_software_update_tab()
             
 line_updates = ui.timer(5, refresh_all)
 
 for module in modules.values():
     if module.type == 'Circulation':
         select_mod_id(module.moduleID)()
-ui.run(native=(config['NATIVE']),port=5503, reload=False)
+        
+ui.run(port=5500, reload=False)
