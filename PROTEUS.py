@@ -187,7 +187,7 @@ def subselect(module) -> None:  ## Subselect the data frame to get (limit) numbe
         module.subset = module.data_frame.iloc[-10_000:].copy()
 
 def module_list_update() -> None:   ## Create the modules from the serial_config file
-    global moduleID
+    moduleID_local = 0
     global modules
     global circ_modules
     global lem_module
@@ -198,21 +198,21 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
         next(reader)
         for row in reader:
             if len(row) >= 4 and row[3]:
-                moduleID = row[3]
-                if int(moduleID)<config["LEM_ID_LIMIT"]:   #instruments with an ID >9000 (LEM LIMIT) are LEM modules
-                    data_file = os.path.join(config["DATA_FOLDER"], f'{moduleID}_data.csv')
-                    module = Module(moduleID, seqFilename=None, index=1, data_file=data_file)
-                    modules[moduleID] = module
+                moduleID_local = row[3]
+                if int(moduleID_local)<config["LEM_ID_LIMIT"]:   #instruments with an ID >9000 (LEM LIMIT) are LEM modules
+                    data_file = os.path.join(config["DATA_FOLDER"], f'{moduleID_local}_data.csv')
+                    module = Module(moduleID_local, seqFilename=None, index=1, data_file=data_file)
+                    modules[moduleID_local] = module
                     circ_modules.append(module.moduleID)
                     load_new_rows(module)
                     subselect(module)
                     data_processing(module.subset)
-                elif int(moduleID)>=config["LEM_ID_LIMIT"]:
-                    moduleID = row[3]
-                    data_file = os.path.join(config["DATA_FOLDER"], f'{moduleID}_data.csv')
-                    module = Module(moduleID, seqFilename=None, index=1, data_file=data_file)
+                elif int(moduleID_local)>=config["LEM_ID_LIMIT"]:
+                    moduleID_local = row[3]
+                    data_file = os.path.join(config["DATA_FOLDER"], f'{moduleID_local}_data.csv')
+                    module = Module(moduleID_local, seqFilename=None, index=1, data_file=data_file)
                     module.type = 'LEM'
-                    modules[moduleID] = module
+                    modules[moduleID_local] = module
                     lem_module=module.moduleID
 
 def load_new_rows(module) -> None:
@@ -787,6 +787,9 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
         return  # ✅ continue without refresh as there are no modules 
 
     module = modules[moduleID]
+    print("printing module id")
+    print(moduleID)
+
     module.len_of_datafile= count_rows(module.data_file)
     if module.len_of_datafile > module.data_file_row:
         load_new_rows(module)
