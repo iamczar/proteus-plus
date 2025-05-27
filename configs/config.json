@@ -16,5 +16,6 @@
     "MEDIA_LIST":["Media 1", "Media 2", "Flush", "Sterilant"],
     "LEM_PORT_CIRCS":["2501", "2502", "2503", "2504"],
     "LEM_ID_LIMIT":9000,
-    "NATIVE":false
+    "NATIVE":false,
+    "GRAPH_UPDATE_RATE":5
 }

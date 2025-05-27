@@ -290,7 +290,7 @@ def stop_btn_click() -> None:
     def inner():
         target_module = moduleID
         threading.Thread(target=stop_experiment(target_module), daemon=True).start()
-    return inner       
+    return inner  
 
 async def start_data_logging_btn_click() -> None:
     global seqFilename
@@ -300,7 +300,7 @@ async def start_data_logging_btn_click() -> None:
     if not seqFilename:
         # Trigger the file picker for selecting the sequence file
         log.push("awaiting a sequence file")
-        await pick_seqfile()
+        await pick_seqfile("sequences")
 
     if seqFilename:
         # If sequence file is selected, proceed to folder selection
@@ -428,7 +428,7 @@ async def start_btn_click() -> None:
     # First, check if the sequence file has been selected
     if not seqFilename:
         # Trigger the file picker for selecting the sequence file
-        await pick_seqfile()
+        await select_experiment_folder()
 
     if seqFilename:
         # If sequence file is selected, proceed to folder selection
@@ -890,9 +890,23 @@ def select_mod_id(value) -> Callable[[], None]: # Used to select the active modu
         update_line_plot()
     return inner
 
-async def pick_seqfile() -> None: # uses local_file_picker to select files for sequences
+async def pick_seqfile(defaultFolder) -> None: # uses local_file_picker to select files for sequences
+    global seqFilename
+    result = await local_file_picker(os.path.join(os.getcwd(), defaultFolder),text="Double-click to choose a sequence to run", multiple=True)        
+    seqFilename = result[0] if result else ""
+    sequence_file.text = f"Sequence: {os.path.basename(seqFilename)}" if seqFilename else ""
+    print(f"Selected file: {seqFilename}")
+    
+async def pick_sequence_file() -> None: # uses local_file_picker to select files for sequences
     global seqFilename
     result = await local_file_picker(os.path.join(os.getcwd(), "sequences"),text="Double-click to choose a sequence to run", multiple=True)        
+    seqFilename = result[0] if result else ""
+    sequence_file.text = f"Sequence: {os.path.basename(seqFilename)}" if seqFilename else ""
+    print(f"Selected file: {seqFilename}")
+    
+async def select_experiment_folder() -> None: # uses local_file_picker to select files for sequences
+    global seqFilename
+    result = await local_file_picker(os.path.join(os.getcwd(), "experiments"),text="Double-click to choose where to save the experiment", multiple=True)        
     seqFilename = result[0] if result else ""
     sequence_file.text = f"Sequence: {os.path.basename(seqFilename)}" if seqFilename else ""
     print(f"Selected file: {seqFilename}")
@@ -1171,7 +1185,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 start_button=ui.button("Begin Sequence", on_click=start_btn_click, color='green')  
                 stop_button = ui.button("Stop Cycler", on_click=stop_btn_click(), color='red')
                 
-                sequence_button=ui.button('Select sequence', on_click=pick_seqfile, color='blue')
+                sequence_button=ui.button('Select sequence', on_click=pick_sequence_file, color='blue')
                 sequence_file=ui.label('no sequence yet').classes('col-span-2 border p-1')
                 sequence_file.style('font-size:120%')  
                 start_data_logging_button = ui.button("Start Data Logging", on_click=start_data_logging_btn_click, color='green')
@@ -1238,7 +1252,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
     with ui.tab_panel(tab_software_update):
         load_software_update_tab(on_restart=restart_proteus)
             
-line_updates = ui.timer(5, refresh_all)
+line_updates = ui.timer(config['GRAPH_UPDATE_RATE'], refresh_all)
 
 for module in modules.values():
     if module.type == 'Circulation':
