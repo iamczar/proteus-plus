@@ -237,7 +237,7 @@ def log_and_report(moduid, line, ser):
 
         # Print a message to the console with the timestamp, moduid, and the line
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        print(f" ALF:  Module {moduid} reported: {line}")
+        #print(f" ALF:  Module {moduid} reported: {line}")
         if "1515" not in line:
             message=(str(timestamp)+str(line[5:0]))
             print(message)
@@ -297,7 +297,8 @@ def command_control(message, ser):
         else:
             if "INFO" in message:
                 if "Free" not in message and "out of range" not in message:
-                    print(f"ALF: cycler info:{message[33:]}")
+                    pass
+                    #print(f"ALF: cycler info:{message[33:]}")
             if "ERROR" in message:
                 None
                 #print(f"cycler error: {message[35:]}")

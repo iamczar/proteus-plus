@@ -216,20 +216,34 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     lem_module=module.moduleID
 
 def load_new_rows(module) -> None:
-    if module.data_frame is None:
-        start_row = 0
-    else:    
-        start_row = module.data_file_row
-
+    # Validate file existence
     if not os.path.exists(module.data_file):
-        print(f"❌ {module.data_file} not found. No new rows loaded.")
-        return 
-    
-    new_rows = pd.read_csv(module.data_file, names=config['COLNAMES'], skiprows=range(0, start_row + 1), on_bad_lines='skip')
+        print(f"❌ {module.data_file} not found.")
+        return
+
+    # Check for mismatch between memory and file
+    total_rows = count_rows(module.data_file)
+    if module.data_file_row > total_rows:
+        print("⚠️ Row mismatch. Resetting data_file_row.")
+        module.data_file_row = 0
+        module.data_frame = None
+
+    start_row = module.data_file_row
+
+    new_rows = pd.read_csv(
+        module.data_file,
+        names=config['COLNAMES'],
+        skiprows=range(0, start_row + 1),
+        on_bad_lines='skip'
+    )
 
     if not new_rows.empty:
-        module.data_frame = pd.concat([module.data_frame, new_rows], ignore_index=True)
+        if module.data_frame is None:
+            module.data_frame = new_rows
+        else:
+            module.data_frame = pd.concat([module.data_frame, new_rows], ignore_index=True)
         module.data_file_row += len(new_rows)
+
 
 def scan_for_modules() -> Callable[[], None]:  ## Scan for modules, this will start the module_register.py script
     def inner() -> None:
@@ -787,8 +801,6 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
         return  # ✅ continue without refresh as there are no modules 
 
     module = modules[moduleID]
-    print("printing module id")
-    print(moduleID)
 
     module.len_of_datafile= count_rows(module.data_file)
     if module.len_of_datafile > module.data_file_row:
@@ -819,9 +831,10 @@ def update_line_plot() -> None:
     module_control_graph_.clear()
 
     with module_control_graph_:
+        
         with ui.grid(columns=3).classes('items-start'):  # ✅ Display plots in 3 columns
             for plot in plot_dict.values():
-                # print(f"📊 Plotting: {plot['name']}")  # Debugging log
+                #print(f"📊 Plotting: {plot['name']}")  # Debugging log
 
                 # Extract x and y values
                 x_values = module.subset['TIME'].values if 'TIME' in module.subset else module.subset.index.values
@@ -971,15 +984,23 @@ def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LE
             moduleID=active_circulation_module
     return inner
 
-def load_csv_in_chunks(filepath, chunk_size=50000):# 🔹 Optimized Data Loading with Chunking
+def load_csv_in_chunks(filepath, chunk_size=50000):
     chunks = []
-    for chunk in pd.read_csv(filepath, on_bad_lines='warn', header=None, low_memory=False, chunksize=chunk_size):
-        chunk.rename(columns=COLUMN_MAPPING, inplace=True)
-        chunk['TIME'] = pd.to_datetime(chunk['TIME'], errors='coerce')
-        chunk.dropna(subset=['TIME'], inplace=True)
-        chunks.append(chunk)
-    
-    return pd.concat(chunks, ignore_index=True)
+    corrupt_lines = []
+
+    for chunk in pd.read_csv(filepath, header=None, chunksize=chunk_size, on_bad_lines='skip', low_memory=False):
+        try:
+            chunk.rename(columns=COLUMN_MAPPING, inplace=True)
+            chunk['TIME'] = pd.to_datetime(chunk['TIME'], errors='coerce')
+            chunk.dropna(subset=['TIME'], inplace=True)
+            chunks.append(chunk)
+        except Exception as e:
+            corrupt_lines.append(str(e))  # Log the error for review
+
+    df = pd.concat(chunks, ignore_index=True)
+
+    return df, corrupt_lines
+
 
 async def load_and_plot_data():# 🔹 Load and Plot Data with Optimization
     if not selected_file_path['path']:
@@ -988,7 +1009,10 @@ async def load_and_plot_data():# 🔹 Load and Plot Data with Optimization
 
     print("Loading and Plotting Data...")
     try:
-        dfh = load_csv_in_chunks(selected_file_path['path'])
+        dfh,corrupt_lines = load_csv_in_chunks(selected_file_path['path'])
+        
+        if corrupt_lines:
+            log.push(f"⚠️ {len(corrupt_lines)} corrupt line(s) skipped while loading the file.", color="orange")
         
         # Convert numeric columns
         numeric_cols = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
