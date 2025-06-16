@@ -1,7 +1,7 @@
 streamlit==1.44.0
-streamlit-elements
 pyyaml
 pandas
 numpy
 altair
 xlsxwriter
+plotly
