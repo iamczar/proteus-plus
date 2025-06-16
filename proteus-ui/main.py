@@ -6,8 +6,10 @@ dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", icon=":materia
 
 # Resources
 experiments_page = st.Page("pages/experiments.py", title="Experiments", icon=":material/science:")
-graph_view = st.Page("pages/graph_view.py", title="Graph View", icon=":material/show_chart:")
+live_view = st.Page("pages/live_view.py", title="Live View", icon=":material/show_chart:")
+analyse_view = st.Page("pages/analyse_view.py", title="Analyse View", icon=":material/analytics:")
 cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":material/article:")
+csv_viewer = st.Page("pages/plot_cvs.py", title="Display Big Data", icon=":material/article:")
 
 # System
 settings_page = st.Page("pages/settings.py", title="Settings", icon=":material/settings:")
@@ -26,11 +28,13 @@ st.logo(
 pg = st.navigation(
     {
     "Home": [
-        dashboard_page
+        dashboard_page,
+        csv_viewer
     ],
     "Resources": [
         experiments_page,
-        graph_view,
+        live_view,
+        analyse_view,
         cycler_logs
     ],
     "System": [

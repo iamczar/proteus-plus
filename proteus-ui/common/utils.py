@@ -7,7 +7,7 @@ def show_toast(message, status="success"):
         "success": ("#45BE89", "#00775a"),
         "error": ("#D3616A", "#B71C1C"),
         "warning": ("#FFB839", "#CC8400"),
-        "info": ("#62B9F3", "#1565C0"),
+        "info": ("#709FB7", "#1565C0"),
     }
 
     bg, border = color_map.get(status, ("#444", "#222"))
@@ -21,7 +21,6 @@ def show_toast(message, status="success"):
         background-color: {bg} !important;
         color: white !important;
         font-weight: bold;
-        border: 2px solid {border};
     }}
     </style>
     """, unsafe_allow_html=True)
