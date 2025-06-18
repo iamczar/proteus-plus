@@ -44,7 +44,7 @@ def scan_ports():
     ports = list(serial.tools.list_ports.comports())
     if debug:
         print(ports)
-    arduino_ports = [port for port in ports if 'USB Serial Device' in port.description]
+    arduino_ports = [port for port in ports if 'USB Serial Device' or 'Arduino' in port.description]
     if debug:
         for port in ports:
             print(port.description)

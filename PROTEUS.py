@@ -769,6 +769,7 @@ def toggle_pause():# ✅ Add button to toggle graph updates
 
 def refresh_all() -> None:# ✅ Track whether updates are paused
     global paused
+    global moduleID
     module_list_update()
     module_set.clear()
     with module_set:
@@ -794,6 +795,8 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
         log.push("no modules are connected.")
         return  # ✅ continue without refresh as there are no modules 
 
+    if moduleID not in modules.keys():
+        moduleID=list(modules.keys())[0]
     module = modules[moduleID]
 
     module.len_of_datafile= count_rows(module.data_file)
@@ -1225,7 +1228,13 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             lem_stop_btn=ui.button('STOP LEM', on_click=lem_stop_btn_click(), color='RED')
             ui.space()
         
-        with ui.grid(columns=len(modules)):
+        with ui.element('div').classes('grid-container').style(f'''
+            display: grid;
+            grid-template-columns: repeat({len(modules)}, 80px);
+            gap: 10px;
+        '''):
+            #with ui.grid(columns=len(modules)):
+            print(f"{len(modules)}")
             ui.space()
             for module in circ_modules:
                 ui.label(module)
