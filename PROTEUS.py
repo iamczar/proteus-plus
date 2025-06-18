@@ -216,34 +216,20 @@ def module_list_update() -> None:   ## Create the modules from the serial_config
                     lem_module=module.moduleID
 
 def load_new_rows(module) -> None:
-    # Validate file existence
+    if module.data_frame is None:
+        start_row = 0
+    else:    
+        start_row = module.data_file_row
+
     if not os.path.exists(module.data_file):
-        print(f"❌ {module.data_file} not found.")
-        return
-
-    # Check for mismatch between memory and file
-    total_rows = count_rows(module.data_file)
-    if module.data_file_row > total_rows:
-        print("⚠️ Row mismatch. Resetting data_file_row.")
-        module.data_file_row = 0
-        module.data_frame = None
-
-    start_row = module.data_file_row
-
-    new_rows = pd.read_csv(
-        module.data_file,
-        names=config['COLNAMES'],
-        skiprows=range(0, start_row + 1),
-        on_bad_lines='skip'
-    )
+        print(f"❌ {module.data_file} not found. No new rows loaded.")
+        return 
+    
+    new_rows = pd.read_csv(module.data_file,dtype={"NULLEADER":str},names=config['COLNAMES'], skiprows=range(0, start_row + 1), on_bad_lines='skip')
 
     if not new_rows.empty:
-        if module.data_frame is None:
-            module.data_frame = new_rows
-        else:
-            module.data_frame = pd.concat([module.data_frame, new_rows], ignore_index=True)
+        module.data_frame = pd.concat([module.data_frame, new_rows], ignore_index=True)
         module.data_file_row += len(new_rows)
-
 
 def scan_for_modules() -> Callable[[], None]:  ## Scan for modules, this will start the module_register.py script
     def inner() -> None:
@@ -267,14 +253,18 @@ def null_session(target_module) -> None:   ## the 'Stop' button function, it sto
     
     
     data_file_path = os.path.join(os.path.dirname(__file__), config["DATA_FOLDER"], f'{moduleID}_data.csv')
-    #log_file_path= os.path.join(os.path.dirname(__file__), config["LOG_FOLDER"], f'{moduleID}_log.csv')
     log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
     module_csv= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
     if target_module in processes:
         processes[target_module].communicate(b"exit\n")
         print(f"Stopped {target_module} ALF session")
         time.sleep(1)
-    alfi_session(seq_csv=config['NULLSEQUENCE'], index=17, data_csv=data_file_path, log_csv=log_file_path, module_csv=module_csv)
+    alfi_session(seq_csv=config['NULLSEQUENCE'], 
+                index=17, 
+                data_csv=data_file_path, 
+                log_csv=log_file_path,
+                module_csv=module_csv,
+                module_id=target_module)
     print(f"Pumps stopped & valves returned to natural state.")
     time.sleep(1)
     if target_module in processes:
@@ -414,14 +404,9 @@ def retrieve_log_btn_clicks() -> None:
 
 def lem_stop_btn_click() -> None:
     def inner():
-        global moduleID
         global lem_module
-        global active_circulation_module
-        active_circulation_module=moduleID
-        moduleID=lem_module
-        target_module = moduleID
-        threading.Thread(target=null_session(target_module), daemon=True).start()
-        moduleID=active_circulation_module
+        print(f"going to stop... {lem_module}")
+        threading.Thread(target=null_session(lem_module), daemon=True).start()
     return inner
 
 def freeze_btn_click() -> None:
@@ -475,7 +460,8 @@ async def start_btn_click() -> None:
                          data_csv=data_file_path, 
                          log_csv=log_file_path, 
                          module_csv=module_csv_path,
-                         experiment_file_path=copy_data_file_to_path)
+                         experiment_file_path=copy_data_file_to_path,
+                         module_id=moduleID)
 
 
     # Trigger the folder picker after sequence file selection
@@ -697,7 +683,12 @@ def alfi_session(debug=False,
                  index=None, 
                  serial_config=None,
                  port=None,
-                 experiment_file_path = None) -> None:
+                 experiment_file_path = None,
+                 module_id = None) -> None:
+    
+    if module_id is None:
+        print("module_id is none - not executing alfie session")
+
     global experiment_folder_path  # Access the experiment folder path
     
     # Ensure we have a valid experiment folder, fallback to default log folder if not created
@@ -705,15 +696,15 @@ def alfi_session(debug=False,
         experiment_folder_path = os.path.join(os.getcwd(), "log")
 
     # Define the log file path within the experiment folder
-    log_file_path = os.path.join(experiment_folder_path, f'{moduleID}_log.csv')
+    log_file_path = os.path.join(experiment_folder_path, f'{module_id}_log.csv')
     
     # See ALF.py for the command line arguments
-    if moduleID in processes:
-        if processes[moduleID].poll() is None:
-            print(f"ALFI script already running for {moduleID}, poll: {processes[moduleID].poll()}")
+    if module_id in processes:
+        if processes[module_id].poll() is None:
+            print(f"ALFI script already running for {module_id}, poll: {processes[module_id].poll()}")
             return
     
-    cmd_args = [config['ALF_FILEPATH'] , '-u', str(moduleID)]
+    cmd_args = [config['ALF_FILEPATH'] , '-u', str(module_id)]
     if debug:
         cmd_args.append('--debug')
     if seq_csv:
@@ -740,15 +731,15 @@ def alfi_session(debug=False,
         cmd_args.extend(['-e', experiment_file_path])
     # print("-------------------------------------------------------cmd_args--------------------------------------------------------")
     # print(cmd_args)
-    processes[moduleID] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
-    module = modules[moduleID]
+    processes[module_id] = subprocess.Popen([sys.executable] + cmd_args, stdin=subprocess.PIPE)
+    module = modules[module_id]
     module.seqFilename = seq_csv
     module.index = index
     module.freeze = freeze
     module.session_label = f"Sequence: {module.seqFilename}, Index = {module.index}, Freeze = {module.freeze}"
-    print(f"ALFI started sequence file for {moduleID}, index = {module.index}, seqFilename = {module.seqFilename}")
+    print(f"ALFI started sequence file for {module_id}, index = {module.index}, seqFilename = {module.seqFilename}")
     session_label.text = module.session_label
-    print('updated session label for module ', moduleID, ' to ', module.session_label)
+    print('updated session label for module ', module_id, ' to ', module.session_label)
 
 def count_rows(csv_file):
     i = 0
@@ -786,9 +777,12 @@ def refresh_all() -> None:# ✅ Track whether updates are paused
                 module.button = ui.button(module.moduleID, on_click=select_mod_id(module.moduleID), color = 'blue' if moduleID == module.moduleID else 'lightblue')
                 
     #update the url displayed
+    #print(f"app.url len ... {len(app.urls)}")
     if len(app.urls)>=2:
+        LAN_ID="nothing connected"
         for url in app.urls:
-            if '192' in url:
+            #print(url)
+            if '192' or '10.' in url:
                 LAN_ID=url
         url_tag.set_text('available on the internal LAN on '+LAN_ID)
     if len(app.urls)==1:
@@ -834,7 +828,7 @@ def update_line_plot() -> None:
         
         with ui.grid(columns=3).classes('items-start'):  # ✅ Display plots in 3 columns
             for plot in plot_dict.values():
-                #print(f"📊 Plotting: {plot['name']}")  # Debugging log
+                # print(f"📊 Plotting: {plot['name']}")  # Debugging log
 
                 # Extract x and y values
                 x_values = module.subset['TIME'].values if 'TIME' in module.subset else module.subset.index.values
@@ -937,7 +931,11 @@ async def pick_data_file():# 🔹 File Picker Function
 def build_lem_seq(media, circ_module, volume) -> None: # Used to build the LEM sequence
     df = pd.read_csv(config['LEM_SEQ_PATH'])
     print(df)
-    df.at[1, 'dispenseVolumeSP'] = volume
+
+    lem_dispense_target_volume = config['LEM_DISPENSE_TARGET_VOLUME']
+    lem_dispense_actual_volume = config['LEM_DISPENSE_ACTUAL_VOLUME']
+
+    df.at[1, 'dispenseVolumeSP'] = (volume * int(lem_dispense_target_volume))/int(lem_dispense_actual_volume)
     for col in df.columns:
         if col.startswith('valve'):
             if not col.endswith('Pin'):
@@ -953,7 +951,7 @@ def build_lem_seq(media, circ_module, volume) -> None: # Used to build the LEM s
     valve_to_open = (4 * module_index) + media_index + 1
     df.at[1, f'valve{valve_to_open}'] = 1
     df.at[1, 'dispensePara']= module_index+1
-    print(df)
+    #print(df)
     df.to_csv(config['LEM_SEQ_PATH'], index=False)
 
 def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LEM
@@ -973,34 +971,26 @@ def lem_dispense(media,circ_module) -> Callable[[], None]: # Used to dispense LE
                 else:
                     print(f"Process {process} has terminated.")
                     del processes[process]
-        print(f"Dispensing {media} in {circ_module}")
+        LEMlog.push(f"Dispensing {lem_volume_input.value} ml  {media} in {circ_module}")
         build_lem_seq(media,circ_module,lem_volume_input.value)
         if not lem_module in processes:
-            active_circulation_module=moduleID
-            moduleID=lem_module
+            #active_circulation_module=moduleID
+            #moduleID=lem_module
             # print(f"Dispensing {lem}")
             module_csv_path= os.path.join(os.path.dirname(__file__), config["SERIAL_CONFIG"])
-            alfi_session(seq_csv=config['LEM_SEQ_PATH'], module_csv=module_csv_path)
-            moduleID=active_circulation_module
+            alfi_session(seq_csv=config['LEM_SEQ_PATH'], module_csv=module_csv_path,module_id=lem_module)
+            #moduleID=active_circulation_module
     return inner
 
-def load_csv_in_chunks(filepath, chunk_size=50000):
+def load_csv_in_chunks(filepath, chunk_size=50000):# 🔹 Optimized Data Loading with Chunking
     chunks = []
-    corrupt_lines = []
-
-    for chunk in pd.read_csv(filepath, header=None, chunksize=chunk_size, on_bad_lines='skip', low_memory=False):
-        try:
-            chunk.rename(columns=COLUMN_MAPPING, inplace=True)
-            chunk['TIME'] = pd.to_datetime(chunk['TIME'], errors='coerce')
-            chunk.dropna(subset=['TIME'], inplace=True)
-            chunks.append(chunk)
-        except Exception as e:
-            corrupt_lines.append(str(e))  # Log the error for review
-
-    df = pd.concat(chunks, ignore_index=True)
-
-    return df, corrupt_lines
-
+    for chunk in pd.read_csv(filepath, on_bad_lines='warn', header=None, low_memory=False, chunksize=chunk_size):
+        chunk.rename(columns=COLUMN_MAPPING, inplace=True)
+        chunk['TIME'] = pd.to_datetime(chunk['TIME'], errors='coerce')
+        chunk.dropna(subset=['TIME'], inplace=True)
+        chunks.append(chunk)
+    
+    return pd.concat(chunks, ignore_index=True)
 
 async def load_and_plot_data():# 🔹 Load and Plot Data with Optimization
     if not selected_file_path['path']:
@@ -1009,10 +999,7 @@ async def load_and_plot_data():# 🔹 Load and Plot Data with Optimization
 
     print("Loading and Plotting Data...")
     try:
-        dfh,corrupt_lines = load_csv_in_chunks(selected_file_path['path'])
-        
-        if corrupt_lines:
-            log.push(f"⚠️ {len(corrupt_lines)} corrupt line(s) skipped while loading the file.", color="orange")
+        dfh = load_csv_in_chunks(selected_file_path['path'])
         
         # Convert numeric columns
         numeric_cols = [col for col in COLUMN_MAPPING.values() if col not in ['TIME', 'NULLLEADER']]
@@ -1171,7 +1158,7 @@ except json.JSONDecodeError:
 ui.page_title('PROTEUS')
 
 def load_resources():
-    print("loadding resources")
+    print("loading resources")
     app.add_static_files('/ui_images', 'ui_images')
     
 load_resources()
@@ -1235,7 +1222,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
             ui.space()
             lem_volume_input=ui.number(label='Volume (mL)', value=2, format='%.2f')
             ui.space()
-            lem_stop_btn=ui.button('LEM STOP', on_click=lem_stop_btn_click, color='RED')
+            lem_stop_btn=ui.button('STOP LEM', on_click=lem_stop_btn_click(), color='RED')
             ui.space()
         
         with ui.grid(columns=len(modules)):
@@ -1246,7 +1233,8 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
                 ui.label(media_list[i])
                 for module in circ_modules:
                     ui.button(f'DISPENSE', on_click=lem_dispense(media_list[i],module), color=light_blue)
-
+        LEMlog = ui.log(max_lines=10).classes('w-full h-20')
+        LEMlog.style('background-color: #f0f0f0; color: #333;')
 
     # New Image tab panel
     with ui.tab_panel(tab_image):
