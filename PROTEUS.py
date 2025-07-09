@@ -1247,7 +1247,7 @@ with ui.tab_panels(tabs, value=tab_graphs).classes('w-full'):
 
     # New Image tab panel
     with ui.tab_panel(tab_image):
-        ui.image('resource/PI&DImage.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
+        ui.image('resource/P&IDPFDAlpha+v8.png').style('width: 100%; height: auto; display: block; margin: 0 auto;')
 
     # 🔹 UI Setup for Historical Data Tab
     with ui.tab_panel(tab_historical_view):
