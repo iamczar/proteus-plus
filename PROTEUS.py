@@ -116,7 +116,7 @@ def data_processing(df):
         # Convert 'TIME' to datetime
         df['TIME'] = pd.to_datetime(df['TIME'])
         # Pump Calibration
-        PumpCal = 0.004293
+        PumpCal = 0.00639
         df['Pump1_mLmin'] = (df['CIRCPUMPSPEED'])*PumpCal
         df['Pump2_mLmin'] = (df['PRESSUREPUMPSPEED'])*PumpCal
 
@@ -152,7 +152,7 @@ def process_data(dfh): # 🔹 Data Processing Function
     dfh = dfh.dropna(subset=['TIME'])  # Remove invalid timestamps
 
     # Pump Calibration
-    pump_cal = 0.004293
+    pump_cal = 0.00639
     dfh['Pump1_mLmin'] = dfh['CIRCPUMPSPEED'] * pump_cal
     dfh['Pump2_mLmin'] = dfh['PRESSUREPUMPSPEED'] * pump_cal
 
