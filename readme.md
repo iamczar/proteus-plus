@@ -1,1 +1,1 @@
-﻿![Proteus UI Tests](https://github.com/iamaczar/proteus-plus/actions/workflows/proteus_tests.yml/badge.svg)
+﻿[![Proteus UI Tests](https://github.com/iamczar/proteus-plus/actions/workflows/proteus_tests.yml/badge.svg)](https://github.com/iamczar/proteus-plus/actions/workflows/proteus_tests.yml)
