@@ -211,8 +211,23 @@ class AlphaCommsManagerTester:
         
         print_with_timestamp("✅ Sequence init test PASSED")
         
-        # Test sequence line data
+        # Test sequence line data - wait for requests from AlphaCommsManager
         for i in range(3):
+            # Wait for sequence request from AlphaCommsManager
+            print_with_timestamp(f"Waiting for sequence request for line {i}...")
+            request_response = self.read_response(expected_command="sequence_request")
+            if not request_response:
+                print_with_timestamp(f"❌ No sequence request received for line {i}")
+                return False
+            
+            requested_line = request_response.get("sequence_request")
+            if requested_line != i:
+                print_with_timestamp(f"❌ Expected request for line {i}, got {requested_line}")
+                return False
+            
+            print_with_timestamp(f"✅ Received sequence request for line {i}")
+            
+            # Send the sequence line data
             line_command = {
                 "alpha_command": "sequence_cmd",
                 "message_source": "proteus",
