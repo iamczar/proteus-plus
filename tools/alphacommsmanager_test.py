@@ -42,8 +42,8 @@ class AlphaCommsManagerTester:
             print_with_timestamp(f"Error sending command: {e}")
             return False
     
-    def read_response(self, timeout=2.0):
-        """Read response from AlphaCommsManager"""
+    def read_response(self, timeout=2.0, expected_command=None):
+        """Read response from AlphaCommsManager, looking for specific command acknowledgment"""
         try:
             start_time = time.time()
             buffer = ""
@@ -62,7 +62,16 @@ class AlphaCommsManagerTester:
                                 try:
                                     response = json.loads(line)
                                     print_with_timestamp(f"RECEIVED: {line}")
-                                    return response
+                                    
+                                    # If we're looking for a specific command acknowledgment
+                                    if expected_command:
+                                        if response.get("alpha_command") == expected_command:
+                                            return response
+                                        # Keep looking for the expected command
+                                    else:
+                                        # Return the first valid JSON response
+                                        return response
+                                        
                                 except json.JSONDecodeError:
                                     print_with_timestamp(f"Non-JSON response: {line}")
                         
@@ -71,7 +80,7 @@ class AlphaCommsManagerTester:
                 
                 time.sleep(0.01)
             
-            print_with_timestamp("No response received within timeout")
+            print_with_timestamp(f"No expected response received within timeout (looking for: {expected_command})")
             return None
             
         except Exception as e:
@@ -87,7 +96,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="stop")
             if response and response.get("alpha_command") == "stop":
                 print_with_timestamp("✅ STOP command test PASSED")
                 return True
@@ -104,7 +113,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="start_data_log")
             if response and response.get("alpha_command") == "start_data_log":
                 print_with_timestamp("✅ START_DATA_LOG command test PASSED")
                 return True
@@ -121,7 +130,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="stop_data_log")
             if response and response.get("alpha_command") == "stop_data_log":
                 print_with_timestamp("✅ STOP_DATA_LOG command test PASSED")
                 return True
@@ -138,7 +147,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="retrieve_data")
             if response and response.get("alpha_command") == "retrieve_data":
                 print_with_timestamp("✅ RETRIEVE_DATA command test PASSED")
                 return True
@@ -155,7 +164,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="pause")
             if response and response.get("alpha_command") == "pause":
                 print_with_timestamp("✅ PAUSE command test PASSED")
                 return True
@@ -172,7 +181,7 @@ class AlphaCommsManagerTester:
         }
         
         if self.send_command(command):
-            response = self.read_response()
+            response = self.read_response(expected_command="resume")
             if response and response.get("alpha_command") == "resume":
                 print_with_timestamp("✅ RESUME command test PASSED")
                 return True
@@ -195,7 +204,7 @@ class AlphaCommsManagerTester:
             print_with_timestamp("❌ Sequence init test FAILED")
             return False
         
-        response = self.read_response()
+        response = self.read_response(expected_command="sequence_ack")
         if not response or response.get("alpha_command") != "sequence_ack":
             print_with_timestamp("❌ Sequence init acknowledgment test FAILED")
             return False
@@ -215,7 +224,7 @@ class AlphaCommsManagerTester:
                 print_with_timestamp(f"❌ Sequence line {i} test FAILED")
                 return False
             
-            response = self.read_response()
+            response = self.read_response(expected_command="sequence_ack")
             if not response or response.get("alpha_command") != "sequence_ack":
                 print_with_timestamp(f"❌ Sequence line {i} acknowledgment test FAILED")
                 return False
@@ -223,7 +232,7 @@ class AlphaCommsManagerTester:
             print_with_timestamp(f"✅ Sequence line {i} test PASSED")
         
         # Check for completion
-        response = self.read_response()
+        response = self.read_response(expected_command="sequence_complete")
         if response and response.get("alpha_command") == "sequence_complete":
             print_with_timestamp("✅ Sequence completion test PASSED")
             return True
