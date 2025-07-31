@@ -282,7 +282,7 @@ class AlphaCommsManagerTester:
 
 def main():
     # Allow command line arguments for port and baudrate
-    port = 'COM6'
+    port = 'COM4'
     baudrate = 115200
     
     if len(sys.argv) > 1:
