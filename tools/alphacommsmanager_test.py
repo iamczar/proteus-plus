@@ -232,7 +232,8 @@ class AlphaCommsManagerTester:
                 "alpha_command": "sequence_cmd",
                 "message_source": "proteus",
                 "sequence_number": i,
-                "state": [0, 100, 200, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1, 1, 1, 1.0, 1, 1, 1, 0, 2]
+                "state": [0,10,10,1,1,1,1,1,1,1,1,1,1,1,1,0,20,2,5,1,0.2,0.05,0.01,1,1,1,1.0,1,1,1,0,10]
+                          
             }
             
             if not self.send_command(line_command):
