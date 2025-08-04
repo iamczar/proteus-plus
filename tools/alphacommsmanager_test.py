@@ -1,3 +1,23 @@
+"""
+AlphaCommsManager Test Script
+
+This script tests the AlphaCommsManager on the MicroPython device.
+It sends various commands and verifies the responses to ensure proper
+communication between Proteus and the AlphaCommsManager.
+
+Commands tested:
+- stop: Stop all operations
+- start_data_log: Start data logging
+- stop_data_log: Stop data logging  
+- retrieve_data: Retrieve logged data
+- pause: Pause operations
+- resume: Resume operations
+- sequence_cmd: Sequence file handling (init + line data)
+
+The sequence test sends 3 sequence lines with varying data to test
+the JSONL file storage functionality.
+"""
+
 import serial
 import time
 import json
@@ -10,7 +30,7 @@ def print_with_timestamp(message):
     print(f"[{timestamp}] {message}")
 
 class AlphaCommsManagerTester:
-    def __init__(self, port='COM6', baudrate=115200):
+    def __init__(self, port='COM4', baudrate=115200):
         self.port = port
         self.baudrate = baudrate
         self.ser = None
@@ -215,7 +235,7 @@ class AlphaCommsManagerTester:
         for i in range(3):
             # Wait for sequence request from AlphaCommsManager
             print_with_timestamp(f"Waiting for sequence request for line {i}...")
-            request_response = self.read_response(expected_command="sequence_request")
+            request_response = self.read_response(expected_command="sequence_request", timeout=10.0)
             if not request_response:
                 print_with_timestamp(f"❌ No sequence request received for line {i}")
                 return False
@@ -227,13 +247,46 @@ class AlphaCommsManagerTester:
             
             print_with_timestamp(f"✅ Received sequence request for line {i}")
             
-            # Send the sequence line data
+            # Send the sequence line data as JSON object with realistic values
+            # Each sequence line has different values to test variety
             line_command = {
                 "alpha_command": "sequence_cmd",
                 "message_source": "proteus",
                 "sequence_number": i,
-                "state": [0,10,10,1,1,1,1,1,1,1,1,1,1,1,1,0,20,2,5,1,0.2,0.05,0.01,1,1,1,1.0,1,1,1,0,10]
-                          
+                "state": {
+                    "cmd": i,  # Different command for each sequence
+                    "circFlow": 100 + (i * 50),  # Varying flow rates
+                    "pressureFlow": 200 + (i * 25),
+                    "valve1": i % 2 == 0,  # Alternating valve states
+                    "valve2": i % 2 == 1,
+                    "valve3": False,
+                    "valve4": False,
+                    "valve5": False,
+                    "valve6": False,
+                    "valve7": False,
+                    "valve8": False,
+                    "valve9": False,
+                    "valve10": False,
+                    "airpump1": i % 2 == 0,
+                    "airpump2": i % 2 == 1,
+                    "pressureSP": 1.0 + (i * 0.5),
+                    "oxySP": 1.0 + (i * 0.3),
+                    "pressureKp": 1.0 + (i * 0.1),
+                    "pressureKi": 1.0 + (i * 0.05),
+                    "pressureKd": 1.0 + (i * 0.02),
+                    "oxyKp": 1.0 + (i * 0.1),
+                    "oxyKi": 1.0 + (i * 0.05),
+                    "oxyKd": 1.0 + (i * 0.02),
+                    "pump2Dir": True,
+                    "pump1Dir": True,
+                    "tube_bore": 1 + i,
+                    "pump_2_speed_ratio": 1.0 + (i * 0.1),
+                    "ascmds1": 1 + i,
+                    "ascmds2": 1 + i,
+                    "ascmds3": 1 + i,
+                    "wristCmd": i,
+                    "transTimeSec": 2 + i
+                }
             }
             
             if not self.send_command(line_command):
@@ -248,7 +301,7 @@ class AlphaCommsManagerTester:
             print_with_timestamp(f"✅ Sequence line {i} test PASSED")
         
         # Check for completion
-        response = self.read_response(expected_command="sequence_complete")
+        response = self.read_response(expected_command="sequence_complete", timeout=15.0)
         if response and response.get("alpha_command") == "sequence_complete":
             print_with_timestamp("✅ Sequence completion test PASSED")
             return True
