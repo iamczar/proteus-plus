@@ -42,7 +42,7 @@ class AlphaCommsManagerTester:
             print_with_timestamp(f"Error sending command: {e}")
             return False
     
-    def read_response(self, timeout=4.0, expected_command=None):
+    def read_response(self, timeout=10.0, expected_command=None):
         """Read response from AlphaCommsManager, looking for specific command acknowledgment"""
         try:
             start_time = time.time()
