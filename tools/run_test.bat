@@ -5,7 +5,7 @@ echo ========================================
 echo.
 
 echo Restarting MicroPython firmware...
-ampy --port COM4 run cellag/main.py
+ampy --port COM4 reset
 if %errorlevel% neq 0 (
     echo ERROR: Failed to restart firmware
     pause
@@ -14,8 +14,8 @@ if %errorlevel% neq 0 (
 echo Firmware restarted successfully.
 echo.
 
-echo Waiting 3 seconds for firmware to initialize...
-timeout /t 3 /nobreak >nul
+echo Waiting 5 seconds for firmware to initialize...
+timeout /t 5 /nobreak >nul
 echo.
 
 echo Running AlphaCommsManager tests...
