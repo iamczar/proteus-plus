@@ -85,7 +85,7 @@ class AlphaCommsManagerTester:
                                     
                                     # If we're looking for a specific command acknowledgment
                                     if expected_command:
-                                        if response.get("alpha_command") == expected_command:
+                                        if response.get("command") == expected_command:
                                             return response
                                         # Keep looking for the expected command
                                     else:
@@ -98,7 +98,7 @@ class AlphaCommsManagerTester:
                         # Keep incomplete line in buffer
                         buffer = lines[-1]
                 
-                time.sleep(0.01)
+                time.sleep(0.01)  # Small delay to prevent busy waiting
             
             print_with_timestamp(f"No expected response received within timeout (looking for: {expected_command})")
             return None
@@ -111,13 +111,16 @@ class AlphaCommsManagerTester:
         """Test stop command"""
         print_with_timestamp("=== Testing STOP Command ===")
         command = {
-            "alpha_command": "stop",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "stop"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="stop")
-            if response and response.get("alpha_command") == "stop":
+            if response and response.get("command") == "stop":
                 print_with_timestamp("✅ STOP command test PASSED")
                 return True
             else:
@@ -128,13 +131,16 @@ class AlphaCommsManagerTester:
         """Test start data log command"""
         print_with_timestamp("=== Testing START_DATA_LOG Command ===")
         command = {
-            "alpha_command": "start_data_log",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "start_data_log"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="start_data_log")
-            if response and response.get("alpha_command") == "start_data_log":
+            if response and response.get("command") == "start_data_log":
                 print_with_timestamp("✅ START_DATA_LOG command test PASSED")
                 return True
             else:
@@ -145,13 +151,16 @@ class AlphaCommsManagerTester:
         """Test stop data log command"""
         print_with_timestamp("=== Testing STOP_DATA_LOG Command ===")
         command = {
-            "alpha_command": "stop_data_log",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "stop_data_log"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="stop_data_log")
-            if response and response.get("alpha_command") == "stop_data_log":
+            if response and response.get("command") == "stop_data_log":
                 print_with_timestamp("✅ STOP_DATA_LOG command test PASSED")
                 return True
             else:
@@ -162,13 +171,16 @@ class AlphaCommsManagerTester:
         """Test retrieve data command"""
         print_with_timestamp("=== Testing RETRIEVE_DATA Command ===")
         command = {
-            "alpha_command": "retrieve_data",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "retrieve_data"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="retrieve_data")
-            if response and response.get("alpha_command") == "retrieve_data":
+            if response and response.get("command") == "retrieve_data":
                 print_with_timestamp("✅ RETRIEVE_DATA command test PASSED")
                 return True
             else:
@@ -179,13 +191,16 @@ class AlphaCommsManagerTester:
         """Test pause command"""
         print_with_timestamp("=== Testing PAUSE Command ===")
         command = {
-            "alpha_command": "pause",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "pause"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="pause")
-            if response and response.get("alpha_command") == "pause":
+            if response and response.get("command") == "pause":
                 print_with_timestamp("✅ PAUSE command test PASSED")
                 return True
             else:
@@ -196,13 +211,16 @@ class AlphaCommsManagerTester:
         """Test resume command"""
         print_with_timestamp("=== Testing RESUME Command ===")
         command = {
-            "alpha_command": "resume",
-            "message_source": "proteus"
+            "message_source": "proteus",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "resume"
+            }
         }
         
         if self.send_command(command):
             response = self.read_response(expected_command="resume")
-            if response and response.get("alpha_command") == "resume":
+            if response and response.get("command") == "resume":
                 print_with_timestamp("✅ RESUME command test PASSED")
                 return True
             else:
@@ -215,9 +233,12 @@ class AlphaCommsManagerTester:
         
         # Test sequence initialization
         init_command = {
-            "alpha_command": "sequence_cmd",
             "message_source": "proteus",
-            "number_of_states": 3
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "sequence_cmd",
+                "number_of_states": 3
+            }
         }
         
         if not self.send_command(init_command):
@@ -225,7 +246,7 @@ class AlphaCommsManagerTester:
             return False
         
         response = self.read_response(expected_command="sequence_ack")
-        if not response or response.get("alpha_command") != "sequence_ack":
+        if not response or response.get("command") != "sequence_ack":
             print_with_timestamp("❌ Sequence init acknowledgment test FAILED")
             return False
         
@@ -250,42 +271,45 @@ class AlphaCommsManagerTester:
             # Send the sequence line data as JSON object with realistic values
             # Each sequence line has different values to test variety
             line_command = {
-                "alpha_command": "sequence_cmd",
                 "message_source": "proteus",
-                "sequence_number": i,
-                "state": {
-                    "cmd": i,  # Different command for each sequence
-                    "circFlow": 100 + (i * 50),  # Varying flow rates
-                    "pressureFlow": 200 + (i * 25),
-                    "valve1": i % 2 == 0,  # Alternating valve states
-                    "valve2": i % 2 == 1,
-                    "valve3": False,
-                    "valve4": False,
-                    "valve5": False,
-                    "valve6": False,
-                    "valve7": False,
-                    "valve8": False,
-                    "valve9": False,
-                    "valve10": False,
-                    "airpump1": i % 2 == 0,
-                    "airpump2": i % 2 == 1,
-                    "pressureSP": 1.0 + (i * 0.5),
-                    "oxySP": 1.0 + (i * 0.3),
-                    "pressureKp": 1.0 + (i * 0.1),
-                    "pressureKi": 1.0 + (i * 0.05),
-                    "pressureKd": 1.0 + (i * 0.02),
-                    "oxyKp": 1.0 + (i * 0.1),
-                    "oxyKi": 1.0 + (i * 0.05),
-                    "oxyKd": 1.0 + (i * 0.02),
-                    "pump2Dir": True,
-                    "pump1Dir": True,
-                    "tube_bore": 1 + i,
-                    "pump_2_speed_ratio": 1.0 + (i * 0.1),
-                    "ascmds1": 1 + i,
-                    "ascmds2": 1 + i,
-                    "ascmds3": 1 + i,
-                    "wristCmd": i,
-                    "transTimeSec": 2 + i
+                "timestamp": datetime.now().isoformat(),
+                "message": {
+                    "command": "sequence_cmd",
+                    "sequence_number": i,
+                    "state": {
+                        "cmd": i,  # Different command for each sequence
+                        "circFlow": 100 + (i * 50),  # Varying flow rates
+                        "pressureFlow": 200 + (i * 25),
+                        "valve1": i % 2 == 0,  # Alternating valve states
+                        "valve2": i % 2 == 1,
+                        "valve3": False,
+                        "valve4": False,
+                        "valve5": False,
+                        "valve6": False,
+                        "valve7": False,
+                        "valve8": False,
+                        "valve9": False,
+                        "valve10": False,
+                        "airpump1": i % 2 == 0,
+                        "airpump2": i % 2 == 1,
+                        "pressureSP": 1.0 + (i * 0.5),
+                        "oxySP": 1.0 + (i * 0.3),
+                        "pressureKp": 1.0 + (i * 0.1),
+                        "pressureKi": 1.0 + (i * 0.05),
+                        "pressureKd": 1.0 + (i * 0.02),
+                        "oxyKp": 1.0 + (i * 0.1),
+                        "oxyKi": 1.0 + (i * 0.05),
+                        "oxyKd": 1.0 + (i * 0.02),
+                        "pump2Dir": True,
+                        "pump1Dir": True,
+                        "tube_bore": 1 + i,
+                        "pump_2_speed_ratio": 1.0 + (i * 0.1),
+                        "ascmds1": 1 + i,
+                        "ascmds2": 1 + i,
+                        "ascmds3": 1 + i,
+                        "wristCmd": i,
+                        "transTimeSec": 2 + i
+                    }
                 }
             }
             
@@ -294,7 +318,7 @@ class AlphaCommsManagerTester:
                 return False
             
             response = self.read_response(expected_command="sequence_ack")
-            if not response or response.get("alpha_command") != "sequence_ack":
+            if not response or response.get("command") != "sequence_ack":
                 print_with_timestamp(f"❌ Sequence line {i} acknowledgment test FAILED")
                 return False
             
@@ -302,7 +326,7 @@ class AlphaCommsManagerTester:
         
         # Check for completion
         response = self.read_response(expected_command="sequence_complete", timeout=15.0)
-        if response and response.get("alpha_command") == "sequence_complete":
+        if response and response.get("command") == "sequence_complete":
             print_with_timestamp("✅ Sequence completion test PASSED")
             return True
         else:
