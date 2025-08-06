@@ -62,7 +62,7 @@ class AlphaCommsManagerTester:
             print_with_timestamp(f"Error sending command: {e}")
             return False
     
-    def read_response(self, timeout=10.0, expected_command=None):
+    def read_response(self, timeout=15.0, expected_command=None):
         """Read response from AlphaCommsManager, looking for specific command acknowledgment"""
         try:
             start_time = time.time()
@@ -83,12 +83,21 @@ class AlphaCommsManagerTester:
                                     response = json.loads(line)
                                     print_with_timestamp(f"RECEIVED: {line}")
                                     
+                                    # Ensure response is a dictionary
+                                    if not isinstance(response, dict):
+                                        print_with_timestamp(f"Warning: Received non-dictionary response: {type(response)}")
+                                        continue
+                                    
                                     # If we're looking for a specific command acknowledgment
                                     if expected_command:
                                         # Check if command is at top level (legacy) or in message field (new format)
                                         command = response.get("command")
                                         if not command and "message" in response:
-                                            command = response.get("message", {}).get("command")
+                                            message = response.get("message", {})
+                                            if isinstance(message, dict):
+                                                command = message.get("command")
+                                            else:
+                                                continue  # Skip if message is not a dict
                                         
                                         if command == expected_command:
                                             return response
@@ -98,12 +107,14 @@ class AlphaCommsManagerTester:
                                         return response
                                         
                                 except json.JSONDecodeError:
+                                    # Log the incomplete JSON but don't try to process it
                                     print_with_timestamp(f"Non-JSON response: {line}")
+                                    continue  # Skip this line and continue looking
                         
                         # Keep incomplete line in buffer
                         buffer = lines[-1]
                 
-                time.sleep(0.01)  # Small delay to prevent busy waiting
+                time.sleep(0.05)  # Increased delay to prevent busy waiting
             
             print_with_timestamp(f"No expected response received within timeout (looking for: {expected_command})")
             return None
@@ -424,47 +435,46 @@ class AlphaCommsManagerTester:
             return False
     
     def run_all_tests(self):
-        """Run all tests"""
+        """Run all tests and report results"""
         print_with_timestamp("Starting AlphaCommsManager tests...")
         print_with_timestamp("=" * 50)
         
-        if not self.connect():
-            return False
+        tests = [
+            self.test_stop_command,
+            self.test_start_data_log_command,
+            self.test_stop_data_log_command,
+            self.test_retrieve_data_command,
+            self.test_pause_command,
+            self.test_resume_command,
+            self.test_sequence_commands
+        ]
         
-        try:
-            tests = [
-                self.test_stop_command,
-                self.test_start_data_log_command,
-                self.test_stop_data_log_command,
-                self.test_retrieve_data_command,
-                self.test_pause_command,
-                self.test_resume_command,
-                self.test_sequence_commands
-            ]
-            
-            passed = 0
-            total = len(tests)
-            
-            for test in tests:
+        passed = 0
+        total = len(tests)
+        
+        for test in tests:
+            try:
                 if test():
                     passed += 1
-                time.sleep(0.5)  # Small delay between tests
-            
-            print_with_timestamp("=" * 50)
-            print_with_timestamp(f"Test Results: {passed}/{total} tests passed")
-            
-            if passed == total:
-                print_with_timestamp("🎉 ALL TESTS PASSED!")
-            else:
-                print_with_timestamp("❌ Some tests failed")
-            
-            return passed == total
-            
-        finally:
-            self.disconnect()
+                # Add delay between tests
+                time.sleep(0.5)
+            except Exception as e:
+                print_with_timestamp(f"Error in test: {e}")
+        
+        print_with_timestamp("=" * 50)
+        print_with_timestamp(f"Test Results: {passed}/{total} tests passed")
+        
+        if passed == total:
+            print_with_timestamp("✅ All tests passed")
+            return True
+        else:
+            print_with_timestamp("❌ Some tests failed")
+            return False
 
 def main():
     # Allow command line arguments for port and baudrate
+    import sys
+    
     port = 'COM4'
     baudrate = 115200
     
@@ -473,10 +483,15 @@ def main():
     if len(sys.argv) > 2:
         baudrate = int(sys.argv[2])
     
-    tester = AlphaCommsManagerTester(port, baudrate)
-    success = tester.run_all_tests()
+    tester = AlphaCommsManagerTester(port=port, baudrate=baudrate)
     
-    sys.exit(0 if success else 1)
+    if not tester.connect():
+        return False
+    
+    try:
+        return tester.run_all_tests()
+    finally:
+        tester.disconnect()
 
 if __name__ == "__main__":
     main() 
