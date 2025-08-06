@@ -85,7 +85,12 @@ class AlphaCommsManagerTester:
                                     
                                     # If we're looking for a specific command acknowledgment
                                     if expected_command:
-                                        if response.get("command") == expected_command:
+                                        # Check if command is at top level (legacy) or in message field (new format)
+                                        command = response.get("command")
+                                        if not command and "message" in response:
+                                            command = response.get("message", {}).get("command")
+                                        
+                                        if command == expected_command:
                                             return response
                                         # Keep looking for the expected command
                                     else:
@@ -120,9 +125,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="stop")
-            if response and response.get("command") == "stop":
-                print_with_timestamp("✅ STOP command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "stop":
+                    print_with_timestamp("✅ STOP command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ STOP command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ STOP command test FAILED")
                 return False
@@ -140,9 +154,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="start_data_log")
-            if response and response.get("command") == "start_data_log":
-                print_with_timestamp("✅ START_DATA_LOG command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "start_data_log":
+                    print_with_timestamp("✅ START_DATA_LOG command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ START_DATA_LOG command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ START_DATA_LOG command test FAILED")
                 return False
@@ -160,9 +183,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="stop_data_log")
-            if response and response.get("command") == "stop_data_log":
-                print_with_timestamp("✅ STOP_DATA_LOG command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "stop_data_log":
+                    print_with_timestamp("✅ STOP_DATA_LOG command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ STOP_DATA_LOG command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ STOP_DATA_LOG command test FAILED")
                 return False
@@ -180,9 +212,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="retrieve_data")
-            if response and response.get("command") == "retrieve_data":
-                print_with_timestamp("✅ RETRIEVE_DATA command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "retrieve_data":
+                    print_with_timestamp("✅ RETRIEVE_DATA command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ RETRIEVE_DATA command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ RETRIEVE_DATA command test FAILED")
                 return False
@@ -200,9 +241,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="pause")
-            if response and response.get("command") == "pause":
-                print_with_timestamp("✅ PAUSE command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "pause":
+                    print_with_timestamp("✅ PAUSE command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ PAUSE command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ PAUSE command test FAILED")
                 return False
@@ -220,9 +270,18 @@ class AlphaCommsManagerTester:
         
         if self.send_command(command):
             response = self.read_response(expected_command="resume")
-            if response and response.get("command") == "resume":
-                print_with_timestamp("✅ RESUME command test PASSED")
-                return True
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "resume":
+                    print_with_timestamp("✅ RESUME command test PASSED")
+                    return True
+                else:
+                    print_with_timestamp("❌ RESUME command test FAILED")
+                    return False
             else:
                 print_with_timestamp("❌ RESUME command test FAILED")
                 return False
@@ -246,11 +305,20 @@ class AlphaCommsManagerTester:
             return False
         
         response = self.read_response(expected_command="sequence_ack")
-        if not response or response.get("command") != "sequence_ack":
+        if response:
+            # Check if command is at top level (legacy) or in message field (new format)
+            response_command = response.get("command")
+            if not response_command and "message" in response:
+                response_command = response.get("message", {}).get("command")
+            
+            if response_command == "sequence_ack":
+                print_with_timestamp("✅ Sequence init test PASSED")
+            else:
+                print_with_timestamp("❌ Sequence init acknowledgment test FAILED")
+                return False
+        else:
             print_with_timestamp("❌ Sequence init acknowledgment test FAILED")
             return False
-        
-        print_with_timestamp("✅ Sequence init test PASSED")
         
         # Test sequence line data - wait for requests from AlphaCommsManager
         for i in range(3):
@@ -261,7 +329,11 @@ class AlphaCommsManagerTester:
                 print_with_timestamp(f"❌ No sequence request received for line {i}")
                 return False
             
+            # Check if sequence_request is at top level or in message field
             requested_line = request_response.get("sequence_request")
+            if not requested_line and "message" in request_response:
+                requested_line = request_response.get("message", {}).get("sequence_request")
+            
             if requested_line != i:
                 print_with_timestamp(f"❌ Expected request for line {i}, got {requested_line}")
                 return False
@@ -318,17 +390,35 @@ class AlphaCommsManagerTester:
                 return False
             
             response = self.read_response(expected_command="sequence_ack")
-            if not response or response.get("command") != "sequence_ack":
+            if response:
+                # Check if command is at top level (legacy) or in message field (new format)
+                response_command = response.get("command")
+                if not response_command and "message" in response:
+                    response_command = response.get("message", {}).get("command")
+                
+                if response_command == "sequence_ack":
+                    print_with_timestamp(f"✅ Sequence line {i} test PASSED")
+                else:
+                    print_with_timestamp(f"❌ Sequence line {i} acknowledgment test FAILED")
+                    return False
+            else:
                 print_with_timestamp(f"❌ Sequence line {i} acknowledgment test FAILED")
                 return False
-            
-            print_with_timestamp(f"✅ Sequence line {i} test PASSED")
         
         # Check for completion
         response = self.read_response(expected_command="sequence_complete", timeout=15.0)
-        if response and response.get("command") == "sequence_complete":
-            print_with_timestamp("✅ Sequence completion test PASSED")
-            return True
+        if response:
+            # Check if command is at top level (legacy) or in message field (new format)
+            response_command = response.get("command")
+            if not response_command and "message" in response:
+                response_command = response.get("message", {}).get("command")
+            
+            if response_command == "sequence_complete":
+                print_with_timestamp("✅ Sequence completion test PASSED")
+                return True
+            else:
+                print_with_timestamp("❌ Sequence completion test FAILED")
+                return False
         else:
             print_with_timestamp("❌ Sequence completion test FAILED")
             return False
