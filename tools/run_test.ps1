@@ -5,7 +5,7 @@ Write-Host ""
 
 Write-Host "Restarting MicroPython firmware..." -ForegroundColor Yellow
 try {
-    ampy --port COM4 reset
+    ampy --port COM4 run cellag/main.py
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to restart firmware" -ForegroundColor Red
         Read-Host "Press Enter to continue"
@@ -19,8 +19,8 @@ try {
 }
 Write-Host ""
 
-Write-Host "Waiting 5 seconds for firmware to initialize..." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
+Write-Host "Waiting 3 seconds for firmware to initialize..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
 Write-Host ""
 
 Write-Host "Running AlphaCommsManager tests..." -ForegroundColor Yellow
