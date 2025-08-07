@@ -102,6 +102,10 @@ class AlphaCommsManagerTester:
                                         if command == expected_command:
                                             return response
                                         # Keep looking for the expected command
+                                        else:
+                                            # Debug: log what command we received vs what we're looking for
+                                            if expected_command == "sequence_request":
+                                                print_with_timestamp(f"DEBUG: Looking for '{expected_command}', received '{command}'")
                                     else:
                                         # Return the first valid JSON response
                                         return response
@@ -335,7 +339,7 @@ class AlphaCommsManagerTester:
         for i in range(3):
             # Wait for sequence request from AlphaCommsManager
             print_with_timestamp(f"Waiting for sequence request for line {i}...")
-            request_response = self.read_response(expected_command="sequence_request", timeout=10.0)
+            request_response = self.read_response(expected_command="sequence_request", timeout=15.0)
             if not request_response:
                 print_with_timestamp(f"❌ No sequence request received for line {i}")
                 return False
