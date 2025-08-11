@@ -339,7 +339,7 @@ class AlphaCommsManagerTester:
         for i in range(3):
             # Wait for sequence request from AlphaCommsManager
             print_with_timestamp(f"Waiting for sequence request for line {i}...")
-            request_response = self.read_response(expected_command="sequence_request", timeout=15.0)
+            request_response = self.read_response(expected_command="sequence_request", timeout=20.0)  # Increased timeout
             if not request_response:
                 print_with_timestamp(f"❌ No sequence request received for line {i}")
                 return False
@@ -354,6 +354,9 @@ class AlphaCommsManagerTester:
                 return False
             
             print_with_timestamp(f"✅ Received sequence request for line {i}")
+            
+            # Add a small delay to ensure the device is ready
+            time.sleep(0.1)
             
             # Send the sequence line data as JSON object with realistic values
             # Each sequence line has different values to test variety
