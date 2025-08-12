@@ -301,6 +301,58 @@ class AlphaCommsManagerTester:
                 print_with_timestamp("❌ RESUME command test FAILED")
                 return False
     
+    def test_idle_heartbeat(self):
+        """Test idle state heartbeat messages"""
+        print_with_timestamp("=== Testing IDLE Heartbeat ===")
+        
+        # Wait for idle heartbeat message (should come every 5 seconds)
+        print_with_timestamp("Waiting for idle heartbeat message...")
+        heartbeat_response = self.read_response(expected_command="state_notification", timeout=10.0)
+        if heartbeat_response:
+            # Check if it's an idle heartbeat
+            message = heartbeat_response.get("message", {})
+            if isinstance(message, dict):
+                state = message.get("state")
+                action = message.get("action")
+                if state == "idle" and action == "idle_heartbeat":
+                    print_with_timestamp("✅ Idle heartbeat test PASSED")
+                    return True
+                else:
+                    print_with_timestamp(f"❌ Unexpected heartbeat: {state}, {action}")
+                    return False
+            else:
+                print_with_timestamp("❌ Invalid heartbeat format")
+                return False
+        else:
+            print_with_timestamp("❌ No idle heartbeat received")
+            return False
+    
+    def test_idle_after_sequence(self):
+        """Test that ESP32 returns to idle state after sequence completion"""
+        print_with_timestamp("=== Testing IDLE State After Sequence ===")
+        
+        # Wait for transition back to idle state
+        print_with_timestamp("Waiting for transition to idle state...")
+        idle_response = self.read_response(expected_command="state_notification", timeout=10.0)
+        if idle_response:
+            # Check if it's an idle state notification
+            message = idle_response.get("message", {})
+            if isinstance(message, dict):
+                state = message.get("state")
+                action = message.get("action")
+                if state == "idle" and action == "entered_idle":
+                    print_with_timestamp("✅ Idle state transition test PASSED")
+                    return True
+                else:
+                    print_with_timestamp(f"❌ Unexpected state transition: {state}, {action}")
+                    return False
+            else:
+                print_with_timestamp("❌ Invalid state notification format")
+                return False
+        else:
+            print_with_timestamp("❌ No idle state transition received")
+            return False
+    
     def test_sequence_commands(self):
         """Test sequence commands"""
         print_with_timestamp("=== Testing SEQUENCE Commands ===")
@@ -447,13 +499,15 @@ class AlphaCommsManagerTester:
         print_with_timestamp("=" * 50)
         
         tests = [
+            self.test_idle_heartbeat,
             self.test_stop_command,
             self.test_start_data_log_command,
             self.test_stop_data_log_command,
             self.test_retrieve_data_command,
             self.test_pause_command,
             self.test_resume_command,
-            self.test_sequence_commands
+            self.test_sequence_commands,
+            self.test_idle_after_sequence
         ]
         
         passed = 0
