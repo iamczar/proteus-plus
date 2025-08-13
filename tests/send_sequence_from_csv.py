@@ -239,12 +239,15 @@ class SequenceSender:
         print_with_timestamp("✅ sequence_complete")
 
         # Post-send verification using structured system messages from SequenceController
-        if not self.wait_for_sc_event("executing", sequence=0, timeout=15.0):
+        saw_exec0 = self.wait_for_sc_event("executing", sequence=0, timeout=15.0)
+        if not saw_exec0:
             print_with_timestamp("❌ SequenceController did not start executing sequence 0")
             return False
         print_with_timestamp("✅ SequenceController started executing")
 
-        for i in range(len(entries)):
+        # We already consumed executing(0); don't require it again in loop
+        start_idx = 1 if saw_exec0 else 0
+        for i in range(start_idx, len(entries)):
             if not self.wait_for_sc_event("executing", sequence=i, timeout=15.0):
                 print_with_timestamp(f"❌ Missing executing event for sequence {i}")
                 return False
