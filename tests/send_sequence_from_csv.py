@@ -154,12 +154,20 @@ class SequenceSender:
             return False
         return self.read_until(timeout, pred) is not None
 
-    def wait_for_log_contains(self, needle: str, timeout: float) -> bool:
+    def wait_for_sc_event(self, event: str, sequence: int | None = None, timeout: float = 10.0, total_sequences: int | None = None) -> bool:
         def pred(obj):
-            if obj.get("message_source") == "SysLogger":
-                m = obj.get("message")
-                return isinstance(m, str) and needle in m
-            return False
+            if obj.get("message_source") != "sequence_controller":
+                return False
+            m = obj.get("message")
+            if not isinstance(m, dict):
+                return False
+            if m.get("event") != event:
+                return False
+            if sequence is not None and m.get("sequence") != sequence:
+                return False
+            if total_sequences is not None and m.get("total_sequences") != total_sequences:
+                return False
+            return True
         return self.read_until(timeout, pred) is not None
 
     def run(self, csv_path: str) -> bool:
@@ -230,25 +238,25 @@ class SequenceSender:
             return False
         print_with_timestamp("✅ sequence_complete")
 
-        # Post-send verification: ensure SequenceController is executing
-        if not self.wait_for_log_contains("SequenceController: Received sequence completion event", 10.0):
-            print_with_timestamp("❌ SequenceController did not receive completion event")
+        # Post-send verification using structured system messages from SequenceController
+        if not self.wait_for_sc_event("executing", sequence=0, timeout=15.0):
+            print_with_timestamp("❌ SequenceController did not start executing sequence 0")
             return False
-        print_with_timestamp("✅ SequenceController received completion event")
+        print_with_timestamp("✅ SequenceController started executing")
 
         for i in range(len(entries)):
-            if not self.wait_for_log_contains(f"Executing sequence {i}", 15.0):
-                print_with_timestamp(f"❌ Missing 'Executing sequence {i}' log")
+            if not self.wait_for_sc_event("executing", sequence=i, timeout=15.0):
+                print_with_timestamp(f"❌ Missing executing event for sequence {i}")
                 return False
-            if not self.wait_for_log_contains(f"Dispatched sequence {i} commands", 15.0):
-                print_with_timestamp(f"❌ Missing 'Dispatched sequence {i} commands' log")
+            if not self.wait_for_sc_event("dispatched", sequence=i, timeout=15.0):
+                print_with_timestamp(f"❌ Missing dispatched event for sequence {i}")
                 return False
-            print_with_timestamp(f"✅ Executed line {i}")
+            print_with_timestamp(f"✅ Executed and dispatched line {i}")
 
-        if not self.wait_for_log_contains("SequenceController: All sequences completed", 20.0):
-            print_with_timestamp("❌ Missing final completion log from SequenceController")
+        if not self.wait_for_sc_event("execution-complete", total_sequences=len(entries), timeout=20.0):
+            print_with_timestamp("❌ Missing execution-complete event from SequenceController")
             return False
-        print_with_timestamp("✅ SequenceController completion verified")
+        print_with_timestamp("✅ SequenceController execution complete event verified")
         return True
 
 
