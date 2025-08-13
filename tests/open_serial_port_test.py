@@ -1,8 +1,12 @@
 """
-Open a serial port by COM name and optionally read for a short duration.
+Open a serial port by COM name and display incoming messages.
 
 Usage:
   python open_serial_port_test.py COM4 [BAUD] [--read-seconds 5]
+
+Notes:
+  - If --read-seconds <= 0 (default), it reads indefinitely until Ctrl+C.
+  - If --read-seconds > 0, it reads for that many seconds and exits.
 
 Examples:
   python open_serial_port_test.py COM4
@@ -24,7 +28,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Open a serial port by COM name and optionally read.")
     parser.add_argument("port", help="Serial port (e.g., COM4 or /dev/ttyUSB0)")
     parser.add_argument("baud", nargs="?", type=int, default=115200, help="Baud rate (default: 115200)")
-    parser.add_argument("--read-seconds", dest="read_seconds", type=float, default=0.0, help="If >0, read and print incoming data for this many seconds")
+    parser.add_argument("--read-seconds", dest="read_seconds", type=float, default=0.0, help="If <=0, read indefinitely; if >0, read for N seconds")
     args = parser.parse_args()
 
     ser = None
@@ -32,29 +36,35 @@ def main() -> int:
         ser = serial.Serial(args.port, args.baud, timeout=0.2)
         print(f"Opened serial port {args.port} @ {args.baud}")
 
-        if args.read_seconds and args.read_seconds > 0:
-            print(f"Reading for {args.read_seconds} seconds... (Ctrl+C to stop)")
-            start = time.time()
-            buffer = b""
-            while time.time() - start < args.read_seconds:
+        # Reader: indefinite by default; time-bound if --read-seconds > 0
+        start = time.time()
+        buffer = b""
+        print(
+            "Reading indefinitely... (Ctrl+C to stop)"
+            if args.read_seconds <= 0
+            else f"Reading for {args.read_seconds} seconds... (Ctrl+C to stop)"
+        )
+        while True:
+            if args.read_seconds > 0 and (time.time() - start >= args.read_seconds):
+                break
+            try:
+                waiting = ser.in_waiting
+            except Exception:
+                waiting = 0
+            if waiting:
                 try:
-                    waiting = ser.in_waiting
+                    chunk = ser.read(waiting)
+                    if chunk:
+                        buffer += chunk
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            try:
+                                print(line.decode("utf-8", errors="replace"))
+                            except Exception:
+                                print(repr(line))
                 except Exception:
-                    waiting = 0
-                if waiting:
-                    try:
-                        chunk = ser.read(waiting)
-                        if chunk:
-                            buffer += chunk
-                            while b"\n" in buffer:
-                                line, buffer = buffer.split(b"\n", 1)
-                                try:
-                                    print(line.decode("utf-8", errors="replace"))
-                                except Exception:
-                                    print(repr(line))
-                    except Exception:
-                        pass
-                time.sleep(0.02)
+                    pass
+            time.sleep(0.02)
         return 0
     except KeyboardInterrupt:
         return 0
