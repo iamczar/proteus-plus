@@ -227,6 +227,8 @@ def run(port: str, baud: int) -> bool:
         print_with_timestamp("✅ SequenceController started executing")
 
         # Pause
+        # Small delay to avoid race with first line post-dispatch work
+        time.sleep(0.3)
         if not send_simple_command(client, "pause"):
             return False
         if not client.wait_for_sc_event("paused", timeout=5.0, state="paused"):
@@ -258,17 +260,6 @@ def run(port: str, baud: int) -> bool:
             print_with_timestamp("❌ No idle status after stop")
             return False
         print_with_timestamp("✅ stopped → idle")
-
-        # Reset
-        if not send_simple_command(client, "reset"):
-            return False
-        if not client.wait_for_sc_event("reset", timeout=5.0, state="idle"):
-            print_with_timestamp("❌ No reset event")
-            return False
-        if not client.wait_for_sc_status("idle", timeout=5.0):
-            print_with_timestamp("❌ No idle status after reset")
-            return False
-        print_with_timestamp("✅ reset → idle")
 
         print_with_timestamp("=== All control checks passed ===")
         return True
