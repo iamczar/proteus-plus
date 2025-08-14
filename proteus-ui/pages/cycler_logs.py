@@ -14,8 +14,8 @@ ModuleManager().select_module()
 log_box_css = """
 <style>
 .log-box {
-    background-color: #f5f5f5;
-    color: #1B481B;
+    background-color: #252525;
+    color: #00FF7D;
     padding: 1em;
     border-radius: 8px;
     height: 500px;
@@ -23,7 +23,7 @@ log_box_css = """
     font-family: monospace;
     font-size: 14px;
     white-space: pre-wrap;
-    border: 1px solid #ccc;  /* Light grey border */
+    border: 1px solid #333;
 }
 </style>
 """
