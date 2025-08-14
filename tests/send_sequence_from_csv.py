@@ -85,6 +85,9 @@ class SequenceSender:
         self.port = port
         self.baudrate = baudrate
         self.ser: serial.Serial | None = None
+        # Backlog of already-read messages so we don't drop lines that
+        # arrive in the same read chunk after a predicate match
+        self._backlog: list[dict] = []
 
     def connect(self) -> bool:
         try:
@@ -117,11 +120,27 @@ class SequenceSender:
         start = time.time()
         buffer = ""
         while time.time() - start < timeout:
+            # First, drain any backlog captured from a previous call
+            if self._backlog:
+                # Iterate over a snapshot so we can pop safely
+                remaining: list[dict] = []
+                matched: dict | None = None
+                for obj in self._backlog:
+                    if matched is None and predicate(obj):
+                        matched = obj
+                        continue
+                    remaining.append(obj)
+                self._backlog = remaining
+                if matched is not None:
+                    return matched
+
             chunk = self._read_available()
             if chunk:
                 buffer += chunk
                 if "\n" in buffer:
                     parts = buffer.split("\n")
+                    # Parse all complete lines first so we can backlog
+                    parsed_objs: list[dict] = []
                     for line in parts[:-1]:
                         line = line.strip()
                         if not line:
@@ -129,10 +148,21 @@ class SequenceSender:
                         try:
                             obj = json.loads(line)
                             print_with_timestamp(f"RECEIVED: {line}")
-                            if predicate(obj):
-                                return obj
+                            parsed_objs.append(obj)
                         except json.JSONDecodeError:
                             print_with_timestamp(f"Non-JSON response: {line}")
+                    # Scan for first match; backlog the rest in order
+                    matched_idx = None
+                    for idx, obj in enumerate(parsed_objs):
+                        if predicate(obj):
+                            matched_idx = idx
+                            break
+                    if matched_idx is not None:
+                        # Backlog any remaining objects after the match
+                        if matched_idx + 1 < len(parsed_objs):
+                            self._backlog.extend(parsed_objs[matched_idx + 1:])
+                        return parsed_objs[matched_idx]
+                    # No match yet; stash nothing since we'll continue looping
                     buffer = parts[-1]
             time.sleep(0.05)
         return None
@@ -239,16 +269,20 @@ class SequenceSender:
         print_with_timestamp("✅ sequence_complete")
 
         # Post-send verification using structured system messages from SequenceController
-        if not self.wait_for_sc_event("executing", sequence=0, timeout=15.0):
+        total = len(entries)
+        saw_exec0 = self.wait_for_sc_event("executing", sequence=0, timeout=15.0, total_sequences=total)
+        if not saw_exec0:
             print_with_timestamp("❌ SequenceController did not start executing sequence 0")
             return False
         print_with_timestamp("✅ SequenceController started executing")
 
-        for i in range(len(entries)):
-            if not self.wait_for_sc_event("executing", sequence=i, timeout=15.0):
+        # We already consumed executing(0); don't require it again in loop
+        start_idx = 1 if saw_exec0 else 0
+        for i in range(start_idx, total):
+            if not self.wait_for_sc_event("executing", sequence=i, timeout=15.0, total_sequences=total):
                 print_with_timestamp(f"❌ Missing executing event for sequence {i}")
                 return False
-            if not self.wait_for_sc_event("dispatched", sequence=i, timeout=15.0):
+            if not self.wait_for_sc_event("dispatched", sequence=i, timeout=15.0, total_sequences=total):
                 print_with_timestamp(f"❌ Missing dispatched event for sequence {i}")
                 return False
             print_with_timestamp(f"✅ Executed and dispatched line {i}")
