@@ -19,6 +19,9 @@ render_toast_area(container=toast_placeholder.container())
 def update_toasts():
     render_toast_area(container=toast_placeholder.container())
 
+# Ensure the toast updater is active
+update_toasts()
+
 # Custom CSS to create a scrollable log box
 log_box_css = """
 <style>
@@ -42,18 +45,39 @@ st.markdown(log_box_css, unsafe_allow_html=True)
 # Create a container to hold the logs
 log_area = st.empty()
 
-# Initialize log history in session_state
-if "logs" not in st.session_state:
-    st.session_state.system_logs = []
+# ---------- Non-blocking log model ----------
+LOG_KEY = "cycler_logs"
 
-# Simulate appending logs
-while True:
-    st.session_state.system_logs.append(f"{datetime.now()} [INFO] - This is a log message")
 
-    # Keep only the last 100 logs to avoid growing too large
-    log_content = "\n".join(st.session_state.system_logs[-100:])
+def ensure_log_state():
+    if LOG_KEY not in st.session_state:
+        st.session_state[LOG_KEY] = []
 
-    # Show the logs inside a styled scrollable div
+
+def append_log(message: str, level: str = "INFO") -> None:
+    ensure_log_state()
+    st.session_state[LOG_KEY].append(f"{datetime.now()} [{level}] - {message}")
+    st.session_state[LOG_KEY] = st.session_state[LOG_KEY][-100:]
+
+
+def render_logs():
+    ensure_log_state()
+    log_content = "\n".join(st.session_state[LOG_KEY])
     log_area.markdown(f"<div class='log-box'>{log_content}</div>", unsafe_allow_html=True)
 
-    time.sleep(1)
+
+# Initial paint and seed with one dummy log so the area isn't empty
+ensure_log_state()
+if not st.session_state[LOG_KEY]:
+    append_log("This is a dummy log message")
+render_logs()
+
+
+# Periodic dummy updates to simulate incoming messages
+@st.fragment(run_every=2.0)
+def simulate_incoming_logs():
+    append_log("This is a dummy log message")
+    render_logs()
+
+# Ensure the simulator is active
+simulate_incoming_logs()
