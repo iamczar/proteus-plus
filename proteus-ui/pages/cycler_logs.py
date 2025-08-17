@@ -3,12 +3,21 @@ import streamlit as st
 
 from datetime import datetime
 from services.module_manager import ModuleManager
+from common.utils import render_toast_area
 
 st.set_page_config(page_title="Cycler Logs", layout="wide")
 st.title("Cycler Logs")
 
-# Module selection
+# Module selection and toast area
 ModuleManager().select_module()
+
+# Stable placeholder for toasts
+toast_placeholder = st.empty()
+render_toast_area(container=toast_placeholder.container())
+
+@st.fragment(run_every=0.5)
+def update_toasts():
+    render_toast_area(container=toast_placeholder.container())
 
 # Custom CSS to create a scrollable log box
 log_box_css = """

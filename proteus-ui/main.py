@@ -5,7 +5,7 @@ import streamlit as st
 dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", icon=":material/grid_view:")
 
 # Resources
-experiments_page = st.Page("pages/experiments.py", title="Experiments", icon=":material/science:")
+#experiments_page = st.Page("pages/experiments.py", title="Experiments", icon=":material/science:")
 live_view = st.Page("pages/live_view.py", title="Live View", icon=":material/show_chart:")
 #analyse_view = st.Page("pages/analyse_view.py", title="Analyse View", icon=":material/analytics:")
 cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":material/article:")
@@ -31,7 +31,7 @@ pg = st.navigation(
     #    dashboard_page,
     #],
     "Home": [
-        experiments_page,
+        #experiments_page,
         live_view,
         csv_viewer,
         cycler_logs
