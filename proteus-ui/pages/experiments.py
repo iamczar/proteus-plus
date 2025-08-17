@@ -5,6 +5,7 @@ import altair as alt
 import random
 
 from common.utils import show_toast
+from common.utils import render_toast_area
 from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Experiments", layout="wide")
@@ -12,6 +13,7 @@ st.title("Experiments")
 
 # Module selection
 ModuleManager().select_module()
+render_toast_area()
 
 @st.fragment
 def create_new_experiment():

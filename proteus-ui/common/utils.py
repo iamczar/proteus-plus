@@ -1,29 +1,61 @@
 ﻿import streamlit as st
 import random
+import time
 
 
-def show_toast(message, status="success"):
-    color_map = {
-        "success": ("#45BE89", "#00775a"),
-        "error": ("#D3616A", "#B71C1C"),
-        "warning": ("#FFB839", "#CC8400"),
-        "info": ("#709FB7", "#1565C0"),
-    }
+def show_toast(message: str, status: str = "success", duration: float = 5.0, source: str | None = None) -> None:
+    """
+    Unified toast helper: queues a persistent, in-page message.
 
-    bg, border = color_map.get(status, ("#444", "#222"))
+    - Does NOT use Streamlit's built-in st.toast (which fades quickly and overlaps UI)
+    - Pages should render messages by calling `render_toast_area()` at an appropriate location
+    """
+    if "_toasts" not in st.session_state:
+        st.session_state._toasts = []
+    st.session_state._toasts.append({
+        "message": message,
+        "status": status,
+        "expires": time.time() + max(duration, 0.1),
+        "source": source,
+    })
 
-    st.toast(message)
 
-    # Inject CSS to style the toast
-    st.markdown(f"""
-    <style>
-    [data-testid="stToast"] {{
-        background-color: {bg} !important;
-        color: white !important;
-        font-weight: bold;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
+def render_toast_area(max_messages: int = 3, container=None) -> None:
+    """Render the last few queued toasts. If a `container` (placeholder.container())
+    is provided, the content will replace previous content to avoid duplicates.
+    Call this in a stable UI position (e.g., between controls and charts).
+    """
+    if "_toasts" not in st.session_state:
+        st.session_state._toasts = []
+
+    # Filter out expired messages
+    now = time.time()
+    valid_toasts = [t for t in st.session_state._toasts if t.get("expires", 0) > now]
+    st.session_state._toasts = valid_toasts
+
+    # Always render into a known container to clear previous content
+    target = container if container is not None else st.container()
+    if not valid_toasts:
+        with target:
+            # Clear when no toasts
+            st.empty()
+        return
+    # Show newest first: take the last N, then reverse so the most recent is on top
+    to_show = list(reversed(valid_toasts[-max_messages:]))
+    with target:
+        for t in to_show:
+            status = t.get("status", "info")
+            src = t.get("source")
+            base = t.get("message", "")
+            msg = f"[{src}] {base}" if src else base
+            if status == "success":
+                st.success(msg)
+            elif status == "error":
+                st.error(msg)
+            elif status == "warning":
+                st.warning(msg)
+            else:
+                st.info(msg)
 
 
 def random_color():
