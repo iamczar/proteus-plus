@@ -1,0 +1,10 @@
+{
+    "message_source": "proteus",
+    "message": {
+      "command": "auto_sampler_cmd",
+      "sampler_id": 1,
+      "cmd": 2,
+      "hold_time": 0.5,
+      "delay_seconds": 10
+    }
+  }
