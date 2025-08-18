@@ -381,7 +381,7 @@ class AutoSamplerV2Tester:
         # Run tests
         for test_func, test_name in tests:
             self.run_test(test_func, test_name)
-            time.sleep(2)  # Brief pause between tests
+            time.sleep(5)  # Brief pause between tests
     
     def print_summary(self):
         """Print test summary"""
