@@ -7,7 +7,7 @@ import sys
 import serial  # pyserial
 
 
-def send_reset(port: str, baudrate: int = 115200, wait: bool = False, wait_timeout: float = 30.0) -> int:
+def send_reset(port: str, baudrate: int = 115200) -> int:
     try:
         with serial.Serial(port, baudrate, timeout=1) as ser:
             time.sleep(1)
@@ -27,15 +27,11 @@ def send_reset(port: str, baudrate: int = 115200, wait: bool = False, wait_timeo
             payload = json.dumps(cmd) + "\n"
             ser.write(payload.encode("utf-8"))
             print("Sent RESET to AutoSampler 1")
+            print("Listening for AutoSampler 1 messages (press Ctrl+C to exit)...")
 
-            if not wait:
-                return 0
-
-            print("Waiting for acknowledgement/state ...")
-            start = time.time()
-            while time.time() - start < wait_timeout:
+            while True:
                 try:
-                    line = ser.readline().decode("utf-8").strip()
+                    line = ser.readline().decode("utf-8", errors="ignore").strip()
                     if not line:
                         continue
                     msg = json.loads(line)
@@ -49,39 +45,45 @@ def send_reset(port: str, baudrate: int = 115200, wait: bool = False, wait_timeo
                     if not isinstance(flat, dict):
                         continue
 
-                    if (
-                        flat.get("message_source") == "auto_sampler"
-                        and flat.get("sampler_id") == 1
-                        and (
-                            flat.get("status") in {"command_received", "moving_to_bottom", "waiting_for_command"}
-                            or flat.get("event") == "error"
-                        )
-                    ):
-                        print("Received:", json.dumps(flat))
-                        return 0
+                    # Filter: only auto_sampler messages for sampler 1
+                    if flat.get("message_source") != "auto_sampler" or flat.get("sampler_id") != 1:
+                        continue
+
+                    # Print concise status line
+                    status = flat.get("status") or flat.get("event") or ""
+                    state = flat.get("state") or ""
+                    sensor = flat.get("sensor_state") or ""
+                    desc = flat.get("description") or flat.get("details") or ""
+                    ts = flat.get("timestamp")
+                    if isinstance(ts, (int, float)):
+                        ts_str = time.strftime("%H:%M:%S", time.localtime(ts))
+                    else:
+                        ts_str = str(ts) if ts else time.strftime("%H:%M:%S")
+                    print(f"[{ts_str}] sampler=1 status={status} state={state} sensor={sensor} {desc}")
                 except json.JSONDecodeError:
                     continue
+                except KeyboardInterrupt:
+                    print("\nExiting...")
+                    return 0
                 except Exception as e:
                     print(f"Read error: {e}")
-                    break
+                    time.sleep(0.5)
 
-            print("Timeout waiting for acknowledgement/state")
-            return 1
-
+    except KeyboardInterrupt:
+        print("\nExiting...")
+        return 0
     except Exception as e:
         print(f"Failed to send RESET: {e}")
         return 1
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Send RESET to AutoSampler 1")
+    parser = argparse.ArgumentParser(description="Send RESET to AutoSampler 1 and follow messages")
     parser.add_argument("--port", "-p", default="COM4", help="Serial port (default: COM4)")
     parser.add_argument("--baudrate", "-b", type=int, default=115200, help="Baudrate (default: 115200)")
-    parser.add_argument("--wait", action="store_true", help="Wait for acknowledgement/state")
-    parser.add_argument("--timeout", type=float, default=30.0, help="Wait timeout seconds (default: 30)")
     args = parser.parse_args()
 
-    return send_reset(args.port, args.baudrate, args.wait, args.timeout)
+    return send_reset(args.port, args.baudrate)
 
 
 if __name__ == "__main__":
