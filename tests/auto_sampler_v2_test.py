@@ -12,6 +12,10 @@ from queue import Queue, Empty
 from dataclasses import dataclass
 from typing import Optional, Dict, List
 import argparse
+try:
+    import paho.mqtt.client as mqtt  # type: ignore
+except Exception:
+    mqtt = None
 
 
 @dataclass
@@ -23,7 +27,7 @@ class TestResult:
 
 
 class AutoSamplerV2Tester:
-    def __init__(self, port: str, baudrate: int = 115200):
+    def __init__(self, port: str, baudrate: int = 115200, mqtt_enabled: bool = False, mqtt_host: str = "localhost", mqtt_port: int = 1883, mqtt_topic: str = "logs"):
         self.port = port
         self.baudrate = baudrate
         self.serial = None
@@ -36,6 +40,13 @@ class AutoSamplerV2Tester:
         self.test_timeout = 30  # seconds
         self.short_hold_time = 0.01  # hours (36 seconds)
         self.test_delay = 10  # seconds for delayed run test
+
+        # MQTT config
+        self.mqtt_enabled = mqtt_enabled and mqtt is not None
+        self.mqtt_host = mqtt_host
+        self.mqtt_port = mqtt_port
+        self.mqtt_topic = mqtt_topic
+        self.mqtt_client = None
         
     def connect(self):
         """Connect to the device"""
@@ -48,6 +59,17 @@ class AutoSamplerV2Tester:
             self.reader_thread = threading.Thread(target=self._message_reader, daemon=True)
             self.reader_thread.start()
             
+            # Connect MQTT if enabled
+            if self.mqtt_enabled:
+                try:
+                    self.mqtt_client = mqtt.Client()  # type: ignore
+                    self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, 60)
+                    self.mqtt_client.loop_start()
+                    print(f"🔗 MQTT connected to {self.mqtt_host}:{self.mqtt_port}, topic '{self.mqtt_topic}'")
+                except Exception as me:
+                    print(f"⚠️  MQTT connect failed: {me}")
+                    self.mqtt_enabled = False
+
             print(f"✅ Connected to {self.port}")
             return True
         except Exception as e:
@@ -61,6 +83,12 @@ class AutoSamplerV2Tester:
             self.reader_thread.join(timeout=2)
         if self.serial:
             self.serial.close()
+        if self.mqtt_client:
+            try:
+                self.mqtt_client.loop_stop()
+                self.mqtt_client.disconnect()
+            except Exception:
+                pass
         print("📴 Disconnected")
     
     def _message_reader(self):
@@ -77,11 +105,26 @@ class AutoSamplerV2Tester:
                                 flat = dict(msg)
                                 flat.update(msg["message"])  # promote inner message fields
                                 self.message_queue.put(flat)
+                                # Forward filtered messages to MQTT
+                                if self.mqtt_enabled and flat.get("message_source") in ("alpha_comms_manager", "auto_sampler"):
+                                    try:
+                                        self.mqtt_client.publish(self.mqtt_topic, json.dumps(flat), qos=0, retain=False)
+                                    except Exception:
+                                        pass
                             else:
                                 self.message_queue.put(msg)
+                                if self.mqtt_enabled and isinstance(msg, dict) and msg.get("message_source") in ("alpha_comms_manager", "auto_sampler"):
+                                    try:
+                                        self.mqtt_client.publish(self.mqtt_topic, json.dumps(msg), qos=0, retain=False)
+                                    except Exception:
+                                        pass
                         except json.JSONDecodeError:
                             # Suppress noisy non-JSON logs
-                            pass
+                            if self.mqtt_enabled:
+                                try:
+                                    self.mqtt_client.publish(self.mqtt_topic, json.dumps({"raw": line}), qos=0, retain=False)
+                                except Exception:
+                                    pass
                 time.sleep(0.01)
             except Exception as e:
                 if self.running:
@@ -355,13 +398,24 @@ class AutoSamplerV2Tester:
 
 def main():
     parser = argparse.ArgumentParser(description="AutoSamplerV2 Hardware Test")
-    parser.add_argument("--port", "-p", default="COM3", help="Serial port (default: COM3)")
+    parser.add_argument("--port", "-p", default="COM4", help="Serial port (default: COM4)")
     parser.add_argument("--baudrate", "-b", type=int, default=115200, help="Baudrate (default: 115200)")
+    parser.add_argument("--mqtt", action="store_true", help="Enable forwarding filtered logs to MQTT topic 'logs'")
+    parser.add_argument("--mqtt-host", default="localhost", help="MQTT broker host (default: localhost)")
+    parser.add_argument("--mqtt-port", type=int, default=1883, help="MQTT broker port (default: 1883)")
+    parser.add_argument("--mqtt-topic", default="logs", help="MQTT topic for logs (default: logs)")
     parser.add_argument("--test", "-t", help="Run specific test only")
     
     args = parser.parse_args()
     
-    tester = AutoSamplerV2Tester(args.port, args.baudrate)
+    tester = AutoSamplerV2Tester(
+        args.port,
+        args.baudrate,
+        mqtt_enabled=args.mqtt,
+        mqtt_host=args.mqtt_host,
+        mqtt_port=args.mqtt_port,
+        mqtt_topic=args.mqtt_topic,
+    )
     
     if not tester.connect():
         return 1
