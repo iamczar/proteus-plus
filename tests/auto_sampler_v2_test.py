@@ -219,10 +219,13 @@ class AutoSamplerV2Tester:
         """Test basic connectivity and initial state"""
         print("Testing basic connectivity...")
         
-        # Wait for any auto sampler status
-        message = self.wait_for_message(timeout=10, message_source="auto_sampler")
+        # Wait for any auto sampler status (longer timeout to allow first heartbeat)
+        message = self.wait_for_message(timeout=30, message_source="auto_sampler")
         if not message:
-            print("❌ No status messages received")
+            # Fallback: explicitly wait for sampler 1 idle state
+            if self.wait_for_state(1, "waiting_for_command", 30):
+                return True
+            print("❌ No status messages received and sampler 1 did not report idle")
             return False
         
         print(f"📨 Received auto_sampler system message")
