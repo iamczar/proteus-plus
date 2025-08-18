@@ -1,0 +1,4 @@
+# Test-only Python dependencies for Proteus host tests
+# Extends the base project requirements
+-r ../requirements.txt
+pyserial
