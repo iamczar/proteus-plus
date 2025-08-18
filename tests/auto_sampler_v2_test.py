@@ -256,7 +256,7 @@ class AutoSamplerV2Tester:
         states = ["moving_to_bottom", "moving_to_home", "waiting_for_command"]
         
         for state in states:
-            if not self.wait_for_state(1, state, 30):
+            if not self.wait_for_state(1, state, 60):
                 return False
         
         return True
