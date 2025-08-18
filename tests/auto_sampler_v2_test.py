@@ -245,8 +245,8 @@ class AutoSamplerV2Tester:
         # Send STOP command to sampler 1
         self.send_command(1, 0)  # STOP = 0
         
-        # Wait for waiting_for_command state
-        return self.wait_for_state(1, "waiting_for_command", 90)
+        # Expect explicit stopped state
+        return self.wait_for_state(1, "stopped", 90)
     
     def test_reset_command(self) -> bool:
         """Test RESET command (full cycle)"""
@@ -328,8 +328,8 @@ class AutoSamplerV2Tester:
         time.sleep(2)  # Let it move for a bit
         self.send_command(1, 0)  # STOP
         
-        # Should return to waiting
-        return self.wait_for_state(1, "waiting_for_command", 90)
+        # Should enter explicit stopped state
+        return self.wait_for_state(1, "stopped", 90)
     
     def test_multiple_samplers(self) -> bool:
         """Test commanding multiple samplers simultaneously"""
