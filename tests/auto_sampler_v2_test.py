@@ -65,7 +65,16 @@ class AutoSamplerV2Tester:
                     self.mqtt_client = mqtt.Client()  # type: ignore
                     self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, 60)
                     self.mqtt_client.loop_start()
-                    print(f"🔗 MQTT connected to {self.mqtt_host}:{self.mqtt_port}, topic '{self.mqtt_topic}'")
+                    # Announce tester online and forwarding config
+                    try:
+                        self.mqtt_client.publish(self.mqtt_topic, json.dumps({
+                            "message_source": "proteus_test",
+                            "event": "tester_online",
+                            "forwarding_sources": ["alpha_comms_manager", "auto_sampler"]
+                        }), qos=0, retain=False)
+                    except Exception:
+                        pass
+                    print(f"🔗 MQTT connected to {self.mqtt_host}:{self.mqtt_port}, forwarding to topic '{self.mqtt_topic}'")
                 except Exception as me:
                     print(f"⚠️  MQTT connect failed: {me}")
                     self.mqtt_enabled = False
@@ -408,6 +417,9 @@ def main():
     
     args = parser.parse_args()
     
+    if args.mqtt and mqtt is None:
+        print("⚠️  MQTT requested but paho-mqtt is not installed. Install with: pip install paho-mqtt")
+
     tester = AutoSamplerV2Tester(
         args.port,
         args.baudrate,
