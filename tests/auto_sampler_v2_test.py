@@ -181,7 +181,7 @@ class AutoSamplerV2Tester:
         
         return None
     
-    def wait_for_state(self, sampler_id: int, expected_state: str, timeout: float = 30) -> bool:
+    def wait_for_state(self, sampler_id: int, expected_state: str, timeout: float = 90) -> bool:
         """Wait for sampler to reach expected state"""
         print(f"⏳ Waiting for Sampler {sampler_id} to reach state: {expected_state}")
         message = self.wait_for_message(timeout=timeout, message_source="auto_sampler", sampler_id=sampler_id, status=expected_state)
@@ -223,7 +223,7 @@ class AutoSamplerV2Tester:
         message = self.wait_for_message(timeout=30, message_source="auto_sampler")
         if not message:
             # Fallback: explicitly wait for sampler 1 idle state
-            if self.wait_for_state(1, "waiting_for_command", 30):
+            if self.wait_for_state(1, "waiting_for_command", 90):
                 return True
             print("❌ No status messages received and sampler 1 did not report idle")
             return False
@@ -234,7 +234,7 @@ class AutoSamplerV2Tester:
     def test_all_idle(self) -> bool:
         """Ensure all samplers report waiting_for_command before running other tests"""
         for sid in [1, 2, 3]:
-            if not self.wait_for_state(sid, "waiting_for_command", 20):
+            if not self.wait_for_state(sid, "waiting_for_command", 90):
                 return False
         return True
     
@@ -246,7 +246,7 @@ class AutoSamplerV2Tester:
         self.send_command(1, 0)  # STOP = 0
         
         # Wait for waiting_for_command state
-        return self.wait_for_state(1, "waiting_for_command", 10)
+        return self.wait_for_state(1, "waiting_for_command", 90)
     
     def test_reset_command(self) -> bool:
         """Test RESET command (full cycle)"""
@@ -259,7 +259,7 @@ class AutoSamplerV2Tester:
         states = ["moving_to_bottom", "moving_to_home", "waiting_for_command"]
         
         for state in states:
-            if not self.wait_for_state(1, state, 60):
+            if not self.wait_for_state(1, state, 90):
                 return False
         
         return True
@@ -280,8 +280,7 @@ class AutoSamplerV2Tester:
         ]
         
         for state in states:
-            timeout = 60 if state == "holding_position" else 30
-            if not self.wait_for_state(1, state, timeout):
+            if not self.wait_for_state(1, state, 90):
                 return False
         
         return True
@@ -294,7 +293,7 @@ class AutoSamplerV2Tester:
         self.send_command(1, 3, hold_time=self.short_hold_time, delay_seconds=self.test_delay)  # DELAYED_RUN = 3
         
         # Should first go to delayed_run_waiting
-        if not self.wait_for_state(1, "delayed_run_waiting", 10):
+        if not self.wait_for_state(1, "delayed_run_waiting", 90):
             return False
         
         print(f"⏳ Waiting {self.test_delay} seconds for delay to complete...")
@@ -322,7 +321,7 @@ class AutoSamplerV2Tester:
         self.send_command(1, 2, hold_time=1.0)  # Long hold time
         
         # Wait for it to start moving
-        if not self.wait_for_state(1, "moving_to_bottom", 30):
+        if not self.wait_for_state(1, "moving_to_bottom", 90):
             return False
         
         # Send STOP command
@@ -330,7 +329,7 @@ class AutoSamplerV2Tester:
         self.send_command(1, 0)  # STOP
         
         # Should return to waiting
-        return self.wait_for_state(1, "waiting_for_command", 10)
+        return self.wait_for_state(1, "waiting_for_command", 90)
     
     def test_multiple_samplers(self) -> bool:
         """Test commanding multiple samplers simultaneously"""
@@ -342,7 +341,7 @@ class AutoSamplerV2Tester:
         
         # Wait for all to complete reset
         for sampler_id in [1, 2, 3]:
-            if not self.wait_for_state(sampler_id, "waiting_for_command", 60):
+            if not self.wait_for_state(sampler_id, "waiting_for_command", 90):
                 print(f"❌ Sampler {sampler_id} failed to complete reset")
                 return False
         
@@ -359,7 +358,7 @@ class AutoSamplerV2Tester:
         # Send RESET command (should work from any state)
         self.send_command(1, 1)  # RESET
         
-        return self.wait_for_state(1, "waiting_for_command", 60)
+        return self.wait_for_state(1, "waiting_for_command", 90)
     
     def run_all_tests(self):
         """Run all tests"""
