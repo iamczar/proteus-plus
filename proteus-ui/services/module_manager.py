@@ -37,21 +37,42 @@ class ModuleManager(metaclass=Singleton):
                     st.info("No modules detected.")
                     return
 
-                if "selected_module" not in st.session_state:
-                    # Default to the first available module
-                    st.session_state.selected_module = modules[0]
+                previous_value = st.session_state.get("selected_module")
+                if previous_value is not None and previous_value not in modules:
+                    try:
+                        del st.session_state["selected_module"]
+                    except Exception:
+                        pass
+                    previous_value = None
 
-                # TODO: remove toast trigger when navigating to another module-selectable page
-                # TODO: can do this with a previous page state cache
-
-                # Dropdown (single-select) bound to session state
-                new_value = st.selectbox(
-                    label="Module Selection:",
-                    options=modules,
-                    key="selected_module",
-                )
+                placeholder_label = "— Select a module —"
+                if previous_value is None:
+                    # No selection yet: render with placeholder (separate key)
+                    chosen = st.selectbox(
+                        label="Module Selection:",
+                        options=[placeholder_label] + modules,
+                        index=0,
+                        key="_module_select_first",
+                    )
+                else:
+                    # Selection exists: render without placeholder (different key)
+                    chosen = st.selectbox(
+                        label="Module Selection:",
+                        options=modules,
+                        index=(modules.index(previous_value) if previous_value in modules else 0),
+                        key="_module_select_final",
+                    )
 
                 # Save it in instance variable too if needed
-                self.selected_modules = st.session_state.selected_module
-                # Add to persistent toast area with source label for clarity
-                show_toast(f"Selected module: **{self.selected_modules}**", "info", source="Module Selection")
+                self.selected_modules = st.session_state.get("selected_module")
+
+                # Update selection only when a real module is chosen, and toast on change
+                if chosen != placeholder_label and chosen != previous_value:
+                    st.session_state.selected_module = chosen
+                    show_toast(
+                        f"Selected module: **{chosen}**",
+                        "success",
+                        source="Module Selection",
+                    )
+                    # Remove placeholder by switching to final widget on next render
+                    st.rerun()
