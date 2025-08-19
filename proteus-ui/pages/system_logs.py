@@ -4,6 +4,7 @@ from datetime import datetime
 import streamlit as st
 from services.module_manager import ModuleManager
 from common.utils import render_toast_area
+from common.utils import inject_button_theme
 from services.mqtt_service import MQTTService
 
 st.set_page_config(page_title="System Logs", layout="wide")
@@ -16,6 +17,9 @@ st.title("System Logs")
 # Stable placeholder for toasts
 toast_placeholder = st.empty()
 render_toast_area(container=toast_placeholder.container())
+
+# Consistent button styling across the app
+inject_button_theme()
 
 @st.fragment(run_every=0.5)
 def update_toasts():
@@ -38,6 +42,7 @@ log_box_css = """
     font-size: 14px;
     white-space: pre-wrap;
     border: 1px solid #333;
+    margin-bottom: 16px;
 }
 </style>
 """

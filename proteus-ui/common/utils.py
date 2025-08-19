@@ -82,3 +82,78 @@ def fixed_footer():
             © 2025 My Streamlit App | <a href='https://example.com' target='_blank'>Help</a>
         </div>
     """, unsafe_allow_html=True)
+
+
+def inject_button_theme(
+    *,
+    height: str = "44px",
+    radius: str = "12px",
+    font_size: str = "16px",
+    min_width: str = "180px",
+    padding_x: str = "16px",
+    gap: str = "10px",
+    bg: str = "#FFFFFF",
+    fg: str = "#111827",
+    border_color: str = "#D5DBE2",
+    border_hover: str = "#9AA4B2",
+    shadow: str = "0 1px 2px rgba(16,24,40,0.05), 0 0 0 1px rgba(0,0,0,0.00)",
+    shadow_hover: str = "0 2px 6px rgba(16,24,40,0.08), 0 0 0 1px rgba(0,0,0,0.00)",
+    shadow_active: str = "0 1px 2px rgba(16,24,40,0.04), inset 0 1px 2px rgba(16,24,40,0.06)",
+) -> None:
+    """Inject consistent button styles with CSS variables.
+
+    Call this once near the top of a page. Override any of the keyword
+    parameters to tweak sizing/spacing or colors.
+    """
+    css = f"""
+    <style>
+    :root {{
+        --pp-btn-height: {height};
+        --pp-btn-radius: {radius};
+        --pp-btn-font-size: {font_size};
+        --pp-btn-min-width: {min_width};
+        --pp-btn-padding-x: {padding_x};
+        --pp-btn-gap: {gap};
+        --pp-btn-bg: {bg};
+        --pp-btn-fg: {fg};
+        --pp-btn-border: {border_color};
+        --pp-btn-border-hover: {border_hover};
+        --pp-btn-shadow: {shadow};
+        --pp-btn-shadow-hover: {shadow_hover};
+        --pp-btn-shadow-active: {shadow_active};
+    }}
+
+    /* Base Streamlit button */
+    div.stButton > button {{
+        white-space: nowrap;
+        min-width: var(--pp-btn-min-width);
+        height: var(--pp-btn-height);
+        padding: 0 var(--pp-btn-padding-x);
+        font-size: var(--pp-btn-font-size);
+        font-weight: 600;
+        border-radius: var(--pp-btn-radius);
+        border: 1px solid var(--pp-btn-border);
+        color: var(--pp-btn-fg);
+        background: var(--pp-btn-bg);
+        box-shadow: var(--pp-btn-shadow);
+        transition: transform .02s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease;
+    }}
+
+    div.stButton > button:hover {{
+        border-color: var(--pp-btn-border-hover);
+        box-shadow: var(--pp-btn-shadow-hover);
+        transform: translateY(-1px);
+    }}
+
+    div.stButton > button:active {{
+        transform: translateY(0);
+        box-shadow: var(--pp-btn-shadow-active);
+    }}
+
+    /* Consistent spacing around buttons */
+    div.stButton {{
+        margin: 0 var(--pp-btn-gap) var(--pp-btn-gap) 0;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
