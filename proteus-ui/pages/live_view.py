@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,9 +11,12 @@ from common.utils import show_toast
 from common.utils import render_toast_area
 from common.utils import inject_button_theme
 from services.module_manager import ModuleManager
+from services.mqtt_service import MQTTService
 
 st.set_page_config(page_title="Live View", layout="wide")
 st.title("Live View")
+
+MQTT_TOPIC = "sequence-commands"
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -45,8 +50,73 @@ ModuleManager().select_module()
 if "_toasts" not in st.session_state:
     st.session_state._toasts = []
 
+# Ensure state for experiment selection and logs
+if "experiment_file_path" not in st.session_state:
+    st.session_state.experiment_file_path = None
+if "_show_experiment_dialog" not in st.session_state:
+    st.session_state._show_experiment_dialog = False
+if "system_logs" not in st.session_state:
+    st.session_state["system_logs"] = []
 
-# Experiment controls (merged from Experiments page)
+
+def _append_system_log(message: str, level: str = "INFO") -> None:
+    from datetime import datetime
+    st.session_state["system_logs"].append(f"{datetime.now()} [{level}] - {message}")
+    st.session_state["system_logs"] = st.session_state["system_logs"][-100:]
+
+
+def _get_experiments_dir() -> Path:
+    this_file = Path(__file__).resolve()
+    repo_root = this_file.parents[2]
+    return repo_root / "experiments"
+
+
+def _list_experiment_files() -> list[str]:
+    base = _get_experiments_dir()
+    try:
+        if not base.exists() or not base.is_dir():
+            return []
+        return [name for name in os.listdir(base) if (base / name).is_file()]
+    except Exception:
+        return []
+
+
+@st.dialog("Select Experiment File", width="large")
+def _experiment_picker_dialog() -> None:
+    base = _get_experiments_dir()
+    files = _list_experiment_files()
+    st.markdown(f"Select a file from `{str(base)}`")
+    if not files:
+        st.warning("No files found in the experiments folder.")
+        if st.button("Close"):
+            st.session_state._show_experiment_dialog = False
+            st.rerun()
+        return
+    current_filename = None
+    if st.session_state.experiment_file_path:
+        try:
+            current_filename = Path(st.session_state.experiment_file_path).name
+        except Exception:
+            current_filename = None
+    selected = st.selectbox("Experiment file", options=files, index=(files.index(current_filename) if current_filename in files else 0))
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if st.button("Cancel"):
+            st.session_state._show_experiment_dialog = False
+            show_toast("File selection canceled.", "info", source="New Experiment")
+            _append_system_log("Toast [info]: File selection canceled.", level="INFO")
+            st.rerun()
+    with c2:
+        if st.button("Select"):
+            full_path = str((base / selected).resolve())
+            st.session_state.experiment_file_path = full_path
+            st.session_state._show_experiment_dialog = False
+            show_toast(f"Selected experiment file: `{selected}`", "success", source="New Experiment")
+            _append_system_log(f"Toast [success]: Selected experiment file -> {full_path}", level="INFO")
+            st.rerun()
+
+
+# Experiment controls (merged with required behavior)
 @st.fragment
 def experiment_controls():
     with st.container(border=True, key="experiment_controls_container_v2"):
@@ -61,25 +131,58 @@ def experiment_controls():
             "Retrieve Logs",
         ]
 
-        # Render buttons in two neat rows for readability
         for row_start in range(0, len(labels), 4):
             row_labels = labels[row_start:row_start + 4]
             cols = st.columns(len(row_labels), gap="small")
             for col, label in zip(cols, row_labels):
                 with col:
-                    if st.button(label, key=f"btn_{label}"):
-                        result = random.choice(["success", "error", "warning", "info"]) 
-                        message_map = {
-                            "success": "Operation completed successfully!",
-                            "error": "**Error**: Oops! Something went wrong. This event has been recorded in the logs.",
-                            "warning": "**Warning**: Incomplete input. Please try again. Lorem ipsum dolor sit amet. Consectetur adipiscing elit.",
-                            "info": "Informational message.",
-                        }
-                        msg = message_map[result]
-                        show_toast(msg, result, source=label)
+                    if label == "New Experiment":
+                        if st.button(label, key=f"btn_{label}"):
+                            st.session_state._show_experiment_dialog = True
+                            st.rerun()
+                    elif label == "Start Experiment":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            file_path = st.session_state.get("experiment_file_path")
+                            if not file_path:
+                                msg = "No experiment file selected."
+                                show_toast(msg, "error", source="Start Experiment")
+                                _append_system_log(f"Toast [error]: {msg}", level="ERROR")
+                            elif not module_id:
+                                msg = "No module selected."
+                                show_toast(msg, "error", source="Start Experiment")
+                                _append_system_log(f"Toast [error]: {msg}", level="ERROR")
+                            else:
+                                topic = f"{MQTT_TOPIC}/{module_id}"
+                                try:
+                                    MQTTService().publish(topic, file_path)
+                                    msg = f"Sent MQTT to `{topic}` with file `{Path(file_path).name}`"
+                                    show_toast(msg, "success", source="Start Experiment")
+                                    _append_system_log(f"Toast [success]: {msg}", level="INFO")
+                                except Exception as exc:
+                                    msg = f"Failed to publish MQTT: {exc}"
+                                    show_toast(msg, "error", source="Start Experiment")
+                                    _append_system_log(f"Toast [error]: {msg}", level="ERROR")
+                    else:
+                        if st.button(label, key=f"btn_{label}"):
+                            # Placeholder behaviors for other controls
+                            result = random.choice(["success", "error", "warning", "info"]) 
+                            message_map = {
+                                "success": "Operation completed successfully!",
+                                "error": "**Error**: Oops! Something went wrong. This event has been recorded in the logs.",
+                                "warning": "**Warning**: Incomplete input. Please try again.",
+                                "info": "Informational message.",
+                            }
+                            msg = message_map[result]
+                            show_toast(msg, result, source=label)
+                            _append_system_log(f"Toast [{result}]: {msg}", level=("ERROR" if result == "error" else "INFO"))
 
 
 experiment_controls()
+
+# Open dialog if requested by button click
+if st.session_state.get("_show_experiment_dialog"):
+    _experiment_picker_dialog()
 
 # Persistent toast area placeholder between controls and charts
 toast_placeholder = st.empty()
