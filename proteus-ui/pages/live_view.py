@@ -7,6 +7,7 @@ import random
 from common.utils import random_color
 from common.utils import show_toast
 from common.utils import render_toast_area
+from common.utils import inject_button_theme
 from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Live View", layout="wide")
@@ -24,6 +25,14 @@ st.markdown(
     </style>
     """,
     unsafe_allow_html=True,
+)
+
+# Consistent button styling across the app
+inject_button_theme(
+    height="44px",
+    min_width="190px",
+    radius="12px",
+    gap="12px",
 )
 
 # Unique token for this script run (used to safely rebuild charts after navigation)
@@ -45,25 +54,29 @@ def experiment_controls():
             "New Experiment",
             "Start Experiment",
             "Stop Experiment",
-            "Stop Logging",
+            "Pause Experiment",
+            "Resume Experiment",
             "Start Logging",
+            "Stop Logging",
             "Retrieve Logs",
         ]
 
-        cols = st.columns(len(labels))
-
-        for col, label in zip(cols, labels):
-            with col:
-                if st.button(label, key=f"btn_{label}"):
-                    result = random.choice(["success", "error", "warning", "info"]) 
-                    message_map = {
-                        "success": "Operation completed successfully!",
-                        "error": "**Error**: Oops! Something went wrong. This event has been recorded in the logs.",
-                        "warning": "**Warning**: Incomplete input. Please try again. Lorem ipsum dolor sit amet. Consectetur adipiscing elit.",
-                        "info": "Informational message.",
-                    }
-                    msg = message_map[result]
-                    show_toast(msg, result, source=label)
+        # Render buttons in two neat rows for readability
+        for row_start in range(0, len(labels), 4):
+            row_labels = labels[row_start:row_start + 4]
+            cols = st.columns(len(row_labels), gap="small")
+            for col, label in zip(cols, row_labels):
+                with col:
+                    if st.button(label, key=f"btn_{label}"):
+                        result = random.choice(["success", "error", "warning", "info"]) 
+                        message_map = {
+                            "success": "Operation completed successfully!",
+                            "error": "**Error**: Oops! Something went wrong. This event has been recorded in the logs.",
+                            "warning": "**Warning**: Incomplete input. Please try again. Lorem ipsum dolor sit amet. Consectetur adipiscing elit.",
+                            "info": "Informational message.",
+                        }
+                        msg = message_map[result]
+                        show_toast(msg, result, source=label)
 
 
 experiment_controls()
