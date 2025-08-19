@@ -15,18 +15,18 @@ st.title("System Logs")
 #ModuleManager().select_module()
 
 # Stable placeholder for toasts
-toast_placeholder = st.empty()
-render_toast_area(container=toast_placeholder.container())
+#toast_placeholder = st.empty()
+#render_toast_area(container=toast_placeholder.container())
 
 # Consistent button styling across the app
 inject_button_theme()
 
-@st.fragment(run_every=0.5)
-def update_toasts():
-    render_toast_area(container=toast_placeholder.container())
+#@st.fragment(run_every=0.5)
+#def update_toasts():
+#    render_toast_area(container=toast_placeholder.container())
 
 # Ensure the toast updater is active
-update_toasts()
+#update_toasts()
 
 # Custom CSS to create a scrollable log box
 log_box_css = """
