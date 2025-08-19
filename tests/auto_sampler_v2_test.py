@@ -173,8 +173,8 @@ class AutoSamplerV2Tester:
                 if matches:
                     return message
                 else:
-                    # Put message back for other tests
-                    self.message_queue.put(message)
+                    # Skip unmatched messages to avoid starving newer ones
+                    pass
                     
             except Empty:
                 continue
