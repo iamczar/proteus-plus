@@ -178,11 +178,16 @@ def experiment_controls():
                             _append_system_log(f"Toast [{result}]: {msg}", level=("ERROR" if result == "error" else "INFO"))
 
 
-experiment_controls()
+module_selected = bool(st.session_state.get("selected_module"))
 
-# Open dialog if requested by button click
-if st.session_state.get("_show_experiment_dialog"):
-    _experiment_picker_dialog()
+if module_selected:
+    experiment_controls()
+
+    # Open dialog if requested by button click
+    if st.session_state.get("_show_experiment_dialog"):
+        _experiment_picker_dialog()
+else:
+    st.info("Select a module to view live controls and graphs.")
 
 # Persistent toast area placeholder between controls and charts
 toast_placeholder = st.empty()
@@ -260,7 +265,8 @@ def _init_charts_if_needed(force: bool = False) -> None:
         st.session_state._live_init_key = init_key
 
 
-_init_charts_if_needed()
+if module_selected:
+    _init_charts_if_needed()
 
 
 @st.fragment(run_every=0.1)
@@ -296,4 +302,5 @@ def update_loop():
     st.session_state.live_i = i + 1
 
 
-update_loop()
+if module_selected:
+    update_loop()
