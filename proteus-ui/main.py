@@ -5,14 +5,13 @@ import streamlit as st
 dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", icon=":material/grid_view:")
 
 # Resources
-#experiments_page = st.Page("pages/experiments.py", title="Experiments", icon=":material/science:")
 live_view = st.Page("pages/live_view.py", title="Live View", icon=":material/show_chart:")
-#analyse_view = st.Page("pages/analyse_view.py", title="Analyse View", icon=":material/analytics:")
-cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":material/article:")
+auto_sampler = st.Page("pages/auto_sampler.py", title="Auto Sampler Control", icon=":material/science:")
+pid_diagram = st.Page("pages/pid_diagram.py", title="PI&D", icon=":material/image:")
 csv_viewer = st.Page("pages/plot_cvs.py", title="Display Big Data", icon=":material/article:")
+cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":material/article:")
 
 # System
-#settings_page = st.Page("pages/settings.py", title="Settings", icon=":material/settings:")
 system_logs = st.Page("pages/system_logs.py", title="System Logs", icon=":material/bug_report:")
 
 LOGO_URL_LARGE = "assets/cell_ag_logo_big.png"
@@ -27,17 +26,14 @@ st.logo(
 
 pg = st.navigation(
     {
-    #"Home": [
-    #    dashboard_page,
-    #],
     "Home": [
-        #experiments_page,
         live_view,
+        auto_sampler,
+        pid_diagram,
         csv_viewer,
-        cycler_logs
+        cycler_logs,
     ],
     "System": [
-        #settings_page,
         system_logs
     ]
     }
