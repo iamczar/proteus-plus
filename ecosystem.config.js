@@ -13,6 +13,13 @@ module.exports = {
       args: "-m software_update",
       cwd: __dirname,
       autorestart: false
+    },
+    {
+      name: "module-controller",
+      script: "./venv/Scripts/python.exe",
+      args: "-m module_controller",
+      cwd: __dirname,
+      autorestart: true
     }
   ]
 };
