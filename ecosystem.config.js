@@ -14,12 +14,12 @@ module.exports = {
       cwd: __dirname,
       autorestart: false
     },
-    {
-      name: "module-controller",
-      script: "./venv/Scripts/python.exe",
-      args: "-m module_controller",
-      cwd: __dirname,
-      autorestart: true
-    }
+    // {
+    //   name: "module-controller",
+    //   script: "./venv/Scripts/python.exe",
+    //   args: "-m module_controller",
+    //   cwd: __dirname,
+    //   autorestart: true
+    // }
   ]
 };
