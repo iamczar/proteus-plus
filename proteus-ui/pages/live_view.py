@@ -68,7 +68,7 @@ def _append_system_log(message: str, level: str = "INFO") -> None:
 def _get_experiments_dir() -> Path:
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
-    return repo_root / "experiments"
+    return repo_root / "sequence_files"
 
 
 def _list_experiment_files() -> list[str]:
