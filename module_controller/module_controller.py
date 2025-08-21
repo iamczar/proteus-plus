@@ -148,7 +148,6 @@ class ModuleController(MqttBaseClass):
                 module_id=module_id,
                 port=port,
                 baudrate=self.baudrate,
-                mqtt_client=self.mqtt_client,
                 logger=self.logger,
                 on_disconnect=self._on_handler_disconnected
             )
