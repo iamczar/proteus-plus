@@ -36,6 +36,7 @@ class ModuleController(MqttBaseClass):
         self.running = True
         self.scanning = True
         threading.Thread(target=self._scan_loop, daemon=True).start()
+        threading.Thread(target=self._module_list_publisher_loop, daemon=True).start()
         threading.Thread(target=self.start_mqtt_loop, daemon=True).start()
         self.logger.info("ModuleController started")
 
@@ -47,6 +48,20 @@ class ModuleController(MqttBaseClass):
             handler.stop()
         self.module_handlers.clear()
         self.logger.info("ModuleController stopped")
+
+    def _module_list_publisher_loop(self):
+        """Periodically publish the list of connected module IDs."""
+        while self.running:
+            try:
+                payload = {
+                    "command": "module_list",
+                    "modules": list(self.module_handlers.keys()),
+                    "timestamp": time.time(),
+                }
+                self.mqtt_client.publish("module_controller/list-of-modules", json.dumps(payload))
+            except Exception as e:
+                self.logger.debug(f"Failed to publish module list: {e}")
+            time.sleep(5.0)
 
     def _scan_loop(self):
         while self.scanning and self.running:
