@@ -4,8 +4,8 @@ from .module_controller import ModuleController
 
 
 def main():
-    logger = Logger("ModuleController", "module_controller.log", "info", True, True)
-    mqtt_client = mqtt.Client()
+    logger = Logger("ModuleController", "logs/module_controller.log", "info", True, True)
+    mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     controller = ModuleController(mqtt_client, logger)
     controller.run()
 

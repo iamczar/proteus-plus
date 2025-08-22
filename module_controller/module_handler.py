@@ -29,7 +29,7 @@ class ModuleHandler:
         self._running = False
         self._write_lock = threading.Lock()
         # Own MQTT client for per-module commands and status
-        self.mqtt_client = mqtt.Client()
+        self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.mqtt_client.on_connect = self._on_mqtt_connect
         self.mqtt_client.on_message = self._on_mqtt_message
         self.mqtt_client.connect("127.0.0.1")
@@ -71,8 +71,8 @@ class ModuleHandler:
         self.stop()
 
     # MQTT handlers
-    def _on_mqtt_connect(self, client, userdata, flags, rc):
-        if rc == 0:
+    def _on_mqtt_connect(self, client, userdata, flags, reason_code, properties):
+        if int(reason_code) == 0:
             try:
                 # Subscribe to per-module command topics
                 topics = [
