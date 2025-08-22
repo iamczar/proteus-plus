@@ -173,4 +173,4 @@ cython_debug/
 .ruff_cache/
 
 # PyPI configuration file
-.pypirc
+.pypircdata_folder/new-experiment/3006_data.csv
