@@ -192,7 +192,7 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
 
     def test_autosampler_flow_sampler1(self):
         sid = 1
-        short_hold_hours = 0.01  # 36 seconds; Alpha interprets hours
+        short_hold_hours = 0.001  # ~3.6 seconds (Alpha interprets hold_time in hours)
 
         # RESET -> waiting_for_command with sensor_state=home
         self.capture.clear()
@@ -228,7 +228,7 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
         # DELAYED_RUN
         self.capture.clear()
         delay_seconds = 10
-        self._publish_autosampler_cmd(sid, AutoSamplerCmd.DELAYED_RUN, hold_time=1.0, delay_seconds=delay_seconds)
+        self._publish_autosampler_cmd(sid, AutoSamplerCmd.DELAYED_RUN, hold_time=short_hold_hours, delay_seconds=delay_seconds)
         # Confirm command received: expect delayed_run_waiting
         self.assertTrue(self._wait_status(sid, "delayed_run_waiting", 90.0), "Did not enter delayed_run_waiting")
         # After the delay, sampler should start running: bottom -> (hold ~1s) -> top
