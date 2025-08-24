@@ -75,13 +75,18 @@ class MqttCapture:
     def clear(self):
         self.messages.clear()
 
-    def wait_for(self, predicate, timeout_s: float = 30.0):
+    def wait_for(self, predicate, timeout_s: float = 30.0, on_seen=None):
         deadline = time.time() + timeout_s
         idx = 0
         while time.time() < deadline:
             while idx < len(self.messages):
                 topic, obj = self.messages[idx]
                 idx += 1
+                if callable(on_seen):
+                    try:
+                        on_seen(topic, obj)
+                    except Exception:
+                        pass
                 try:
                     if predicate(topic, obj):
                         return topic, obj
@@ -147,7 +152,19 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
                 return False
             m = inner_message(obj)
             return m.get("sampler_id") == sampler_id and m.get("status") == expected_status
-        _, obj = self.capture.wait_for(pred, timeout_s)
+        def on_seen(topic, obj):
+            if topic != self.autosampler_status_topic:
+                return
+            if obj.get("message_source") != "auto_sampler":
+                return
+            m = inner_message(obj)
+            sid = m.get("sampler_id")
+            st = m.get("status")
+            state = m.get("state")
+            sensor = m.get("sensor_state")
+            if sid == sampler_id:
+                print(f"[autosampler-status] sampler={sid} status={st} state={state} sensor={sensor}")
+        _, obj = self.capture.wait_for(pred, timeout_s, on_seen=on_seen)
         return obj is not None
 
     def _wait_sensor_state(self, sampler_id: int, expected_sensor_state: str, timeout_s: float = 90.0) -> bool:
@@ -158,7 +175,19 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
                 return False
             m = inner_message(obj)
             return m.get("sampler_id") == sampler_id and m.get("sensor_state") == expected_sensor_state
-        _, obj = self.capture.wait_for(pred, timeout_s)
+        def on_seen(topic, obj):
+            if topic != self.autosampler_status_topic:
+                return
+            if obj.get("message_source") != "auto_sampler":
+                return
+            m = inner_message(obj)
+            sid = m.get("sampler_id")
+            st = m.get("status")
+            state = m.get("state")
+            sensor = m.get("sensor_state")
+            if sid == sampler_id:
+                print(f"[autosampler-status] sampler={sid} status={st} state={state} sensor={sensor}")
+        _, obj = self.capture.wait_for(pred, timeout_s, on_seen=on_seen)
         return obj is not None
 
     def test_autosampler_flow_sampler1(self):
@@ -173,12 +202,15 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
         self.assertTrue(self._wait_sensor_state(sid, "home", 90.0), "Did not reach home sensor state during reset")
         self.assertTrue(self._wait_status(sid, "waiting_for_command", 90.0), "Did not reach waiting_for_command after reset")
 
-        # RUN -> see moving_to_bottom then waiting_for_command
+        # RUN -> see moving_to_bottom then moving_to_top; reset to complete
         self.capture.clear()
         self._publish_autosampler_cmd(sid, AutoSamplerCmd.RUN, hold_time=short_hold_hours)
-        # moving_to_bottom is reflected in status; at minimum assert eventual idle
-        self.assertTrue(self._wait_status(sid, "moving_to_bottom", 90.0) or True)
-        self.assertTrue(self._wait_status(sid, "waiting_for_command", 180.0), "RUN did not complete to idle")
+        self.assertTrue(self._wait_status(sid, "moving_to_bottom", 90.0), "RUN did not start moving to bottom")
+        self.assertTrue(self._wait_status(sid, "moving_to_top", 90.0), "RUN did not move to top")
+        # After reaching top, issue RESET to return to idle/home
+        self._publish_autosampler_cmd(sid, AutoSamplerCmd.RESET)
+        self.assertTrue(self._wait_sensor_state(sid, "home", 90.0), "Reset-after-run did not reach home")
+        self.assertTrue(self._wait_status(sid, "waiting_for_command", 120.0), "Reset-after-run did not reach idle")
 
         # STOP during operation
         self.capture.clear()
@@ -204,8 +236,10 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
         self.assertTrue(self._wait_status(sid, "moving_to_bottom", 90.0), "Did not start moving to bottom after delay")
         # Optional: brief hold is ~1s; proceed to top within 90s
         self.assertTrue(self._wait_status(sid, "moving_to_top", 90.0), "Did not move to top after bottom/hold")
-        # Finally, return to idle
-        self.assertTrue(self._wait_status(sid, "waiting_for_command", 240.0), "DELAYED_RUN did not complete to idle")
+        # After reaching top, issue RESET to complete test back to idle
+        self._publish_autosampler_cmd(sid, AutoSamplerCmd.RESET)
+        self.assertTrue(self._wait_sensor_state(sid, "home", 90.0), "Reset-after-delayed-run did not reach home")
+        self.assertTrue(self._wait_status(sid, "waiting_for_command", 180.0), "Reset-after-delayed-run did not reach idle")
 
 
 if __name__ == "__main__":
