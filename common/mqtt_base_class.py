@@ -35,7 +35,12 @@ class MqttBaseClass(ABC):
         pass
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
-        if int(reason_code)==0:
+        # paho-mqtt v2 may pass a ReasonCode object; coerce safely
+        try:
+            rc_int = int(reason_code)
+        except Exception:
+            rc_int = int(getattr(reason_code, "value", 1)) if hasattr(reason_code, "value") else 1
+        if rc_int == 0:
             msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: Connected with result code {str(reason_code)}"
             self.logger.debug(msg)
             if self.sub_topics:
@@ -45,7 +50,12 @@ class MqttBaseClass(ABC):
             self.logger.debug(msg)
 
     def on_disconnect(self, client, userdata, reason_code, properties):
-        msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: disconnected: reason {str(reason_code)}"
+        # Coerce ReasonCode to int for consistency
+        try:
+            rc_int = int(reason_code)
+        except Exception:
+            rc_int = int(getattr(reason_code, "value", 0)) if hasattr(reason_code, "value") else 0
+        msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: disconnected: reason {str(reason_code)} ({rc_int})"
         self.mqtt_client.connected_flag=False
         self.mqtt_client.disconnect_flag=True
         self.logger.debug(msg)
