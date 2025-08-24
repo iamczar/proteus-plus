@@ -1,8 +1,8 @@
 from typing import List, Tuple
 from abc import ABC, abstractmethod
 import paho.mqtt.client as mqtt
-from helper import Helper
-from logger import Logger
+from .helper import Helper
+from .logger import Logger
 
 
 class MqttBaseClass(ABC):
