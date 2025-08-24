@@ -355,20 +355,34 @@ class ModuleHandler:
         try:
             source = str(obj.get("message_source", "")).lower()
             inner = obj.get("message") if isinstance(obj.get("message"), dict) else {}
-            # file-info if file_path present in either level
+
+            # Explicit routing rules:
+            # - data_logger -> live-sensor-data
+            if source == "data_logger":
+                return f"live-sensor-data/{self.module_id}"
+
+            # - SysLogger -> sys-logger
+            if source == "syslogger":
+                return f"sys-logger/{self.module_id}"
+
+            # - Alpha/Sequence controller state and acks -> sequence-controller-status
+            if source in ("alpha_comms_manager", "sequence_controller"):
+                return f"sequence-controller-status/{self.module_id}"
+
+            # - file_storage_sensor -> file-info
+            if source == "file_storage_sensor":
+                return f"file-info/{self.module_id}"
+
+            # - auto_sampler -> autosampler-status
+            if source == "auto_sampler":
+                return f"autosampler-status/{self.module_id}"
+
+            # Also route to file-info if an explicit file_path is present
             if (isinstance(obj, dict) and ("file_path" in obj)) or (isinstance(inner, dict) and ("file_path" in inner)):
                 return f"file-info/{self.module_id}"
-            # wrist status
-            if "wrist" in source:
-                return f"wrist-status/{self.module_id}"
-            # autosampler status
-            if "auto" in source and "sampler" in source:
-                return f"autosampler-status/{self.module_id}"
-            # system logger style messages
-            if source in ("alpha_comms_manager", "sequence_controller"):
-                return f"sys-logger/{self.module_id}"
-            # default live sensor data
-            return f"live-sensor-data/{self.module_id}"
+
+            # Otherwise, do not fan-out to a specific routed topic
+            return None
         except Exception:
             return None
 
