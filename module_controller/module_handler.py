@@ -147,21 +147,24 @@ class ModuleHandler:
     def _cb_autosampler_command(self, client, userdata, msg):
         try:
             payload = self._decode_payload(msg.payload)
+            # Accept either full envelope {message:{...}} or bare dict
+            inner_msg = self._extract_inner_message(payload)
+            cmd_src = inner_msg if inner_msg is not None else payload
             # Expect payload to contain sampler_id, cmd, hold_time, delay_seconds
             inner: Dict[str, Any] = {"command": "auto_sampler_cmd"}
-            if isinstance(payload, dict):
+            if isinstance(cmd_src, dict):
                 # Normalize keys
-                if "sampler_id" in payload:
-                    inner["sampler_id"] = payload.get("sampler_id")
-                if "cmd" in payload:
-                    inner["cmd"] = payload.get("cmd")
-                if "hold_time" in payload:
-                    inner["hold_time"] = payload.get("hold_time")
-                if "delay_seconds" in payload:
-                    inner["delay_seconds"] = payload.get("delay_seconds")
-            elif isinstance(payload, str):
+                if "sampler_id" in cmd_src:
+                    inner["sampler_id"] = cmd_src.get("sampler_id")
+                if "cmd" in cmd_src:
+                    inner["cmd"] = cmd_src.get("cmd")
+                if "hold_time" in cmd_src:
+                    inner["hold_time"] = cmd_src.get("hold_time")
+                if "delay_seconds" in cmd_src:
+                    inner["delay_seconds"] = cmd_src.get("delay_seconds")
+            elif isinstance(cmd_src, str):
                 # Allow simple named commands; map to cmd integers if needed by Alpha later
-                inner["named_cmd"] = payload
+                inner["named_cmd"] = cmd_src
             self.send(self._wrap_alpha_envelope(inner))
         except Exception as e:
             self.logger.warn(f"{self.module_name}: autosampler command error: {e}")

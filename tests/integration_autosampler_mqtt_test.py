@@ -24,6 +24,7 @@ from typing import Any, Dict, Tuple
 
 import paho.mqtt.client as mqtt
 from enum import IntEnum
+from datetime import datetime
 
 
 def rc_to_int(reason_code) -> int:
@@ -118,17 +119,22 @@ class IntegrationAutoSamplerMqttTest(unittest.TestCase):
         self.capture.disconnect()
 
     def _publish_autosampler_cmd(self, sampler_id: int, cmd: int | AutoSamplerCmd, hold_time: float = 0.0, delay_seconds: int = 0):
-        payload = {
-            "sampler_id": sampler_id,
-            "cmd": int(cmd),
-            "hold_time": hold_time,
-            "delay_seconds": delay_seconds,
+        envelope = {
+            "message_source": "proteus-ui",
+            "timestamp": datetime.now().isoformat(),
+            "message": {
+                "command": "auto_sampler_cmd",
+                "sampler_id": sampler_id,
+                "cmd": int(cmd),
+                "hold_time": hold_time,
+                "delay_seconds": delay_seconds,
+            },
         }
         pub = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         pub.connect(self.host)
         pub.loop_start()
         time.sleep(0.05)
-        pub.publish(self.autosampler_cmd_topic, json.dumps(payload))
+        pub.publish(self.autosampler_cmd_topic, json.dumps(envelope))
         time.sleep(0.05)
         pub.loop_stop()
         pub.disconnect()
