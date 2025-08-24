@@ -76,7 +76,11 @@ class ModuleHandler:
 
     # MQTT handlers
     def _on_mqtt_connect(self, client, userdata, flags, reason_code, properties):
-        if int(reason_code) == 0:
+        try:
+            rc_int = int(reason_code)
+        except Exception:
+            rc_int = int(getattr(reason_code, "value", 1)) if hasattr(reason_code, "value") else 1
+        if rc_int == 0:
             try:
                 # Subscribe to per-module command topics
                 topics = [
