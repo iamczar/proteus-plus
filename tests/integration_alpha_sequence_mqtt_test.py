@@ -39,7 +39,11 @@ class MqttCapture:
         self.messages: list[tuple[str, Dict[str, Any]]] = []
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        self._connected = (int(reason_code) == 0)
+        try:
+            rc_int = int(reason_code)
+        except Exception:
+            rc_int = int(getattr(reason_code, "value", 1)) if hasattr(reason_code, "value") else 1
+        self._connected = (rc_int == 0)
 
     def _on_message(self, client, userdata, msg):
         try:
