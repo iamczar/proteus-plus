@@ -1,4 +1,5 @@
 import logging
+import os
 
 
 class Logger:
@@ -28,6 +29,13 @@ class Logger:
 
         if(True == log_to_file):
             print(F"{self.logger_name} log_to_file is enabled")
+            # Ensure parent directory exists for the log file
+            try:
+                dir_path = os.path.dirname(self.filename)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
+            except Exception:
+                pass
             file_handler = logging.FileHandler(self.filename)
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
