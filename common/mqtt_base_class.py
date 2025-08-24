@@ -34,18 +34,18 @@ class MqttBaseClass(ABC):
     def run(self):
         pass
 
-    def on_connect(self, client, userdata, flags, rc):
-        if rc==0:
-            msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: Connected with result code {str(rc)}"
+    def on_connect(self, client, userdata, flags, reason_code, properties):
+        if int(reason_code)==0:
+            msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: Connected with result code {str(reason_code)}"
             self.logger.debug(msg)
             if self.sub_topics:
                 self.mqtt_client.subscribe(self.sub_topics)
         else:
-            msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: Couldn't connect - return code: {str(rc)}"
+            msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: Couldn't connect - return code: {str(reason_code)}"
             self.logger.debug(msg)
 
-    def on_disconnect(self, client, userdata, rc):
-        msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: disconnected: reason {str(rc)}"
+    def on_disconnect(self, client, userdata, reason_code, properties):
+        msg = f"{self.mqtt_client_id}:{self.__class__.__name__}: disconnected: reason {str(reason_code)}"
         self.mqtt_client.connected_flag=False
         self.mqtt_client.disconnect_flag=True
         self.logger.debug(msg)

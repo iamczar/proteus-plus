@@ -39,6 +39,11 @@ class ModuleController(MqttBaseClass):
         threading.Thread(target=self._module_list_publisher_loop, daemon=True).start()
         threading.Thread(target=self.start_mqtt_loop, daemon=True).start()
         self.logger.info("ModuleController started")
+        # Publish initial (possibly empty) module list immediately
+        try:
+            self._publish_module_list()
+        except Exception:
+            pass
 
     def stop(self):
         self.running = False
@@ -48,6 +53,11 @@ class ModuleController(MqttBaseClass):
             handler.stop()
         self.module_handlers.clear()
         self.logger.info("ModuleController stopped")
+        # Publish final empty list to indicate no modules are managed
+        try:
+            self._publish_module_list()
+        except Exception:
+            pass
 
     def _module_list_publisher_loop(self):
         """Periodically publish the list of connected module IDs."""
@@ -169,6 +179,11 @@ class ModuleController(MqttBaseClass):
             handler.start()
             self.module_handlers[module_id] = handler
             self.logger.info(f"Created module handler for module {module_id} on {port}")
+            # Publish updated module list immediately
+            try:
+                self._publish_module_list()
+            except Exception:
+                pass
             return handler
         except Exception as e:
             self.logger.error(f"Failed to create module handler for {module_id} on {port}: {e}")
@@ -239,6 +254,11 @@ class ModuleController(MqttBaseClass):
                 self.mqtt_client.publish("controller/status", json.dumps(payload))
             except Exception:
                 pass
+            # Publish updated module list after removal
+            try:
+                self._publish_module_list()
+            except Exception:
+                pass
 
     def _publish_module_list(self):
         module_list = {
@@ -246,7 +266,8 @@ class ModuleController(MqttBaseClass):
             "modules": list(self.module_handlers.keys()),
             "timestamp": time.time(),
         }
-        self.mqtt_client.publish("controller/status", json.dumps(module_list))
+        # Publish to the canonical module_controller topic
+        self.mqtt_client.publish("module_controller/list-of-modules", json.dumps(module_list))
 
     def run(self):
         self.start()
