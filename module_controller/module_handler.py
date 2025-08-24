@@ -147,9 +147,21 @@ class ModuleHandler:
     def _cb_autosampler_command(self, client, userdata, msg):
         try:
             payload = self._decode_payload(msg.payload)
-            inner: Dict[str, Any] = {"command": "autosampler_cmd", "payload": payload}
-            if isinstance(payload, dict) and "command" in payload:
-                inner["autosampler_command"] = payload.get("command")
+            # Expect payload to contain sampler_id, cmd, hold_time, delay_seconds
+            inner: Dict[str, Any] = {"command": "auto_sampler_cmd"}
+            if isinstance(payload, dict):
+                # Normalize keys
+                if "sampler_id" in payload:
+                    inner["sampler_id"] = payload.get("sampler_id")
+                if "cmd" in payload:
+                    inner["cmd"] = payload.get("cmd")
+                if "hold_time" in payload:
+                    inner["hold_time"] = payload.get("hold_time")
+                if "delay_seconds" in payload:
+                    inner["delay_seconds"] = payload.get("delay_seconds")
+            elif isinstance(payload, str):
+                # Allow simple named commands; map to cmd integers if needed by Alpha later
+                inner["named_cmd"] = payload
             self.send(self._wrap_alpha_envelope(inner))
         except Exception as e:
             self.logger.warn(f"{self.module_name}: autosampler command error: {e}")
