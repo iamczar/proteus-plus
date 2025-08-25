@@ -8,13 +8,6 @@ module.exports = {
       autorestart: false
     },
     {
-      name: "software-update",
-      script: "./venv/Scripts/python.exe",
-      args: "-m software_update",
-      cwd: __dirname,
-      autorestart: false
-    },
-    {
       name: "module-controller",
       script: "./venv/Scripts/python.exe",
       args: "-m module_controller",
