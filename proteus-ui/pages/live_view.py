@@ -292,12 +292,6 @@ def experiment_controls():
                                     _append_system_log(f"Toast [error]: {msg}", level="ERROR")
                     elif label == "Select Sequence File":
                         seq_dir = _get_experiments_dir()
-                        if st.button("Open Sequence Folder", key="btn_open_sequences"):
-                            try:
-                                os.startfile(str(seq_dir))
-                                show_toast("Opened sequence_files in Explorer", "info", source="Sequence File")
-                            except Exception as e:
-                                show_toast(f"Failed to open folder: {e}", "error", source="Sequence File")
                         # List CSV files and allow selection
                         try:
                             csvs = sorted([p.name for p in seq_dir.glob("*.csv")])
@@ -311,9 +305,15 @@ def experiment_controls():
                                     current_name = Path(current_fp).name
                             except Exception:
                                 current_name = None
-                        idx = csvs.index(current_name) if current_name in csvs else 0
-                        sel = st.selectbox("Select sequence file (.csv)", options=(csvs if csvs else ["— none —"]), index=idx if csvs else 0, key="_seq_file_sel")
-                        if csvs and sel:
+                        placeholder = "-- Select Sequence File --"
+                        if csvs:
+                            options = [placeholder] + csvs
+                            idx = (csvs.index(current_name) + 1) if current_name in csvs else 0
+                        else:
+                            options = [placeholder]
+                            idx = 0
+                        sel = st.selectbox("Select sequence file (.csv)", options=options, index=idx, key="_seq_file_sel")
+                        if csvs and sel != placeholder:
                             full = str((seq_dir / sel).resolve())
                             if full != current_fp:
                                 st.session_state.experiment_file_path = full
