@@ -20,7 +20,7 @@ st.title("Live View")
 # Topics and history window
 MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
-MAX_POINTS = 8460  # show last 24 hours at ~1 Hz (adjust as needed)
+MAX_POINTS = 8640  # show last ~2.4h at 1 Hz (adjust as needed)
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -272,6 +272,12 @@ def _init_charts_if_needed(force: bool = False) -> None:
         mod = str(current_module) if current_module else ""
         if mod and mod not in st.session_state._live_buffers:
             st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+        # Painted counters per-module per-metric (how many points already rendered)
+        if "_live_painted" not in st.session_state:
+            st.session_state._live_painted = {}
+        # X counters per-module (advance per received message)
+        if "_live_x_counters" not in st.session_state:
+            st.session_state._live_x_counters = {}
         # Set counters based on existing buffer length (so reselecting module restores history)
         buffers = st.session_state._live_buffers.get(mod) if mod else None
         pre_len = len(buffers[0]) if buffers and buffers[0] is not None else 0
@@ -302,6 +308,8 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     charts[idx].add_rows(df)
                 except Exception:
                     pass
+            # Mark painted lengths
+            st.session_state._live_painted[mod] = [len(b) for b in buffers]
 
 
 if module_selected:
@@ -314,55 +322,90 @@ def update_loop():
     _init_charts_if_needed()
 
     current_module = st.session_state.get("selected_module")
-    topic = f"{LIVE_TOPIC_PREFIX}/{current_module}" if current_module else None
-    if not topic:
+    if not current_module:
         return
 
-    i = st.session_state.live_i
-    last_values = st.session_state.live_last_values
-    chart_elements = st.session_state.chart_elements_v2
-
-    # Drain live data from MQTT and update charts
-    updates = MQTTService().drain(topic, max_items=200)
-    if not updates:
-        return
-    # Ensure buffers exist for current module
     mod = str(current_module)
-    if "_live_buffers" not in st.session_state:
-        st.session_state._live_buffers = {}
-    if mod not in st.session_state._live_buffers:
-        st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
-    buffers = st.session_state._live_buffers[mod]
-    for _, payload in updates:
+    buffers = st.session_state._live_buffers.get(mod)
+    if not buffers:
+        return
+    chart_elements = st.session_state.chart_elements_v2
+    painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
+    for idx, buf in enumerate(buffers):
         try:
-            if not isinstance(payload, dict):
+            start = painted[idx]
+            if start >= len(buf):
                 continue
-            if (payload.get("message_source") != "data_logger"):
-                continue
-            data = payload.get("data") or {}
-            if not isinstance(data, dict):
-                continue
-            # One x-step per message
-            row_x = i
-            for idx, (_, key) in enumerate(METRICS):
-                val = data.get(key, last_values[idx])
-                try:
-                    new_y = float(val)
-                except Exception:
-                    new_y = float(last_values[idx])
-                last_values[idx] = new_y
-                chart = chart_elements[idx]
-                chart.add_rows(pd.DataFrame({"x": [row_x], "y": [new_y]}))
-                # Append to per-module buffer for persistence across module swaps
-                try:
-                    buffers[idx].append((row_x, new_y))
-                except Exception:
-                    pass
-            i += 1
+            df = pd.DataFrame({
+                "x": [pt[0] for pt in list(buf)[start:]],
+                "y": [pt[1] for pt in list(buf)[start:]],
+            })
+            chart_elements[idx].add_rows(df)
+            painted[idx] = len(buf)
         except Exception:
-            continue
+            pass
+    st.session_state._live_painted[mod] = painted
 
-    st.session_state.live_i = i
+
+# Background collector: subscribe to all module live topics and buffer data
+@st.fragment(run_every=0.2)
+def background_collector():
+    modules = st.session_state.get("_available_modules", [])
+    if not modules:
+        return
+    # Ensure subs set
+    if "_live_all_subs" not in st.session_state:
+        st.session_state._live_all_subs = set()
+    subs = st.session_state._live_all_subs
+    # Subscribe to all module live topics
+    for m in modules:
+        topic = f"{LIVE_TOPIC_PREFIX}/{m}"
+        if topic not in subs:
+            try:
+                MQTTService().subscribe(topic)
+                subs.add(topic)
+            except Exception:
+                pass
+    # Drain each topic and append to per-module buffers
+    for m in modules:
+        topic = f"{LIVE_TOPIC_PREFIX}/{m}"
+        updates = MQTTService().drain(topic, max_items=500)
+        if not updates:
+            continue
+        mod = str(m)
+        if "_live_buffers" not in st.session_state:
+            st.session_state._live_buffers = {}
+        if mod not in st.session_state._live_buffers:
+            st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+        if "_live_x_counters" not in st.session_state:
+            st.session_state._live_x_counters = {}
+        x_counter = st.session_state._live_x_counters.get(mod, 0)
+        buffers = st.session_state._live_buffers[mod]
+        last_values = st.session_state.get("live_last_values", [0.0 for _ in range(len(METRICS))])
+        for _, payload in updates:
+            try:
+                if not isinstance(payload, dict) or payload.get("message_source") != "data_logger":
+                    continue
+                data = payload.get("data") or {}
+                if not isinstance(data, dict):
+                    continue
+                row_x = x_counter
+                for idx, (_, key) in enumerate(METRICS):
+                    val = data.get(key, last_values[idx])
+                    try:
+                        new_y = float(val)
+                    except Exception:
+                        new_y = float(last_values[idx])
+                    buffers[idx].append((row_x, new_y))
+                    last_values[idx] = new_y
+                x_counter += 1
+            except Exception:
+                continue
+        st.session_state._live_x_counters[mod] = x_counter
+
+
+# Kick off background collector
+background_collector()
 
 
 if module_selected:
