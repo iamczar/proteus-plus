@@ -104,4 +104,5 @@ class ModuleManager(metaclass=Singleton):
                         "success",
                         source="Module Selection",
                     )
-                    st.rerun()
+                    # Avoid forcing a full app rerun, which can invalidate live fragments
+                    # The live view will detect the selection and update incrementally
