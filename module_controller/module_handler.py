@@ -380,9 +380,13 @@ class ModuleHandler:
             if source == "syslogger":
                 return f"sys-logger/{self.module_id}"
 
-            # - Alpha/Sequence controller state and acks -> sequence-controller-status
-            if source in ("alpha_comms_manager", "sequence_controller"):
+            # - Sequence controller state/acks -> sequence-controller-status
+            if source == "sequence_controller":
                 return f"sequence-controller-status/{self.module_id}"
+
+            # - AlphaCommsManager state notifications -> alphacommsmanager-status
+            if source == "alpha_comms_manager":
+                return f"alphacommsmanager-status/{self.module_id}"
 
             # - file_storage_sensor -> file-info
             if source == "file_storage_sensor":
