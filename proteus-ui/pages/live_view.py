@@ -280,7 +280,7 @@ def render_base_charts() -> list:
             base_chart = (
                 alt.Chart(init_df)
                 .mark_line(color=colors[row * 2])
-                .encode(x=alt.X("x:T", title=None), y=alt.Y("y:Q", title=None))
+                .encode(x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
                 .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
@@ -292,7 +292,7 @@ def render_base_charts() -> list:
             base_chart = (
                 alt.Chart(init_df)
                 .mark_line(color=colors[row * 2 + 1])
-                .encode(x=alt.X("x:T", title=None), y=alt.Y("y:Q", title=None))
+                .encode(x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
                 .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
