@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import time
 import altair as alt
+from datetime import datetime
 from collections import deque
 import random
 from common.utils import random_color
@@ -93,7 +94,7 @@ def _append_live_record(module_id: str, x_value: int, data: dict) -> None:
     try:
         fp = _live_file_path(module_id)
         with fp.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"x": x_value, "data": data}) + "\n")
+            f.write(json.dumps({"x": x_value, "ts": int(time.time()*1000), "data": data}) + "\n")
     except Exception:
         pass
 
@@ -109,7 +110,7 @@ def _load_live_records(module_id: str, max_points: int) -> list[dict]:
         for ln in lines:
             try:
                 obj = json.loads(ln.strip())
-                if isinstance(obj, dict) and "x" in obj and isinstance(obj.get("data"), dict):
+                if isinstance(obj, dict) and ("x" in obj or "ts" in obj) and isinstance(obj.get("data"), dict):
                     out.append(obj)
             except Exception:
                 continue
@@ -279,7 +280,7 @@ def render_base_charts() -> list:
             base_chart = (
                 alt.Chart(init_df)
                 .mark_line(color=colors[row * 2])
-                .encode(x=alt.X("x:Q", title=None), y=alt.Y("y:Q", title=None))
+                .encode(x=alt.X("x:T", title=None), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
                 .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
@@ -291,7 +292,7 @@ def render_base_charts() -> list:
             base_chart = (
                 alt.Chart(init_df)
                 .mark_line(color=colors[row * 2 + 1])
-                .encode(x=alt.X("x:Q", title=None), y=alt.Y("y:Q", title=None))
+                .encode(x=alt.X("x:T", title=None), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
                 .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
@@ -371,7 +372,13 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     buffers = st.session_state._live_buffers[mod]
                 charts = st.session_state.chart_elements_v2
                 for rec in records:
-                    x_val = int(rec.get("x", 0))
+                    # Prefer persisted timestamp; fallback to x counter mapped to now
+                    ts_ms = rec.get("ts")
+                    if ts_ms is None:
+                        # Map legacy x to approximate timestamps spaced by 1s ending at now
+                        # This is a fallback for older files
+                        ts_ms = int(time.time()*1000)
+                    x_val = datetime.fromtimestamp(int(ts_ms)/1000.0)
                     dct = rec.get("data", {})
                     for idx, (_, key) in enumerate(METRICS):
                         try:
@@ -392,9 +399,8 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     except Exception:
                         pass
                 st.session_state._live_painted[mod] = [len(b) for b in buffers]
-                # Advance x counter to end of file
-                last_x = records[-1]["x"] if records else 0
-                st.session_state._live_x_counters[mod] = int(last_x) + 1
+                # Advance x counter based on count, not persisted x
+                st.session_state._live_x_counters[mod] = len(buffers[0]) if buffers and buffers[0] else 0
 
 
 if module_selected:
@@ -474,7 +480,8 @@ def background_collector():
                 data = payload.get("data") or {}
                 if not isinstance(data, dict):
                     continue
-                row_x = x_counter
+                # Use real time for x-axis
+                row_x = datetime.now()
                 for idx, (_, key) in enumerate(METRICS):
                     val = data.get(key, last_values[idx])
                     try:
@@ -483,8 +490,8 @@ def background_collector():
                         new_y = float(last_values[idx])
                     buffers[idx].append((row_x, new_y))
                     last_values[idx] = new_y
-                # Persist to disk for recovery after refresh
-                _append_live_record(mod, row_x, data)
+                # Persist to disk with timestamp for recovery after refresh
+                _append_live_record(mod, x_counter, data)
                 x_counter += 1
             except Exception:
                 continue
