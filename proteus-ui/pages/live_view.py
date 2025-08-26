@@ -177,7 +177,7 @@ def experiment_controls():
             "Resume Experiment",
             "Start Logging",
             "Stop Logging",
-            "Retrieve Logs",
+            "Retrieve Data",
         ]
 
         for row_start in range(0, len(labels), 4):
