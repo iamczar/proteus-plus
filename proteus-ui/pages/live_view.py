@@ -22,6 +22,8 @@ st.title("Live View")
 # Topics and history window
 MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
+ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
+SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 MAX_POINTS = 8640  # show last ~2.4h at 1 Hz (adjust as needed)
 
 # Disable interactivity for charts globally (keeps visuals the same)
@@ -291,6 +293,18 @@ def experiment_controls():
                                         },
                                     }
                                     MQTTService().publish(topic, envelope)
+                                    # Reset per-module sequence UI state
+                                    mod = str(module_id)
+                                    if "_seq_ui_state" not in st.session_state:
+                                        st.session_state._seq_ui_state = {}
+                                    st.session_state._seq_ui_state[mod] = {
+                                        "phase": "transferring",
+                                        "transfer_pct": 0,
+                                        "transfer_text": "",
+                                        "exec_current": 0,
+                                        "exec_total": 0,
+                                        "exec_pct": 0,
+                                    }
                                     msg = f"Sent start_sequence to `{topic}` file `{Path(file_path).name}`"
                                     show_toast(msg, "success", source="Start Experiment")
                                     _append_system_log(f"Toast [success]: {msg}", level="INFO")
@@ -575,6 +589,15 @@ def background_collector():
                 subs.add(topic)
             except Exception:
                 pass
+        # Subscribe to alpha/seqctrl status topics
+        for prefix in (ALPHA_STATUS_PREFIX, SEQCTRL_STATUS_PREFIX):
+            t = f"{prefix}/{m}"
+            if t not in subs:
+                try:
+                    MQTTService().subscribe(t)
+                    subs.add(t)
+                except Exception:
+                    pass
     # Drain each topic and append to per-module buffers
     for m in modules:
         topic = f"{LIVE_TOPIC_PREFIX}/{m}"
@@ -615,6 +638,59 @@ def background_collector():
                 continue
         st.session_state._live_x_counters[mod] = x_counter
 
+    # Sequence transfer and execution status updates
+    if "_seq_ui_state" not in st.session_state:
+        st.session_state._seq_ui_state = {}
+    for m in modules:
+        mod = str(m)
+        model = st.session_state._seq_ui_state.get(mod, {
+            "phase": "idle", "transfer_pct": 0, "transfer_text": "",
+            "exec_current": 0, "exec_total": 0, "exec_pct": 0,
+        })
+        # Alpha status
+        a_msgs = MQTTService().drain(f"{ALPHA_STATUS_PREFIX}/{m}", max_items=500)
+        for _, payload in a_msgs:
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                cmd = inner.get("command")
+                action = inner.get("action")
+                if action == "sequence_progress":
+                    model["phase"] = "transferring"
+                    pct = float(inner.get("percentage", 0.0))
+                    model["transfer_pct"] = max(0, min(100, pct))
+                    model["transfer_text"] = inner.get("progress", "")
+                elif cmd == "sequence_complete":
+                    model["phase"] = "transferring"
+                    model["transfer_pct"] = 100
+                    model["transfer_text"] = "Transfer complete"
+                elif cmd == "state_notification" and inner.get("state") == "idle" and model.get("transfer_pct", 0) >= 100:
+                    # After transfer completes and goes idle, move to awaiting execution
+                    model["phase"] = "awaiting_execution"
+            except Exception:
+                continue
+        # Sequence controller status
+        s_msgs = MQTTService().drain(f"{SEQCTRL_STATUS_PREFIX}/{m}", max_items=500)
+        for _, payload in s_msgs:
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                ev = inner.get("event")
+                st_txt = inner.get("state")
+                if ev == "status":
+                    if st_txt == "executing":
+                        model["phase"] = "executing"
+                    total = inner.get("total_sequences")
+                    cur = inner.get("current_sequence")
+                    if isinstance(total, (int, float)) and isinstance(cur, (int, float)):
+                        model["exec_total"] = int(total)
+                        model["exec_current"] = int(cur)
+                        model["exec_pct"] = int((model["exec_current"] / model["exec_total"]) * 100) if model["exec_total"] > 0 else 0
+                elif ev == "execution-complete":
+                    model["phase"] = "completed"
+                    model["exec_pct"] = 100
+            except Exception:
+                continue
+        st.session_state._seq_ui_state[mod] = model
+
 
 # Kick off background collector
 background_collector()
@@ -622,3 +698,30 @@ background_collector()
 
 if module_selected:
     update_loop()
+
+    # Sequence status banner
+    mod = str(st.session_state.get("selected_module"))
+    model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+    if model:
+        phase = model.get("phase")
+        if phase in ("transferring", "awaiting_execution"):
+            with st.container(border=True):
+                st.subheader("Transferring Sequence")
+                st.write("Please wait while the sequence is sent to the device…")
+                # Simple spinner indicator
+                st.write(":hourglass_flowing_sand: Loading…")
+                st.progress(int(model.get("transfer_pct", 0)))
+                txt = model.get("transfer_text")
+                if txt:
+                    st.caption(txt)
+        if phase == "executing":
+            with st.container(border=True):
+                st.subheader("Executing Sequence")
+                cur = int(model.get("exec_current", 0))
+                total = int(model.get("exec_total", 0))
+                pct = int(model.get("exec_pct", 0))
+                st.progress(pct)
+                st.caption(f"{cur}/{total}")
+        if phase == "completed":
+            with st.container(border=True):
+                st.success("Sequence completed")
