@@ -282,8 +282,16 @@ def experiment_controls():
                             else:
                                 topic = f"{MQTT_TOPIC}/{module_id}"
                                 try:
-                                    MQTTService().publish(topic, file_path)
-                                    msg = f"Sent MQTT to `{topic}` with file `{Path(file_path).name}`"
+                                    envelope = {
+                                        "message_source": "proteus-ui",
+                                        "timestamp": datetime.now().isoformat(),
+                                        "message": {
+                                            "command": "start_sequence",
+                                            "file_path": file_path,
+                                        },
+                                    }
+                                    MQTTService().publish(topic, envelope)
+                                    msg = f"Sent start_sequence to `{topic}` file `{Path(file_path).name}`"
                                     show_toast(msg, "success", source="Start Experiment")
                                     _append_system_log(f"Toast [success]: {msg}", level="INFO")
                                 except Exception as exc:
