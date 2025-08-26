@@ -169,10 +169,11 @@ def _experiment_picker_dialog() -> None:
 def experiment_controls():
     with st.container(border=True, key="experiment_controls_container_v2"):
         labels = [
-            "New Experiment",
-            "Start Experiment",
+            "Create/Select Experiment",
+            "Start Sequence",
             "Stop Experiment",
             "Pause Experiment",
+            "Select Sequence File",
             "Resume Experiment",
             "Start Logging",
             "Stop Logging",
