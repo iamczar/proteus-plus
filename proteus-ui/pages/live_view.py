@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -73,6 +74,48 @@ def _get_experiments_dir() -> Path:
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
     return repo_root / "sequence_files"
+
+
+# -------- Persistence helpers (file-backed history per module) --------
+def _live_data_dir() -> Path:
+    this_file = Path(__file__).resolve()
+    repo_root = this_file.parents[2]
+    d = repo_root / "proteus-ui" / "data" / "live"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _live_file_path(module_id: str) -> Path:
+    return _live_data_dir() / f"module_{module_id}.jsonl"
+
+
+def _append_live_record(module_id: str, x_value: int, data: dict) -> None:
+    try:
+        fp = _live_file_path(module_id)
+        with fp.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"x": x_value, "data": data}) + "\n")
+    except Exception:
+        pass
+
+
+def _load_live_records(module_id: str, max_points: int) -> list[dict]:
+    fp = _live_file_path(module_id)
+    if not fp.exists():
+        return []
+    try:
+        with fp.open("r", encoding="utf-8") as f:
+            lines = f.readlines()[-max_points:]
+        out: list[dict] = []
+        for ln in lines:
+            try:
+                obj = json.loads(ln.strip())
+                if isinstance(obj, dict) and "x" in obj and isinstance(obj.get("data"), dict):
+                    out.append(obj)
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return []
 
 
 def _list_experiment_files() -> list[str]:
@@ -310,6 +353,39 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     pass
             # Mark painted lengths
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
+        else:
+            # If no in-memory buffer, try to hydrate from persisted file
+            records = _load_live_records(mod, MAX_POINTS)
+            if records:
+                if mod not in st.session_state._live_buffers:
+                    st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+                buffers = st.session_state._live_buffers[mod]
+                charts = st.session_state.chart_elements_v2
+                for rec in records:
+                    x_val = int(rec.get("x", 0))
+                    dct = rec.get("data", {})
+                    for idx, (_, key) in enumerate(METRICS):
+                        try:
+                            y_val = float(dct.get(key, 0.0))
+                        except Exception:
+                            y_val = 0.0
+                        buffers[idx].append((x_val, y_val))
+                # Paint hydrated history
+                for idx, buf in enumerate(buffers):
+                    if not buf:
+                        continue
+                    try:
+                        df = pd.DataFrame({
+                            "x": [pt[0] for pt in buf],
+                            "y": [pt[1] for pt in buf],
+                        })
+                        charts[idx].add_rows(df)
+                    except Exception:
+                        pass
+                st.session_state._live_painted[mod] = [len(b) for b in buffers]
+                # Advance x counter to end of file
+                last_x = records[-1]["x"] if records else 0
+                st.session_state._live_x_counters[mod] = int(last_x) + 1
 
 
 if module_selected:
@@ -398,6 +474,8 @@ def background_collector():
                         new_y = float(last_values[idx])
                     buffers[idx].append((row_x, new_y))
                     last_values[idx] = new_y
+                # Persist to disk for recovery after refresh
+                _append_live_record(mod, row_x, data)
                 x_counter += 1
             except Exception:
                 continue
