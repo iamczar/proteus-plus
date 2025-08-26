@@ -309,12 +309,10 @@ def _init_charts_if_needed(force: bool = False) -> None:
     need_init = need_init or (len(st.session_state.get("chart_elements_v2", [])) != 6)
     if need_init:
         st.session_state.chart_elements_v2 = render_base_charts()
-        # Initialize per-module buffers
+        # Initialize registries
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
         mod = str(current_module) if current_module else ""
-        if mod and mod not in st.session_state._live_buffers:
-            st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
         # Painted counters per-module per-metric (how many points already rendered)
         if "_live_painted" not in st.session_state:
             st.session_state._live_painted = {}
@@ -323,7 +321,12 @@ def _init_charts_if_needed(force: bool = False) -> None:
             st.session_state._live_x_counters = {}
         # Set counters based on existing buffer length (so reselecting module restores history)
         buffers = st.session_state._live_buffers.get(mod) if mod else None
-        pre_len = len(buffers[0]) if buffers and buffers[0] is not None else 0
+        pre_len = 0
+        if buffers:
+            try:
+                pre_len = max((len(b) for b in buffers), default=0)
+            except Exception:
+                pre_len = 0
         st.session_state.live_i = pre_len
         st.session_state.live_last_values = [0.0 for _ in range(len(METRICS))]
         st.session_state._live_init_key = init_key
@@ -337,7 +340,13 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 except Exception:
                     pass
         # If we have buffered history for this module, paint it
+        has_points = False
         if buffers:
+            try:
+                has_points = any(len(b) > 0 for b in buffers)
+            except Exception:
+                has_points = False
+        if has_points:
             charts = st.session_state.chart_elements_v2
             # Refill charts from buffers efficiently in chunks
             for idx, buf in enumerate(buffers):
@@ -357,9 +366,9 @@ def _init_charts_if_needed(force: bool = False) -> None:
             # If no in-memory buffer, try to hydrate from persisted file
             records = _load_live_records(mod, MAX_POINTS)
             if records:
-                if mod not in st.session_state._live_buffers:
+                if not buffers:
                     st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
-                buffers = st.session_state._live_buffers[mod]
+                    buffers = st.session_state._live_buffers[mod]
                 charts = st.session_state.chart_elements_v2
                 for rec in records:
                     x_val = int(rec.get("x", 0))
