@@ -171,8 +171,8 @@ def experiment_controls():
         labels = [
             "Create/Select Experiment",
             "Start Sequence",
-            "Stop Experiment",
-            "Pause Experiment",
+            "Stop Sequence",
+            "Pause Sequence",
             "Select Sequence File",
             "Resume Experiment",
             "Start Logging",
