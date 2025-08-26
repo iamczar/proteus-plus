@@ -122,6 +122,23 @@ def _save_current_experiment_folder() -> None:
     _save_settings(cfg)
 
 
+def _choose_experiment_folder_windows(initial_dir: Path) -> str | None:
+    """Open a native Windows folder picker and return the chosen path or None."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        path = filedialog.askdirectory(initialdir=str(initial_dir), title="Select experiment folder")
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        return path if path else None
+    except Exception:
+        return None
+
+
 # -------- Persistence helpers (file-backed history per module) --------
 def _live_data_dir() -> Path:
     this_file = Path(__file__).resolve()
@@ -233,44 +250,23 @@ def experiment_controls():
                 with col:
                     if label == "Create/Select Experiment":
                         if st.button(label, key=f"btn_{label}"):
+                            # Open Explorer (for user to create/select), then show a native folder picker to capture selection
+                            exp_root = _experiments_root()
                             try:
-                                os.startfile(str(_experiments_root()))
-                                show_toast("Opened experiments folder in Explorer", "info", source="Experiment")
-                            except Exception as e:
-                                show_toast(f"Failed to open Explorer: {e}", "error", source="Experiment")
-                        exp_root = _experiments_root()
-                        subdirs = sorted([d.name for d in exp_root.iterdir() if d.is_dir()])
-                        cur = st.session_state.get("current_experiment_folder")
-                        st.caption(f"Root: {exp_root}")
-                        idx = 0
-                        if cur:
-                            try:
-                                name = Path(cur).name
-                                if name in subdirs and Path(cur).parent == exp_root:
-                                    idx = subdirs.index(name) + 1
+                                os.startfile(str(exp_root))
                             except Exception:
-                                idx = 0
-                        sel = st.selectbox("Select experiment folder", options=["— Select —"] + subdirs, index=idx, key="_exp_sel")
-                        c1, c2 = st.columns([2,1])
-                        with c1:
-                            new_name = st.text_input("Create new folder", value="", key="_exp_new")
-                            if st.button("Create", key="_exp_create") and new_name.strip():
-                                p = (exp_root / new_name.strip()).resolve()
-                                try:
-                                    p.mkdir(parents=True, exist_ok=True)
-                                    st.session_state.current_experiment_folder = str(p)
-                                    _save_current_experiment_folder()
-                                    show_toast(f"Created and selected: {p.name}", "success", source="Experiment")
-                                    st.rerun()
-                                except Exception as e:
-                                    show_toast(f"Failed to create: {e}", "error", source="Experiment")
-                        with c2:
-                            if sel != "— Select —" and st.button("Use Selected", key="_exp_use"):
-                                p = (exp_root / sel).resolve()
-                                st.session_state.current_experiment_folder = str(p)
+                                pass
+                            chosen = _choose_experiment_folder_windows(exp_root)
+                            if chosen:
+                                st.session_state.current_experiment_folder = str(Path(chosen).resolve())
                                 _save_current_experiment_folder()
-                                show_toast(f"Selected: {sel}", "success", source="Experiment")
+                                show_toast(f"Selected: {st.session_state.current_experiment_folder}", "success", source="Experiment")
                                 st.rerun()
+                            else:
+                                show_toast("No folder selected", "warning", source="Experiment")
+                        # Display current selection
+                        cur = st.session_state.get("current_experiment_folder")
+                        st.caption(f"Current Experiment Folder: {cur if cur else '—'}")
                     elif label == "Start Sequence":
                         if st.button(label, key=f"btn_{label}"):
                             module_id = st.session_state.get("selected_module")
