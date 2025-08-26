@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from common.utils import show_toast
+from typing import List
 
 
 class Singleton(type):
@@ -16,17 +17,40 @@ class ModuleManager(metaclass=Singleton):
     def __init__(self):
         self.current_page = None
         self.selected_modules = None
-        # Placeholder list; replaced at runtime by `get_available_modules()`
+        # Cache for discovered modules
+        if "_available_modules" not in st.session_state:
+            st.session_state._available_modules = []
+        if "_modules_last_update" not in st.session_state:
+            st.session_state._modules_last_update = 0.0
 
     def get_available_modules(self) -> list:
         """
         Return a list of available/connected modules as strings.
 
-        NOTE: This is a placeholder implementation. Replace the body of this
-        method to return the actual connected modules when the backend wiring
-        is ready (e.g., query a service, read from cache, etc.).
+        Subscribes to module_controller/list-of-modules (once) and caches
+        the latest list in session_state. Drains any queued updates each call.
         """
-        return ["3005", "3006", "3007"]
+        try:
+            topic = "module_controller/list-of-modules"
+            # Ensure subscription exists
+            MQTTService().subscribe(topic)
+            # Drain and apply any updates
+            for _, data in MQTTService().drain(topic, max_items=100):
+                if isinstance(data, dict) and data.get("command") == "module_list":
+                    modules = data.get("modules") or []
+                    # Normalize to strings for UI selectbox
+                    str_modules: List[str] = [str(m) for m in modules if m is not None]
+                    # Sort descending or as-is; here we keep insertion order but unique
+                    unique = []
+                    for m in str_modules:
+                        if m not in unique:
+                            unique.append(m)
+                    st.session_state._available_modules = unique
+                    st.session_state._modules_last_update = time.time()
+            return st.session_state._available_modules or []
+        except Exception:
+            # Fallback to previous cache
+            return st.session_state.get("_available_modules", [])
 
     def select_module(self):
         col1, col2 = st.columns([1, 1])
@@ -34,7 +58,7 @@ class ModuleManager(metaclass=Singleton):
             with st.container(border=True, key="module_selection_container"):
                 modules = self.get_available_modules()
                 if not modules:
-                    st.info("No modules detected.")
+                    st.info("No modules detected. Waiting for module_controller/list-of-modules...")
                     return
 
                 previous_value = st.session_state.get("selected_module")
@@ -47,7 +71,6 @@ class ModuleManager(metaclass=Singleton):
 
                 placeholder_label = "— Select a module —"
                 if previous_value is None:
-                    # No selection yet: render with placeholder (separate key)
                     chosen = st.selectbox(
                         label="Module Selection:",
                         options=[placeholder_label] + modules,
@@ -55,7 +78,6 @@ class ModuleManager(metaclass=Singleton):
                         key="_module_select_first",
                     )
                 else:
-                    # Selection exists: render without placeholder (different key)
                     chosen = st.selectbox(
                         label="Module Selection:",
                         options=modules,
@@ -63,10 +85,8 @@ class ModuleManager(metaclass=Singleton):
                         key="_module_select_final",
                     )
 
-                # Save it in instance variable too if needed
                 self.selected_modules = st.session_state.get("selected_module")
 
-                # Update selection only when a real module is chosen, and toast on change
                 if chosen != placeholder_label and chosen != previous_value:
                     st.session_state.selected_module = chosen
                     show_toast(
@@ -74,5 +94,4 @@ class ModuleManager(metaclass=Singleton):
                         "success",
                         source="Module Selection",
                     )
-                    # Remove placeholder by switching to final widget on next render
                     st.rerun()
