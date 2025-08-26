@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import time
 import altair as alt
+from collections import deque
 import random
 from common.utils import random_color
 from common.utils import show_toast
@@ -16,9 +17,10 @@ from services.mqtt_service import MQTTService
 st.set_page_config(page_title="Live View", layout="wide")
 st.title("Live View")
 
-# Topics
+# Topics and history window
 MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
+MAX_POINTS = 8460  # show last 24 hours at ~1 Hz (adjust as needed)
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -237,7 +239,7 @@ def render_base_charts() -> list:
                 .encode(x=alt.X("x:Q", title=None), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
-                .transform_filter("datum.index >= datum.max_index - 100")
+                .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
             )
             chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
         with col2:
@@ -249,7 +251,7 @@ def render_base_charts() -> list:
                 .encode(x=alt.X("x:Q", title=None), y=alt.Y("y:Q", title=None))
                 .transform_window(index="row_number()", sort=[alt.SortField("x")])
                 .transform_window(max_index="max(index)", frame=[None, None])
-                .transform_filter("datum.index >= datum.max_index - 100")
+                .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
             )
             chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
     return chart_elements
@@ -264,8 +266,17 @@ def _init_charts_if_needed(force: bool = False) -> None:
     need_init = need_init or (len(st.session_state.get("chart_elements_v2", [])) != 6)
     if need_init:
         st.session_state.chart_elements_v2 = render_base_charts()
-        st.session_state.live_i = 0
-        st.session_state.live_last_values = [0.0 for _ in range(6)]
+        # Initialize per-module buffers
+        if "_live_buffers" not in st.session_state:
+            st.session_state._live_buffers = {}
+        mod = str(current_module) if current_module else ""
+        if mod and mod not in st.session_state._live_buffers:
+            st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+        # Set counters based on existing buffer length (so reselecting module restores history)
+        buffers = st.session_state._live_buffers.get(mod) if mod else None
+        pre_len = len(buffers[0]) if buffers and buffers[0] is not None else 0
+        st.session_state.live_i = pre_len
+        st.session_state.live_last_values = [0.0 for _ in range(len(METRICS))]
         st.session_state._live_init_key = init_key
         # Subscribe to live topic for selected module
         if current_module:
@@ -274,6 +285,21 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 try:
                     MQTTService().subscribe(topic)
                     st.session_state._live_sub_topic = topic
+                except Exception:
+                    pass
+        # If we have buffered history for this module, paint it
+        if buffers:
+            charts = st.session_state.chart_elements_v2
+            # Refill charts from buffers efficiently in chunks
+            for idx, buf in enumerate(buffers):
+                if not buf:
+                    continue
+                try:
+                    df = pd.DataFrame({
+                        "x": [pt[0] for pt in buf],
+                        "y": [pt[1] for pt in buf],
+                    })
+                    charts[idx].add_rows(df)
                 except Exception:
                     pass
 
@@ -300,6 +326,13 @@ def update_loop():
     updates = MQTTService().drain(topic, max_items=200)
     if not updates:
         return
+    # Ensure buffers exist for current module
+    mod = str(current_module)
+    if "_live_buffers" not in st.session_state:
+        st.session_state._live_buffers = {}
+    if mod not in st.session_state._live_buffers:
+        st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+    buffers = st.session_state._live_buffers[mod]
     for _, payload in updates:
         try:
             if not isinstance(payload, dict):
@@ -320,6 +353,11 @@ def update_loop():
                 last_values[idx] = new_y
                 chart = chart_elements[idx]
                 chart.add_rows(pd.DataFrame({"x": [row_x], "y": [new_y]}))
+                # Append to per-module buffer for persistence across module swaps
+                try:
+                    buffers[idx].append((row_x, new_y))
+                except Exception:
+                    pass
             i += 1
         except Exception:
             continue
