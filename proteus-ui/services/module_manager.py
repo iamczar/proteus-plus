@@ -48,6 +48,15 @@ class ModuleManager(metaclass=Singleton):
                             unique.append(m)
                     st.session_state._available_modules = unique
                     st.session_state._modules_last_update = time.time()
+            # If still empty, proactively request a module list from controller
+            if not st.session_state._available_modules:
+                last_req = st.session_state.get("_last_list_modules_request", 0.0)
+                if time.time() - last_req > 3.0:
+                    try:
+                        MQTTService().publish("controller/command", {"command": "list_modules"})
+                    except Exception:
+                        pass
+                    st.session_state._last_list_modules_request = time.time()
             return st.session_state._available_modules or []
         except Exception:
             # Fallback to previous cache
