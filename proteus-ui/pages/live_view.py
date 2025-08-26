@@ -77,6 +77,51 @@ def _get_experiments_dir() -> Path:
     return repo_root / "sequence_files"
 
 
+# --- Windows-only experiment root and settings persistence ---
+def _experiments_root() -> Path:
+    root = Path(__file__).resolve().parents[2] / "experiments"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _settings_path() -> Path:
+    p = Path(__file__).resolve().parents[2] / "proteus-ui" / "data"
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "settings.json"
+
+
+def _load_settings() -> dict:
+    try:
+        sp = _settings_path()
+        if sp.exists():
+            with sp.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_settings(data: dict) -> None:
+    try:
+        sp = _settings_path()
+        with sp.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def _ensure_current_experiment_loaded() -> None:
+    if "current_experiment_folder" not in st.session_state:
+        cfg = _load_settings()
+        st.session_state.current_experiment_folder = cfg.get("current_experiment_folder")
+
+
+def _save_current_experiment_folder() -> None:
+    cfg = _load_settings()
+    cfg["current_experiment_folder"] = st.session_state.get("current_experiment_folder")
+    _save_settings(cfg)
+
+
 # -------- Persistence helpers (file-backed history per module) --------
 def _live_data_dir() -> Path:
     this_file = Path(__file__).resolve()
@@ -168,6 +213,7 @@ def _experiment_picker_dialog() -> None:
 @st.fragment
 def experiment_controls():
     with st.container(border=True, key="experiment_controls_container_v2"):
+        _ensure_current_experiment_loaded()
         labels = [
             "Create/Select Experiment",
             "Start Sequence",
@@ -185,11 +231,47 @@ def experiment_controls():
             cols = st.columns(len(row_labels), gap="small")
             for col, label in zip(cols, row_labels):
                 with col:
-                    if label == "New Experiment":
+                    if label == "Create/Select Experiment":
                         if st.button(label, key=f"btn_{label}"):
-                            st.session_state._show_experiment_dialog = True
-                            st.rerun()
-                    elif label == "Start Experiment":
+                            try:
+                                os.startfile(str(_experiments_root()))
+                                show_toast("Opened experiments folder in Explorer", "info", source="Experiment")
+                            except Exception as e:
+                                show_toast(f"Failed to open Explorer: {e}", "error", source="Experiment")
+                        exp_root = _experiments_root()
+                        subdirs = sorted([d.name for d in exp_root.iterdir() if d.is_dir()])
+                        cur = st.session_state.get("current_experiment_folder")
+                        st.caption(f"Root: {exp_root}")
+                        idx = 0
+                        if cur:
+                            try:
+                                name = Path(cur).name
+                                if name in subdirs and Path(cur).parent == exp_root:
+                                    idx = subdirs.index(name) + 1
+                            except Exception:
+                                idx = 0
+                        sel = st.selectbox("Select experiment folder", options=["— Select —"] + subdirs, index=idx, key="_exp_sel")
+                        c1, c2 = st.columns([2,1])
+                        with c1:
+                            new_name = st.text_input("Create new folder", value="", key="_exp_new")
+                            if st.button("Create", key="_exp_create") and new_name.strip():
+                                p = (exp_root / new_name.strip()).resolve()
+                                try:
+                                    p.mkdir(parents=True, exist_ok=True)
+                                    st.session_state.current_experiment_folder = str(p)
+                                    _save_current_experiment_folder()
+                                    show_toast(f"Created and selected: {p.name}", "success", source="Experiment")
+                                    st.rerun()
+                                except Exception as e:
+                                    show_toast(f"Failed to create: {e}", "error", source="Experiment")
+                        with c2:
+                            if sel != "— Select —" and st.button("Use Selected", key="_exp_use"):
+                                p = (exp_root / sel).resolve()
+                                st.session_state.current_experiment_folder = str(p)
+                                _save_current_experiment_folder()
+                                show_toast(f"Selected: {sel}", "success", source="Experiment")
+                                st.rerun()
+                    elif label == "Start Sequence":
                         if st.button(label, key=f"btn_{label}"):
                             module_id = st.session_state.get("selected_module")
                             file_path = st.session_state.get("experiment_file_path")
