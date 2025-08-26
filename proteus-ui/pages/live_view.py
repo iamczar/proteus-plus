@@ -16,7 +16,9 @@ from services.mqtt_service import MQTTService
 st.set_page_config(page_title="Live View", layout="wide")
 st.title("Live View")
 
+# Topics
 MQTT_TOPIC = "sequence-commands"
+LIVE_TOPIC_PREFIX = "live-sensor-data"
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -210,14 +212,16 @@ def get_colors(number: int) -> list:
 
 
 colors = get_colors(6)
-table_titles = [
-    "Oxygen Pressure",
-    "PressureKi",
-    "PressureKd",
-    "PressureKp",
-    "Temperature",
-    "Pump Speed",
+# Charts map to fields from data_logger 'data' payload
+METRICS = [
+    ("Oxygen PID", "oxygen_pid"),
+    ("Pressure PID", "pressure_pid"),
+    ("Temperature (C)", "temp_measured"),
+    ("Flow (SLPM)", "flow_measured"),
+    ("Pressure Measured", "pressure_measured"),
+    ("Circ Pump Speed", "circ_pump_speed"),
 ]
+table_titles = [m[0] for m in METRICS]
 
 
 def render_base_charts() -> list:
@@ -263,43 +267,64 @@ def _init_charts_if_needed(force: bool = False) -> None:
         st.session_state.live_i = 0
         st.session_state.live_last_values = [0.0 for _ in range(6)]
         st.session_state._live_init_key = init_key
+        # Subscribe to live topic for selected module
+        if current_module:
+            topic = f"{LIVE_TOPIC_PREFIX}/{current_module}"
+            if st.session_state.get("_live_sub_topic") != topic:
+                try:
+                    MQTTService().subscribe(topic)
+                    st.session_state._live_sub_topic = topic
+                except Exception:
+                    pass
 
 
 if module_selected:
     _init_charts_if_needed()
 
 
-@st.fragment(run_every=0.1)
+@st.fragment(run_every=0.2)
 def update_loop():
     # Reinitialize when module changes or after navigation reset
     _init_charts_if_needed()
 
-    # Generate and add one new point per chart
+    current_module = st.session_state.get("selected_module")
+    topic = f"{LIVE_TOPIC_PREFIX}/{current_module}" if current_module else None
+    if not topic:
+        return
+
     i = st.session_state.live_i
     last_values = st.session_state.live_last_values
     chart_elements = st.session_state.chart_elements_v2
-    for chart_idx, chart in enumerate(chart_elements):
-        if chart_idx == 0:
-            new_y = float(np.sin(i * 0.1) + np.random.normal(0, 0.1))
-        elif chart_idx == 1:
-            new_y = float(np.cos(i * 0.15) + np.random.normal(0, 0.1))
-        elif chart_idx == 2:
-            new_y = float((i % 20) / 10 + np.random.normal(0, 0.1))
-        elif chart_idx == 3:
-            new_y = float((1 if (i // 10) % 2 == 0 else -1) + np.random.normal(0, 0.1))
-        elif chart_idx == 4:
-            new_y = float(20 + i * 0.01 + np.random.normal(0, 0.2))
-        else:
-            new_y = float(last_values[chart_idx] + np.random.normal(0, 0.3))
-        last_values[chart_idx] = new_y
-        try:
-            chart.add_rows(pd.DataFrame({"x": [i], "y": [new_y]}))
-        except Exception:
-            # If chart refs became invalid (e.g., after navigation), reinitialize once
-            _init_charts_if_needed(force=True)
-            return
 
-    st.session_state.live_i = i + 1
+    # Drain live data from MQTT and update charts
+    updates = MQTTService().drain(topic, max_items=200)
+    if not updates:
+        return
+    for _, payload in updates:
+        try:
+            if not isinstance(payload, dict):
+                continue
+            if (payload.get("message_source") != "data_logger"):
+                continue
+            data = payload.get("data") or {}
+            if not isinstance(data, dict):
+                continue
+            # One x-step per message
+            row_x = i
+            for idx, (_, key) in enumerate(METRICS):
+                val = data.get(key, last_values[idx])
+                try:
+                    new_y = float(val)
+                except Exception:
+                    new_y = float(last_values[idx])
+                last_values[idx] = new_y
+                chart = chart_elements[idx]
+                chart.add_rows(pd.DataFrame({"x": [row_x], "y": [new_y]}))
+            i += 1
+        except Exception:
+            continue
+
+    st.session_state.live_i = i
 
 
 if module_selected:
