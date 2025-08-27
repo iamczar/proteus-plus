@@ -308,6 +308,9 @@ def experiment_controls():
                                         "exec_current": 0,
                                         "exec_total": 0,
                                         "exec_pct": 0,
+                                        "alpha_state": "",
+                                        "seq_state": "",
+                                        "transfer_done": False,
                                     }
                                     # Initialize toast flags for this module (transfer/execution complete)
                                     if "_seq_toast_flags" not in st.session_state:
@@ -654,6 +657,7 @@ def background_collector():
             "phase": "idle", "transfer_pct": 0, "transfer_text": "",
             "exec_current": 0, "exec_total": 0, "exec_pct": 0,
             "alpha_state": "", "seq_state": "",
+            "transfer_done": False,
         })
         # Toast flags for this module
         if "_seq_toast_flags" not in st.session_state:
@@ -668,13 +672,16 @@ def background_collector():
                 cmd = inner.get("command")
                 action = inner.get("action")
                 if action == "sequence_progress":
-                    model["phase"] = "transferring"
-                    pct = float(inner.get("percentage", 0.0))
-                    model["transfer_pct"] = max(0, min(100, pct))
-                    model["transfer_text"] = inner.get("progress", "")
+                    # Ignore further transfer updates after transfer has completed
+                    if not bool(model.get("transfer_done")) and model.get("phase") != "executing":
+                        model["phase"] = "transferring"
+                        pct = float(inner.get("percentage", 0.0))
+                        model["transfer_pct"] = max(0, min(100, pct))
+                        model["transfer_text"] = inner.get("progress", "")
                 elif cmd == "sequence_complete":
                     # Transfer done – show toast once, do not hold banner
                     model["transfer_pct"] = 100
+                    model["transfer_done"] = True
                     if not flags.get("transfer"):
                         show_toast("Sequence transfer complete", "success", source="Sequence")
                         flags["transfer"] = True
@@ -697,7 +704,9 @@ def background_collector():
                 st_txt = inner.get("state")
                 if ev == "status":
                     if st_txt == "executing":
+                        # Once executing, never show transfer again in this run
                         model["phase"] = "executing"
+                        model["transfer_done"] = True
                     # Track controller state always
                     try:
                         model["seq_state"] = str(st_txt or "")
@@ -771,7 +780,7 @@ def _render_sequence_status_panel(placeholder):
     phase = model.get("phase")
     with placeholder.container(border=True):
         st.subheader("Sequence Status")
-        if phase in ("transferring", "awaiting_execution"):
+        if phase in ("transferring", "awaiting_execution") and not bool(model.get("transfer_done")):
             st.write("Transferring sequence to Alpha…")
             st.progress(int(model.get("transfer_pct", 0)))
             txt = model.get("transfer_text")
