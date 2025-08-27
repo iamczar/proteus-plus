@@ -53,6 +53,7 @@ st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.rand
 
 # Module selection + right-hand Sequence Status panel row
 left_col, right_col = st.columns([1, 1], gap="large")
+right_status_placeholder = right_col.empty()
 with left_col:
     ModuleManager().select_module()
 
@@ -697,16 +698,16 @@ def background_collector():
 background_collector()
 
 
-def _render_sequence_status_panel(container):
+def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
     if not model:
-        with container:
+        with placeholder.container(border=True):
             st.subheader("Sequence Status")
             st.caption("Idle")
         return
     phase = model.get("phase")
-    with container:
+    with placeholder.container(border=True):
         st.subheader("Sequence Status")
         if phase in ("transferring", "awaiting_execution"):
             st.write("Transferring sequence to Alpha…")
@@ -727,4 +728,4 @@ def _render_sequence_status_panel(container):
 
 if module_selected:
     update_loop()
-    _render_sequence_status_panel(right_col.container(border=True))
+    _render_sequence_status_panel(right_status_placeholder)
