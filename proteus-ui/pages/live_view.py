@@ -308,6 +308,10 @@ def experiment_controls():
                                         "exec_total": 0,
                                         "exec_pct": 0,
                                     }
+                                    # Initialize toast flags for this module (transfer/execution complete)
+                                    if "_seq_toast_flags" not in st.session_state:
+                                        st.session_state._seq_toast_flags = {}
+                                    st.session_state._seq_toast_flags[mod] = {"transfer": False, "completed": False}
                                     msg = f"Sent start_sequence to `{topic}` file `{Path(file_path).name}`"
                                     show_toast(msg, "success", source="Start Experiment")
                                     _append_system_log(f"Toast [success]: {msg}", level="INFO")
@@ -649,6 +653,11 @@ def background_collector():
             "phase": "idle", "transfer_pct": 0, "transfer_text": "",
             "exec_current": 0, "exec_total": 0, "exec_pct": 0,
         })
+        # Toast flags for this module
+        if "_seq_toast_flags" not in st.session_state:
+            st.session_state._seq_toast_flags = {}
+        flags = st.session_state._seq_toast_flags.get(mod, {"transfer": False, "completed": False})
+
         # Alpha status
         a_msgs = MQTTService().drain(f"{ALPHA_STATUS_PREFIX}/{m}", max_items=500)
         for _, payload in a_msgs:
@@ -662,9 +671,11 @@ def background_collector():
                     model["transfer_pct"] = max(0, min(100, pct))
                     model["transfer_text"] = inner.get("progress", "")
                 elif cmd == "sequence_complete":
-                    model["phase"] = "transferring"
+                    # Transfer done – show toast once, do not hold banner
                     model["transfer_pct"] = 100
-                    model["transfer_text"] = "Transfer complete"
+                    if not flags.get("transfer"):
+                        show_toast("Sequence transfer complete", "success", source="Sequence")
+                        flags["transfer"] = True
                 elif cmd == "state_notification" and inner.get("state") == "idle" and model.get("transfer_pct", 0) >= 100:
                     # After transfer completes and goes idle, move to awaiting execution
                     model["phase"] = "awaiting_execution"
@@ -687,11 +698,16 @@ def background_collector():
                         model["exec_current"] = int(cur)
                         model["exec_pct"] = int((model["exec_current"] / model["exec_total"]) * 100) if model["exec_total"] > 0 else 0
                 elif ev == "execution-complete":
-                    model["phase"] = "completed"
+                    # Show toast once, then return to idle state
+                    if not flags.get("completed"):
+                        show_toast("Sequence execution completed", "success", source="Sequence")
+                        flags["completed"] = True
+                    model["phase"] = "idle"
                     model["exec_pct"] = 100
             except Exception:
                 continue
         st.session_state._seq_ui_state[mod] = model
+        st.session_state._seq_toast_flags[mod] = flags
 
 
 # Kick off background collector
