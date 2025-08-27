@@ -699,6 +699,11 @@ background_collector()
 
 
 def _render_sequence_status_panel(placeholder):
+    # Clear previous content to avoid duplicate panels
+    try:
+        placeholder.empty()
+    except Exception:
+        pass
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
     if not model:
@@ -728,4 +733,9 @@ def _render_sequence_status_panel(placeholder):
 
 if module_selected:
     update_loop()
-    _render_sequence_status_panel(right_status_placeholder)
+
+    @st.fragment(run_every=0.4)
+    def _status_tick():
+        _render_sequence_status_panel(right_status_placeholder)
+
+    _status_tick()
