@@ -106,3 +106,29 @@ class ModuleManager(metaclass=Singleton):
                     )
                     # Force a single rerun so the page reliably swaps module context
                     st.rerun()
+        # Right-hand status banners
+        with col2:
+            with st.container(border=True, key="sequence_status_container"):
+                mod = str(st.session_state.get("selected_module") or "")
+                model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+                st.subheader("Sequence Status")
+                if not model:
+                    st.info("No sequence activity.")
+                else:
+                    phase = model.get("phase")
+                    if phase in ("transferring", "awaiting_execution"):
+                        st.markdown("**Transferring Sequence**")
+                        st.write(":hourglass_flowing_sand: Loading…")
+                        st.progress(int(model.get("transfer_pct", 0)))
+                        txt = model.get("transfer_text")
+                        if txt:
+                            st.caption(txt)
+                    if phase == "executing":
+                        st.markdown("**Executing Sequence**")
+                        cur = int(model.get("exec_current", 0))
+                        total = int(model.get("exec_total", 0))
+                        pct = int(model.get("exec_pct", 0))
+                        st.progress(pct)
+                        st.caption(f"{cur}/{total}")
+                    if phase == "completed":
+                        st.success("Sequence completed")
