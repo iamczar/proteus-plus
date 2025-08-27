@@ -574,7 +574,7 @@ def update_loop():
 
 
 # Background collector: subscribe to all module live topics and buffer data
-@st.fragment(run_every=0.2)
+@st.fragment(run_every=0.5)
 def background_collector():
     modules = st.session_state.get("_available_modules", [])
     if not modules:
@@ -699,13 +699,31 @@ background_collector()
 
 
 def _render_sequence_status_panel(placeholder):
-    # Clear previous content to avoid duplicate panels
+    mod = str(st.session_state.get("selected_module"))
+    model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+    # Build a compact state signature to detect changes
+    if model:
+        state_sig = (
+            model.get("phase"),
+            int(model.get("transfer_pct", 0)),
+            model.get("transfer_text", ""),
+            int(model.get("exec_current", 0)),
+            int(model.get("exec_total", 0)),
+            int(model.get("exec_pct", 0)),
+        )
+    else:
+        state_sig = ("idle", 0, "", 0, 0, 0)
+    last_key = ("_status_sig", mod)
+    if st.session_state.get(last_key) == state_sig:
+        return
+    st.session_state[last_key] = state_sig
+
+    # Clear and redraw only when something changed
     try:
         placeholder.empty()
     except Exception:
         pass
-    mod = str(st.session_state.get("selected_module"))
-    model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+
     if not model:
         with placeholder.container(border=True):
             st.subheader("Sequence Status")
@@ -734,7 +752,7 @@ def _render_sequence_status_panel(placeholder):
 if module_selected:
     update_loop()
 
-    @st.fragment(run_every=0.4)
+    @st.fragment(run_every=0.8)
     def _status_tick():
         _render_sequence_status_panel(right_status_placeholder)
 
