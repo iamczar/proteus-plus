@@ -54,6 +54,7 @@ st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.rand
 # Module selection + right-hand Sequence Status panel row
 left_col, right_col = st.columns([1, 1], gap="large")
 right_status_placeholder = right_col.empty()
+right_seq_state_placeholder = right_col.empty()
 with left_col:
     ModuleManager().select_module()
 
@@ -652,6 +653,7 @@ def background_collector():
         model = st.session_state._seq_ui_state.get(mod, {
             "phase": "idle", "transfer_pct": 0, "transfer_text": "",
             "exec_current": 0, "exec_total": 0, "exec_pct": 0,
+            "alpha_state": "", "seq_state": "",
         })
         # Toast flags for this module
         if "_seq_toast_flags" not in st.session_state:
@@ -679,6 +681,11 @@ def background_collector():
                 elif cmd == "state_notification" and inner.get("state") == "idle" and model.get("transfer_pct", 0) >= 100:
                     # After transfer completes and goes idle, move to awaiting execution
                     model["phase"] = "awaiting_execution"
+                if cmd == "state_notification":
+                    try:
+                        model["alpha_state"] = str(inner.get("state", ""))
+                    except Exception:
+                        pass
             except Exception:
                 continue
         # Sequence controller status
@@ -691,6 +698,11 @@ def background_collector():
                 if ev == "status":
                     if st_txt == "executing":
                         model["phase"] = "executing"
+                    # Track controller state always
+                    try:
+                        model["seq_state"] = str(st_txt or "")
+                    except Exception:
+                        pass
                     total = inner.get("total_sequences")
                     cur = inner.get("current_sequence")
                     if isinstance(total, (int, float)) and isinstance(cur, (int, float)):
@@ -698,14 +710,25 @@ def background_collector():
                         model["exec_current"] = int(cur)
                         model["exec_pct"] = int((model["exec_current"] / model["exec_total"]) * 100) if model["exec_total"] > 0 else 0
                 elif ev == "execution-complete":
-                    # Show toast once, then return to idle state
+                    # Show toast once; final idle clearing handled when both sources report idle
                     if not flags.get("completed"):
                         show_toast("Sequence execution completed", "success", source="Sequence")
                         flags["completed"] = True
-                    model["phase"] = "idle"
                     model["exec_pct"] = 100
             except Exception:
                 continue
+        # If both Alpha and Sequence Controller report idle, clear progress UI
+        try:
+            if (str(model.get("alpha_state", "")).lower() == "idle" and
+                str(model.get("seq_state", "")).lower() == "idle"):
+                model["phase"] = "idle"
+                model["transfer_text"] = ""
+                model["transfer_pct"] = 0
+                model["exec_current"] = 0
+                model["exec_total"] = 0
+                model["exec_pct"] = 0
+        except Exception:
+            pass
         st.session_state._seq_ui_state[mod] = model
         st.session_state._seq_toast_flags[mod] = flags
 
@@ -765,11 +788,28 @@ def _render_sequence_status_panel(placeholder):
             st.success("Sequence completed")
 
 
+def _render_sequence_controller_state(placeholder):
+    mod = str(st.session_state.get("selected_module"))
+    model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+    try:
+        placeholder.empty()
+    except Exception:
+        pass
+    with placeholder.container(border=True):
+        st.subheader("Sequence Controller State")
+        if not model:
+            st.caption("—")
+            return
+        state = str(model.get("seq_state", "")).strip() or "—"
+        st.caption(state)
+
+
 if module_selected:
     update_loop()
 
     @st.fragment(run_every=0.8)
     def _status_tick():
         _render_sequence_status_panel(right_status_placeholder)
+        _render_sequence_controller_state(right_seq_state_placeholder)
 
     _status_tick()
