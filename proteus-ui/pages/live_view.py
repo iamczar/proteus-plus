@@ -51,8 +51,10 @@ inject_button_theme(
 # Unique token for this script run (used to safely rebuild charts after navigation)
 st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.randint(0, 1_000_000)}"
 
-# Module selection
-ModuleManager().select_module()
+# Module selection + right-hand Sequence Status panel row
+left_col, right_col = st.columns([1, 1], gap="large")
+with left_col:
+    ModuleManager().select_module()
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -695,32 +697,34 @@ def background_collector():
 background_collector()
 
 
-if module_selected:
-    update_loop()
-
-    # Sequence status banner
+def _render_sequence_status_panel(container):
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
-    if model:
-        phase = model.get("phase")
+    if not model:
+        with container:
+            st.subheader("Sequence Status")
+            st.caption("Idle")
+        return
+    phase = model.get("phase")
+    with container:
+        st.subheader("Sequence Status")
         if phase in ("transferring", "awaiting_execution"):
-            with st.container(border=True):
-                st.subheader("Transferring Sequence")
-                st.write("Please wait while the sequence is sent to the device…")
-                # Simple spinner indicator
-                st.write(":hourglass_flowing_sand: Loading…")
-                st.progress(int(model.get("transfer_pct", 0)))
-                txt = model.get("transfer_text")
-                if txt:
-                    st.caption(txt)
-        if phase == "executing":
-            with st.container(border=True):
-                st.subheader("Executing Sequence")
-                cur = int(model.get("exec_current", 0))
-                total = int(model.get("exec_total", 0))
-                pct = int(model.get("exec_pct", 0))
-                st.progress(pct)
-                st.caption(f"{cur}/{total}")
-        if phase == "completed":
-            with st.container(border=True):
-                st.success("Sequence completed")
+            st.write("Transferring sequence to Alpha…")
+            st.progress(int(model.get("transfer_pct", 0)))
+            txt = model.get("transfer_text")
+            if txt:
+                st.caption(txt)
+        elif phase == "executing":
+            cur = int(model.get("exec_current", 0))
+            total = int(model.get("exec_total", 0))
+            pct = int(model.get("exec_pct", 0))
+            st.write("Executing sequence…")
+            st.progress(pct)
+            st.caption(f"{cur}/{total}")
+        elif phase == "completed":
+            st.success("Sequence completed")
+
+
+if module_selected:
+    update_loop()
+    _render_sequence_status_panel(right_col.container(border=True))
