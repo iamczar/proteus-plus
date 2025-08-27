@@ -602,8 +602,6 @@ def background_collector():
     for m in modules:
         topic = f"{LIVE_TOPIC_PREFIX}/{m}"
         updates = MQTTService().drain(topic, max_items=500)
-        if not updates:
-            continue
         mod = str(m)
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
@@ -614,28 +612,29 @@ def background_collector():
         x_counter = st.session_state._live_x_counters.get(mod, 0)
         buffers = st.session_state._live_buffers[mod]
         last_values = st.session_state.get("live_last_values", [0.0 for _ in range(len(METRICS))])
-        for _, payload in updates:
-            try:
-                if not isinstance(payload, dict) or payload.get("message_source") != "data_logger":
+        if updates:
+            for _, payload in updates:
+                try:
+                    if not isinstance(payload, dict) or payload.get("message_source") != "data_logger":
+                        continue
+                    data = payload.get("data") or {}
+                    if not isinstance(data, dict):
+                        continue
+                    # Use real time for x-axis
+                    row_x = datetime.now()
+                    for idx, (_, key) in enumerate(METRICS):
+                        val = data.get(key, last_values[idx])
+                        try:
+                            new_y = float(val)
+                        except Exception:
+                            new_y = float(last_values[idx])
+                        buffers[idx].append((row_x, new_y))
+                        last_values[idx] = new_y
+                    # Persist to disk with timestamp for recovery after refresh
+                    _append_live_record(mod, x_counter, data)
+                    x_counter += 1
+                except Exception:
                     continue
-                data = payload.get("data") or {}
-                if not isinstance(data, dict):
-                    continue
-                # Use real time for x-axis
-                row_x = datetime.now()
-                for idx, (_, key) in enumerate(METRICS):
-                    val = data.get(key, last_values[idx])
-                    try:
-                        new_y = float(val)
-                    except Exception:
-                        new_y = float(last_values[idx])
-                    buffers[idx].append((row_x, new_y))
-                    last_values[idx] = new_y
-                # Persist to disk with timestamp for recovery after refresh
-                _append_live_record(mod, x_counter, data)
-                x_counter += 1
-            except Exception:
-                continue
         st.session_state._live_x_counters[mod] = x_counter
 
     # Sequence transfer and execution status updates
