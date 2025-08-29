@@ -483,6 +483,17 @@ def experiment_controls():
                                     show_toast("Stop logging sent.", "info", source="Logging")
                                 else:
                                     show_toast("Failed to stop logging.", "error", source="Logging")
+                    elif label == "Retrieve Data":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Retrieve Data")
+                            else:
+                                ok = _publish_ui_command(module_id, "retrieve_data")
+                                if ok:
+                                    show_toast("Retrieve data sent.", "info", source="Data")
+                                else:
+                                    show_toast("Failed to send retrieve data.", "error", source="Data")
                     elif label == "Select Sequence File":
                         seq_dir = _get_experiments_dir()
                         # List CSV files and allow selection
