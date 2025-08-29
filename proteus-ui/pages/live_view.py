@@ -130,6 +130,46 @@ def _save_current_experiment_folder() -> None:
     _save_settings(cfg)
 
 
+def _publish_ui_command(module_id: int | str, ui_command: str) -> bool:
+    """Publish a UI command to sequence-commands/<module_id> with envelope.
+
+    Supported ui_command values: stop_sequence, pause_sequence, resume_sequence,
+    retrieve_data, start_data_log, stop_data_log.
+    """
+    try:
+        topic = f"{MQTT_TOPIC}/{module_id}"
+        envelope = {
+            "message_source": "proteus-ui",
+            "timestamp": datetime.now().isoformat(),
+            "message": {"command": ui_command},
+        }
+        MQTTService().publish(topic, envelope)
+        # Track pending ack for this module
+        mod = str(module_id)
+        if "_pending_cmd" not in st.session_state:
+            st.session_state._pending_cmd = {}
+        st.session_state._pending_cmd[mod] = {"name": ui_command, "ts": time.time()}
+        # Toast flags for ack/executed states
+        if "_cmd_toast_flags" not in st.session_state:
+            st.session_state._cmd_toast_flags = {}
+        st.session_state._cmd_toast_flags.setdefault(mod, {})[ui_command] = {"ack": False, "executed": False}
+        return True
+    except Exception:
+        return False
+
+
+def _map_alpha_to_ui_command(alpha_cmd: str) -> str | None:
+    mapping = {
+        "stop": "stop_sequence",
+        "pause": "pause_sequence",
+        "resume": "resume_sequence",
+        "retrieve_data": "retrieve_data",
+        "start_data_log": "start_data_log",
+        "stop_data_log": "stop_data_log",
+    }
+    return mapping.get(alpha_cmd)
+
+
 def _choose_experiment_folder_windows(initial_dir: Path) -> str | None:
     """Open a native Windows folder picker and return the chosen path or None."""
     try:
@@ -388,6 +428,61 @@ def experiment_controls():
                                     msg = f"Failed to publish MQTT: {exc}"
                                     show_toast(msg, "error", source="Start Experiment")
                                     _append_system_log(f"Toast [error]: {msg}", level="ERROR")
+                    elif label == "Stop Sequence":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Stop Sequence")
+                            else:
+                                ok = _publish_ui_command(module_id, "stop_sequence")
+                                if ok:
+                                    show_toast("Stop command sent.", "info", source="Sequence")
+                                else:
+                                    show_toast("Failed to send stop.", "error", source="Sequence")
+                    elif label == "Pause Sequence":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Pause Sequence")
+                            else:
+                                ok = _publish_ui_command(module_id, "pause_sequence")
+                                if ok:
+                                    show_toast("Pause command sent.", "info", source="Sequence")
+                                else:
+                                    show_toast("Failed to send pause.", "error", source="Sequence")
+                    elif label == "Resume Experiment":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Resume Sequence")
+                            else:
+                                ok = _publish_ui_command(module_id, "resume_sequence")
+                                if ok:
+                                    show_toast("Resume command sent.", "info", source="Sequence")
+                                else:
+                                    show_toast("Failed to send resume.", "error", source="Sequence")
+                    elif label == "Start Logging":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Start Logging")
+                            else:
+                                ok = _publish_ui_command(module_id, "start_data_log")
+                                if ok:
+                                    show_toast("Start logging sent.", "info", source="Logging")
+                                else:
+                                    show_toast("Failed to start logging.", "error", source="Logging")
+                    elif label == "Stop Logging":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Stop Logging")
+                            else:
+                                ok = _publish_ui_command(module_id, "stop_data_log")
+                                if ok:
+                                    show_toast("Stop logging sent.", "info", source="Logging")
+                                else:
+                                    show_toast("Failed to stop logging.", "error", source="Logging")
                     elif label == "Select Sequence File":
                         seq_dir = _get_experiments_dir()
                         # List CSV files and allow selection
@@ -730,6 +825,10 @@ def background_collector():
         if "_seq_toast_flags" not in st.session_state:
             st.session_state._seq_toast_flags = {}
         flags = st.session_state._seq_toast_flags.get(mod, {"transfer": False, "completed": False})
+        # Command toast flags
+        if "_cmd_toast_flags" not in st.session_state:
+            st.session_state._cmd_toast_flags = {}
+        cmd_flags = st.session_state._cmd_toast_flags.get(mod, {})
 
         # Alpha status
         a_msgs = MQTTService().drain(f"{ALPHA_STATUS_PREFIX}/{m}", max_items=500)
@@ -738,6 +837,17 @@ def background_collector():
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 cmd = inner.get("command")
                 action = inner.get("action")
+                # Capture ack/executed for UI commands
+                if cmd in ("stop", "pause", "resume", "retrieve_data", "start_data_log", "stop_data_log"):
+                    ui_name = _map_alpha_to_ui_command(cmd)
+                    if ui_name:
+                        cf = cmd_flags.setdefault(ui_name, {"ack": False, "executed": False})
+                        if action in ("ack", "acknowledged", "received") and not cf["ack"]:
+                            show_toast(f"{ui_name.replace('_', ' ').title()} acknowledged by Alpha.", "success", source="Command")
+                            cf["ack"] = True
+                        if action in ("executed", "done", "completed") and not cf["executed"]:
+                            show_toast(f"{ui_name.replace('_', ' ').title()} executed.", "success", source="Command")
+                            cf["executed"] = True
                 if action == "sequence_progress":
                     # Ignore further transfer updates after transfer has completed
                     if not bool(model.get("transfer_done")) and model.get("phase") != "executing":
@@ -807,6 +917,7 @@ def background_collector():
             pass
         st.session_state._seq_ui_state[mod] = model
         st.session_state._seq_toast_flags[mod] = flags
+        st.session_state._cmd_toast_flags[mod] = cmd_flags
 
 
 # Kick off background collector
