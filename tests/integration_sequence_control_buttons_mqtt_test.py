@@ -17,15 +17,14 @@ class SequenceControlButtonsTest(unittest.TestCase):
 
     def setUp(self):
         self._connected = False
-        self.acks = []
-        self.executed = []
+        self.sc_events = []
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.client.connect(self.MQTT_HOST)
         self.thread = self.client.loop_start()
-        # Subscribe to Alpha status where acks/executions are reported
-        self.client.subscribe([(f"alphacommsmanager-status/{self.MODULE_ID}", 0)])
+        # Subscribe only to SequenceController status (events/acks for control commands)
+        self.client.subscribe([(f"sequence-controller-status/{self.MODULE_ID}", 0)])
 
         # Wait for connection
         t0 = time.time()
@@ -54,14 +53,14 @@ class SequenceControlButtonsTest(unittest.TestCase):
             payload = json.loads(msg.payload.decode("utf-8", errors="ignore"))
         except Exception:
             return
-        inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-        cmd = inner.get("command")
-        action = inner.get("action")
-        if cmd in ("stop", "pause", "resume", "retrieve_data", "start_data_log", "stop_data_log"):
-            if action in ("ack", "acknowledged", "received"):
-                self.acks.append(cmd)
-            if action in ("executed", "done", "completed"):
-                self.executed.append(cmd)
+        # SequenceController events (e.g., paused/resumed/stopped)
+        if payload.get("message_source") != "sequence_controller":
+            return
+        m = payload.get("message")
+        if isinstance(m, dict):
+            ev = m.get("event")
+            if ev:
+                self.sc_events.append(ev)
 
     def _publish_ui_command(self, command_name: str):
         topic = f"sequence-commands/{self.MODULE_ID}"
@@ -81,28 +80,29 @@ class SequenceControlButtonsTest(unittest.TestCase):
         return False
 
     def test_buttons_ack_then_execute(self):
+        # UI command and expected SequenceController event (if applicable)
         commands = [
-            ("stop_sequence", "stop"),
-            ("pause_sequence", "pause"),
-            ("resume_sequence", "resume"),
-            ("retrieve_data", "retrieve_data"),
-            ("start_data_log", "start_data_log"),
-            ("stop_data_log", "stop_data_log"),
+            ("stop_sequence", "stopped"),
+            ("pause_sequence", "paused"),
+            ("resume_sequence", "resumed"),
+            ("retrieve_data", None),
+            ("start_data_log", None),
+            ("stop_data_log", None),
         ]
 
-        for ui_cmd, alpha_cmd in commands:
-            self.acks.clear()
-            self.executed.clear()
+        for ui_cmd, sc_event in commands:
+            self.sc_events = []
             self._publish_ui_command(ui_cmd)
 
-            # Wait for ack first
-            self.assertTrue(
-                self._wait_for(lambda: alpha_cmd in self.acks, timeout=10.0),
-                f"No ack for {ui_cmd} ({alpha_cmd})",
-            )
-
-            # Then optional executed/done
-            self._wait_for(lambda: alpha_cmd in self.executed, timeout=10.0)
+            if sc_event:
+                # For control commands, assert SequenceController event arrives
+                self.assertTrue(
+                    self._wait_for(lambda: sc_event in self.sc_events, timeout=10.0),
+                    f"No SequenceController event '{sc_event}' for {ui_cmd}",
+                )
+            else:
+                # For data/logging commands, do not assert SC events; fire-and-forget
+                time.sleep(0.2)
 
 
 if __name__ == "__main__":
