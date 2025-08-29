@@ -77,6 +77,8 @@ class ModuleManager(metaclass=Singleton):
                 """,
                 unsafe_allow_html=True,
             )
+            # Use a subheader to match other panel titles
+            st.subheader("Module Selection")
             modules = self.get_available_modules()
             if not modules:
                 st.info("No modules detected. Waiting for module_controller/list-of-modules...")
@@ -97,6 +99,7 @@ class ModuleManager(metaclass=Singleton):
                     options=[placeholder_label] + modules,
                     index=0,
                     key="_module_select_first",
+                    label_visibility="collapsed",
                 )
             else:
                 chosen = st.selectbox(
@@ -104,6 +107,7 @@ class ModuleManager(metaclass=Singleton):
                     options=modules,
                     index=(modules.index(previous_value) if previous_value in modules else 0),
                     key="_module_select_final",
+                    label_visibility="collapsed",
                 )
 
             self.selected_modules = st.session_state.get("selected_module")
