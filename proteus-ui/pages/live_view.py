@@ -58,6 +58,9 @@ right_status_placeholder = right_col.empty()
 right_seq_state_placeholder = right_col.empty()
 with left_col:
     ModuleManager().select_module()
+    # Toast area directly under Module Selection
+    toast_placeholder = st.empty()
+    render_toast_area(max_messages=3, container=toast_placeholder.container())
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -554,13 +557,7 @@ if module_selected:
 else:
     st.info("Select a module to view live controls and graphs.")
 
-# Persistent toast area placeholder between controls and charts
-toast_placeholder = st.empty()
-
-# Immediate render (first paint)
-render_toast_area(max_messages=3, container=toast_placeholder.container())
-
-# Fragment to keep toasts fresh and expiring, independent of charts
+# Fragment to keep toasts fresh and expiring
 @st.fragment(run_every=0.5)
 def update_toasts():
     render_toast_area(max_messages=3, container=toast_placeholder.container())

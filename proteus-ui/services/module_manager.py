@@ -64,6 +64,19 @@ class ModuleManager(metaclass=Singleton):
 
     def select_module(self):
         with st.container(border=True, key="module_selection_container"):
+            # Larger title styling
+            st.markdown(
+                """
+                <style>
+                /* Increase Module Selection label size */
+                div[data-baseweb="select"] label {
+                    font-size: 1.1rem !important;
+                    font-weight: 700 !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             modules = self.get_available_modules()
             if not modules:
                 st.info("No modules detected. Waiting for module_controller/list-of-modules...")
