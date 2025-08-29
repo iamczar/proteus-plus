@@ -837,15 +837,16 @@ def background_collector():
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 cmd = inner.get("command")
                 action = inner.get("action")
+                status_str = inner.get("status")
                 # Capture ack/executed for UI commands
                 if cmd in ("stop", "pause", "resume", "retrieve_data", "start_data_log", "stop_data_log"):
                     ui_name = _map_alpha_to_ui_command(cmd)
                     if ui_name:
                         cf = cmd_flags.setdefault(ui_name, {"ack": False, "executed": False})
-                        if action in ("ack", "acknowledged", "received") and not cf["ack"]:
+                        if ((action in ("ack", "acknowledged", "received")) or (status_str in ("ack", "acknowledged", "received"))) and not cf["ack"]:
                             show_toast(f"{ui_name.replace('_', ' ').title()} acknowledged by Alpha.", "success", source="Command")
                             cf["ack"] = True
-                        if action in ("executed", "done", "completed") and not cf["executed"]:
+                        if ((action in ("executed", "done", "completed")) or (status_str in ("executed", "done", "completed", "ok", "success"))) and not cf["executed"]:
                             show_toast(f"{ui_name.replace('_', ' ').title()} executed.", "success", source="Command")
                             cf["executed"] = True
                 if action == "sequence_progress":
