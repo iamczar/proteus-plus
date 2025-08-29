@@ -67,6 +67,8 @@ if "experiment_file_path" not in st.session_state:
     st.session_state.experiment_file_path = None
 if "_show_experiment_dialog" not in st.session_state:
     st.session_state._show_experiment_dialog = False
+if "_show_folder_dialog" not in st.session_state:
+    st.session_state._show_folder_dialog = False
 if "system_logs" not in st.session_state:
     st.session_state["system_logs"] = []
 
@@ -131,11 +133,19 @@ def _save_current_experiment_folder() -> None:
 def _choose_experiment_folder_windows(initial_dir: Path) -> str | None:
     """Open a native Windows folder picker and return the chosen path or None."""
     try:
+        if os.name != "nt":
+            return None
         import tkinter as tk
         from tkinter import filedialog
         root = tk.Tk()
+        # Ensure the dialog appears on top
+        try:
+            root.wm_attributes("-topmost", 1)
+        except Exception:
+            pass
         root.withdraw()
-        path = filedialog.askdirectory(initialdir=str(initial_dir), title="Select experiment folder")
+        root.update_idletasks()
+        path = filedialog.askdirectory(initialdir=str(initial_dir), title="Select experiment folder", mustexist=False)
         try:
             root.destroy()
         except Exception:
@@ -143,6 +153,64 @@ def _choose_experiment_folder_windows(initial_dir: Path) -> str | None:
         return path if path else None
     except Exception:
         return None
+
+
+@st.dialog("Select Experiment Folder", width="large")
+def _experiment_folder_dialog() -> None:
+    base = _experiments_root()
+    try:
+        dirs = sorted([p.name for p in base.iterdir() if p.is_dir()])
+    except Exception:
+        dirs = []
+    st.markdown(f"Select or create a folder under `{str(base)}`")
+    placeholder = "-- Select Folder --"
+    create_new = "-- Create New Folder --"
+    options = [create_new] + ([placeholder] if not dirs else []) + dirs
+    idx = 1 if dirs else 0
+    sel = st.selectbox("Folders", options=options, index=idx, key="_exp_folder_sel")
+    new_name = ""
+    if sel == create_new:
+        new_name = st.text_input("New folder name", key="_new_exp_folder_name")
+    c1, c2, c3 = st.columns([1, 1, 1])
+    with c1:
+        if st.button("Cancel"):
+            st.session_state._show_folder_dialog = False
+            show_toast("Folder selection canceled.", "info", source="Experiment")
+            st.rerun()
+    with c2:
+        if st.button("Select"):
+            try:
+                if sel == create_new:
+                    name = (new_name or "").strip()
+                    if not name:
+                        show_toast("Enter a folder name.", "warning", source="Experiment")
+                        st.stop()
+                    target = base / name
+                    target.mkdir(parents=True, exist_ok=True)
+                    chosen = target
+                elif sel and sel not in (placeholder, create_new):
+                    chosen = base / sel
+                else:
+                    show_toast("No folder selected.", "warning", source="Experiment")
+                    st.stop()
+                st.session_state.current_experiment_folder = str(chosen.resolve())
+                _save_current_experiment_folder()
+                st.session_state._show_folder_dialog = False
+                show_toast(f"Selected: {st.session_state.current_experiment_folder}", "success", source="Experiment")
+                st.rerun()
+            except Exception as exc:
+                show_toast(f"Failed to select/create folder: {exc}", "error", source="Experiment")
+    with c3:
+        if st.button("Open in Explorer"):
+            try:
+                path_to_open = base if sel in (placeholder, create_new) else (base / sel)
+                if os.name == "nt":
+                    import subprocess
+                    subprocess.Popen(["explorer", str(path_to_open.resolve())])
+                else:
+                    os.startfile(str(path_to_open.resolve()))
+            except Exception:
+                pass
 
 
 # -------- Persistence helpers (file-backed history per module) --------
@@ -256,20 +324,17 @@ def experiment_controls():
                 with col:
                     if label == "Create/Select Experiment":
                         if st.button(label, key=f"btn_{label}"):
-                            # Open Explorer (for user to create/select), then show a native folder picker to capture selection
+                            # Prefer native folder picker first to avoid window focus issues under PM2
                             exp_root = _experiments_root()
-                            try:
-                                os.startfile(str(exp_root))
-                            except Exception:
-                                pass
                             chosen = _choose_experiment_folder_windows(exp_root)
-                            if chosen:
+                            if not chosen:
+                                # Fallback: open dialog-based selector inside Streamlit
+                                st.session_state._show_folder_dialog = True
+                            else:
                                 st.session_state.current_experiment_folder = str(Path(chosen).resolve())
                                 _save_current_experiment_folder()
                                 show_toast(f"Selected: {st.session_state.current_experiment_folder}", "success", source="Experiment")
                                 st.rerun()
-                            else:
-                                show_toast("No folder selected", "warning", source="Experiment")
                         # Display current selection
                         cur = st.session_state.get("current_experiment_folder")
                         st.caption(f"Current Experiment Folder: {cur if cur else '—'}")
@@ -377,6 +442,8 @@ if module_selected:
     # Open dialog if requested by button click
     if st.session_state.get("_show_experiment_dialog"):
         _experiment_picker_dialog()
+    if st.session_state.get("_show_folder_dialog"):
+        _experiment_folder_dialog()
 else:
     st.info("Select a module to view live controls and graphs.")
 
