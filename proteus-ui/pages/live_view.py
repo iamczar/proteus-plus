@@ -48,8 +48,9 @@ inject_button_theme(
     gap="12px",
 )
 
-# Unique token for this script run (used to safely rebuild charts after navigation)
-st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.randint(0, 1_000_000)}"
+# Unique token for this page lifetime (do not change on every rerun)
+if "_current_run_token" not in st.session_state:
+    st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.randint(0, 1_000_000)}"
 
 # Module selection + right-hand Sequence Status panel row
 left_col, right_col = st.columns([1, 1], gap="large")
@@ -560,7 +561,7 @@ toast_placeholder = st.empty()
 render_toast_area(max_messages=3, container=toast_placeholder.container())
 
 # Fragment to keep toasts fresh and expiring, independent of charts
-@st.fragment(run_every=0.2)
+@st.fragment(run_every=0.5)
 def update_toasts():
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 
@@ -723,7 +724,7 @@ if module_selected:
     _init_charts_if_needed()
 
 
-@st.fragment(run_every=0.2)
+@st.fragment(run_every=0.4)
 def update_loop():
     # Reinitialize when module changes or after navigation reset
     _init_charts_if_needed()
@@ -990,23 +991,30 @@ def _render_sequence_status_panel(placeholder):
 def _render_sequence_controller_state(placeholder):
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
+    state_text = ""
+    if model:
+        try:
+            state_text = str(model.get("seq_state", "")).strip()
+        except Exception:
+            state_text = ""
+    state_sig = state_text or "—"
+    last_key = ("_seq_state_sig", mod)
+    if st.session_state.get(last_key) == state_sig:
+        return
+    st.session_state[last_key] = state_sig
     try:
         placeholder.empty()
     except Exception:
         pass
     with placeholder.container(border=True):
         st.subheader("Sequence Controller State")
-        if not model:
-            st.caption("—")
-            return
-        state = str(model.get("seq_state", "")).strip() or "—"
-        st.caption(state)
+        st.caption(state_sig)
 
 
 if module_selected:
     update_loop()
 
-    @st.fragment(run_every=0.8)
+    @st.fragment(run_every=1.2)
     def _status_tick():
         _render_sequence_status_panel(right_status_placeholder)
         _render_sequence_controller_state(right_seq_state_placeholder)
