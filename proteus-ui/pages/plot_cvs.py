@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 st.set_page_config(page_title="Analyse Historical Data", layout="wide")
-st.title("📊 Proteus 2.0 - 100MB CSV Data Viewer")
+st.title("Analyse Historical Data")
 
 # Your actual headers
 HEADERS = [
