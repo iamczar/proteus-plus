@@ -220,7 +220,7 @@ def _experiment_folder_dialog() -> None:
         if st.button("Cancel"):
             st.session_state._show_folder_dialog = False
             show_toast("Folder selection canceled.", "info", source="Experiment")
-            st.rerun()
+            # No explicit rerun; dialog will close on the next run automatically
     with c2:
         if st.button("Select"):
             try:
@@ -241,7 +241,7 @@ def _experiment_folder_dialog() -> None:
                 _save_current_experiment_folder()
                 st.session_state._show_folder_dialog = False
                 show_toast(f"Selected: {st.session_state.current_experiment_folder}", "success", source="Experiment")
-                st.rerun()
+                # Avoid explicit rerun inside dialog to prevent UI blanking
             except Exception as exc:
                 show_toast(f"Failed to select/create folder: {exc}", "error", source="Experiment")
     with c3:
@@ -333,7 +333,7 @@ def _experiment_picker_dialog() -> None:
             st.session_state._show_experiment_dialog = False
             show_toast("File selection canceled.", "info", source="New Experiment")
             _append_system_log("Toast [info]: File selection canceled.", level="INFO")
-            st.rerun()
+            # Let normal rerun cycle close the dialog
     with c2:
         if st.button("Select"):
             full_path = str((base / selected).resolve())
@@ -341,7 +341,7 @@ def _experiment_picker_dialog() -> None:
             st.session_state._show_experiment_dialog = False
             show_toast(f"Selected experiment file: `{selected}`", "success", source="New Experiment")
             _append_system_log(f"Toast [success]: Selected experiment file -> {full_path}", level="INFO")
-            st.rerun()
+            # Avoid explicit rerun to prevent fragment invalidation
 
 
 # Experiment controls (merged with required behavior)
@@ -378,7 +378,7 @@ def experiment_controls():
                                 st.session_state.current_experiment_folder = str(Path(chosen).resolve())
                                 _save_current_experiment_folder()
                                 show_toast(f"Selected: {st.session_state.current_experiment_folder}", "success", source="Experiment")
-                                st.rerun()
+                                # No explicit rerun here; avoid blank screen due to fragment refresh
                         # Display current selection
                         cur = st.session_state.get("current_experiment_folder")
                         st.caption(f"Current Experiment Folder: {cur if cur else '—'}")
