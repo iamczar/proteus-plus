@@ -298,11 +298,8 @@ def _render_controls(sid: int) -> None:
                     }
                     MQTTService().publish(topic, envelope)
                     show_toast(f"RUN sent to sampler {sid}", "success", source="Auto Sampler")
-                    # Start local countdown for display
-                    if hold_time_hours > 0:
-                        st.session_state[f"{key_prefix}hold_end_ts"] = time.time() + int(hold_time_hours * 3600)
-                    else:
-                        st.session_state[f"{key_prefix}hold_end_ts"] = None
+                    # Do not start local countdown; rely on firmware holding updates
+                    st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
                     show_toast(f"Failed to send RUN: {exc}", "error", source="Auto Sampler")
 
