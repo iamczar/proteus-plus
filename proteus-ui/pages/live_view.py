@@ -1072,6 +1072,16 @@ try:
 except Exception:
     pass
 
+@st.fragment(run_every=0.5)
+def _refresh_status_panels():
+    try:
+        _render_sequence_status_panel(right_status_placeholder)
+        _render_sequence_controller_state(right_seq_state_placeholder)
+    except Exception:
+        pass
+
+_refresh_status_panels()
+
 
 if module_selected:
     update_loop()
