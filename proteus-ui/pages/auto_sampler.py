@@ -150,7 +150,7 @@ def _status_chip(label: str, active: bool, color: str) -> None:
 
 def _render_header(sid: int) -> None:
     key_prefix = f"as{sid}_"
-    status = st.session_state.get(f"{key_prefix}status", "READY")
+    status = str(st.session_state.get(f"{key_prefix}status", "READY"))
     sensor_value = st.session_state.get(f"{key_prefix}sensor", "UNKNOWN")
     # Remaining hold time countdown
     end_ts = st.session_state.get(f"{key_prefix}hold_end_ts")
@@ -166,13 +166,43 @@ def _render_header(sid: int) -> None:
             remaining_text = f"{m:02d}:{s:02d}"
 
     with st.container(border=True):
-        # Unified status panel (text + color)
-        if status == "ERROR":
-            panel_text, panel_color = "ERROR", "#EF4444"
-        elif status == "WAITING":
-            panel_text, panel_color = "WAITING TO RUN", "#F59E0B"
+        # Map status/state to friendly text and color
+        raw_state = str(st.session_state.get(f"{key_prefix}state", "")).lower()
+        raw_status = status.lower()
+        def friendly(name: str) -> str:
+            name = (name or "").strip().lower()
+            mapping = {
+                "waiting_for_command": "WAITING FOR COMMAND",
+                "moving_to_bottom": "MOVING TO BOTTOM",
+                "holding_position": "HOLDING POSITION",
+                "moving_to_home": "MOVING TO HOME",
+                "moving_to_top": "MOVING TO TOP",
+                "stopped": "STOPPED",
+                "extraction_complete": "EXTRACTION COMPLETE",
+                "error": "ERROR",
+                "ready": "READY",
+                "home": "HOME",
+                "top": "TOP",
+                "bottom": "BOTTOM",
+            }
+            if name in mapping:
+                return mapping[name]
+            # Fallback from class name like WaitingForCommandState
+            if name.endswith("state"):
+                name = name[:-5]
+            name = name.replace("_", " ").strip()
+            return name.upper() if name else "READY"
+        # Prefer status if present, else map state
+        panel_text = friendly(raw_status or raw_state)
+        # Color heuristic
+        if "error" in raw_status or "error" in raw_state:
+            panel_color = "#EF4444"
+        elif any(tag in (raw_status, raw_state) for tag in ["stopped", "extraction_complete"]):
+            panel_color = "#F59E0B"
+        elif any(tag in (raw_status, raw_state) for tag in ["waiting_for_command", "ready"]):
+            panel_color = "#10B981"
         else:
-            panel_text, panel_color = "READY", "#10B981"
+            panel_color = "#10B981"
 
         st.markdown(
             f"""
@@ -307,6 +337,14 @@ def _render_controls(sid: int) -> None:
                 except Exception as exc:
                     show_toast(f"Failed to send STOP: {exc}", "error", source="Auto Sampler")
 
+        # Guidance: if sampler requires RESET, show hint below controls
+        try:
+            st_state = str(st.session_state.get(f"{key_prefix}status", "")).lower()
+            if st_state in ("stopped", "extraction_complete", "error"):
+                st.caption("Reset required before running again.")
+        except Exception:
+            pass
+
 
 # Left side: headers, image, controls
 with left_area:
@@ -406,9 +444,11 @@ with right_area:
                                 st_sens = st.session_state.get(f"{prefix}sensor", "")
                                 desc = str(inner.get("description", ""))
                                 key = f"as_logs_{int(sid)}"
-                                st.session_state[key].append(
-                                    f"{st_stat} | {st_state} | {desc} | sensor={st_sens}"
-                                )
+                                new_line = f"{st_stat} | {st_state} | {desc} | sensor={st_sens}"
+                                # Deduplicate consecutive identical lines
+                                prev = st.session_state[key][-1] if st.session_state[key] else None
+                                if prev != new_line:
+                                    st.session_state[key].append(new_line)
                                 st.session_state[key] = st.session_state[key][-200:]
                             except Exception:
                                 pass
