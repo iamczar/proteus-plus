@@ -45,6 +45,10 @@ if "as_selected_module" not in st.session_state:
     st.session_state.as_selected_module = None
 if "as_logs" not in st.session_state:
     st.session_state.as_logs = []
+for _sid in [1, 2, 3]:
+    key = f"as_logs_{_sid}"
+    if key not in st.session_state:
+        st.session_state[key] = []
 
 for _sid in SAMPLERS:
     if f"as{_sid}_status" not in st.session_state:
@@ -343,31 +347,31 @@ with right_area:
     with st.container(border=True):
         st.subheader("Auto Sampler Logs")
 
-        # Match the same styled log box used on system and cycler logs
+        # Three side-by-side log boxes (one per sampler)
         log_box_css = """
         <style>
-        .log-box {
-            background-color: #252525;
-            color: #00FF7D;
-            padding: 1em;
-            border-radius: 8px;
-            height: 420px;
-            overflow-y: scroll;
-            font-family: monospace;
-            font-size: 14px;
-            white-space: pre-wrap;
-            border: 1px solid #333;
-            margin-bottom: 16px;
-        }
+        .log-box { background-color: #252525; color: #00FF7D; padding: 1em; border-radius: 8px;
+                   height: 300px; overflow-y: scroll; font-family: monospace; font-size: 14px;
+                   white-space: pre-wrap; border: 1px solid #333; }
+        .log-title { font-weight: 700; margin: 0 0 6px 0; }
         </style>
         """
         st.markdown(log_box_css, unsafe_allow_html=True)
 
-        log_area = st.empty()
+        c1, c2, c3 = st.columns(3, gap="small")
+        log_area_1 = c1.empty()
+        log_area_2 = c2.empty()
+        log_area_3 = c3.empty()
 
         def _render_logs():
-            content = "\n".join(st.session_state.as_logs)
-            log_area.markdown(f"<div class='log-box'>{content}</div>", unsafe_allow_html=True)
+            def render_for(idx: int, area):
+                lines = st.session_state.get(f"as_logs_{idx}", [])[-200:]
+                html = f"<div class='log-title'>Sampler {idx}</div>" + \
+                       f"<div class='log-box'>{'\n'.join(lines)}</div>"
+                area.markdown(html, unsafe_allow_html=True)
+            render_for(1, log_area_1)
+            render_for(2, log_area_2)
+            render_for(3, log_area_3)
 
         @st.fragment(run_every=0.5)
         def _refresh_logs():
@@ -387,18 +391,30 @@ with right_area:
                             st.session_state[f"{prefix}state"] = str(inner.get("state", st.session_state.get(f"{prefix}state", "")))
                             if "sensor_state" in inner:
                                 st.session_state[f"{prefix}sensor"] = str(inner.get("sensor_state"))
-                            # Append concise status log line
+                            # Append per-sampler log with description
                             try:
                                 st_state = st.session_state[f"{prefix}state"]
                                 st_stat = st.session_state[f"{prefix}status"]
                                 st_sens = st.session_state.get(f"{prefix}sensor", "")
-                                _append_log(f"S{sid}: state={st_state} status={st_stat} sensor={st_sens}")
+                                desc = str(inner.get("description", ""))
+                                key = f"as_logs_{int(sid)}"
+                                st.session_state[key].append(
+                                    f"{st_stat} | {st_state} | {desc} | sensor={st_sens}"
+                                )
+                                st.session_state[key] = st.session_state[key][-200:]
                             except Exception:
                                 pass
                         # Optional toast for ack
                         if inner.get("command") == "auto_sampler_cmd_ack":
                             show_toast("Auto sampler command acknowledged", "success", source="Auto Sampler")
-                            _append_log(f"ACK: sampler {inner.get('sampler_id')} -> {inner.get('status','dispatched')}")
+                            try:
+                                key = f"as_logs_{int(inner.get('sampler_id', 0) or 0)}"
+                                if key in st.session_state:
+                                    st.session_state[key].append(
+                                        f"ACK | sampler {inner.get('sampler_id')} -> {inner.get('status','dispatched')}"
+                                    )
+                            except Exception:
+                                pass
                 except Exception:
                     pass
 
