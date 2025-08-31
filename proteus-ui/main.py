@@ -13,6 +13,7 @@ cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":materi
 
 # System
 system_logs = st.Page("pages/system_logs.py", title="System Logs", icon=":material/bug_report:")
+settings_page = st.Page("pages/settings.py", title="Settings", icon=":material/settings:")
 
 LOGO_URL_LARGE = "assets/cell_ag_logo_big.png"
 LOGO_URL_SMALL = "assets/cell_ag_logo_small.png"
@@ -34,7 +35,8 @@ pg = st.navigation(
         cycler_logs,
     ],
     "System": [
-        system_logs
+        system_logs,
+        settings_page,
     ]
     }
 )
