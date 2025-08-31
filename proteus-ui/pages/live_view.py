@@ -995,16 +995,19 @@ def background_collector():
         st.session_state._seq_toast_flags[mod] = flags
         st.session_state._cmd_toast_flags[mod] = cmd_flags
 
-    # Render status panels here to keep them in sync without a separate fragment
-    try:
-        _render_sequence_status_panel(right_status_placeholder)
-        _render_sequence_controller_state(right_seq_state_placeholder)
-    except Exception:
-        pass
+    # Note: Rendering is done synchronously outside this fragment to avoid
+    # placeholder capture issues across module swaps and navigation.
 
 
 # Kick off background collector
 background_collector()
+
+# Always render status panels every run so they persist across module swaps
+try:
+    _render_sequence_status_panel(right_status_placeholder)
+    _render_sequence_controller_state(right_seq_state_placeholder)
+except Exception:
+    pass
 
 
 def _render_sequence_status_panel(placeholder):
