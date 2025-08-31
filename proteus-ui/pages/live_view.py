@@ -25,6 +25,7 @@ LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 MAX_POINTS = 8640  # show last ~2.4h at 1 Hz (adjust as needed)
+DATA_LOGGING_PREFIX = "data-logging"
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -395,8 +396,36 @@ def experiment_controls():
                                 show_toast(msg, "error", source="Start Experiment")
                                 _append_system_log(f"Toast [error]: {msg}", level="ERROR")
                             else:
+                                # Copy selected sequence file to current experiment folder
+                                exp_dir = st.session_state.get("current_experiment_folder")
+                                if not exp_dir:
+                                    show_toast("No experiment folder selected.", "error", source="Start Experiment")
+                                    st.stop()
+                                try:
+                                    from shutil import copy2
+                                    dest_dir = Path(exp_dir)
+                                    dest_dir.mkdir(parents=True, exist_ok=True)
+                                    seq_name = Path(file_path).name
+                                    dest_path = dest_dir / seq_name
+                                    copy2(file_path, str(dest_path))
+                                except Exception as exc:
+                                    show_toast(f"Failed to copy sequence file: {exc}", "error", source="Start Experiment")
+                                    st.stop()
+
                                 topic = f"{MQTT_TOPIC}/{module_id}"
                                 try:
+                                    # Send experiment context to ModuleHandler
+                                    context_env = {
+                                        "message_source": "proteus-ui",
+                                        "timestamp": datetime.now().isoformat(),
+                                        "message": {
+                                            "command": "set_experiment_context",
+                                            "experiment_dir": str(Path(exp_dir).resolve()),
+                                            "sequence_filename": Path(file_path).name,
+                                        },
+                                    }
+                                    MQTTService().publish(topic, context_env)
+
                                     envelope = {
                                         "message_source": "proteus-ui",
                                         "timestamp": datetime.now().isoformat(),
@@ -406,6 +435,8 @@ def experiment_controls():
                                         },
                                     }
                                     MQTTService().publish(topic, envelope)
+                                    # Also request Alpha to start logging via UI command pipeline
+                                    _publish_ui_command(module_id, "start_data_log")
                                     # Reset per-module sequence UI state
                                     mod = str(module_id)
                                     if "_seq_ui_state" not in st.session_state:
@@ -532,7 +563,7 @@ def experiment_controls():
                     else:
                         if st.button(label, key=f"btn_{label}"):
                             # Placeholder behaviors for other controls
-                            result = random.choice(["success", "error", "warning", "info"]) 
+                            result = random.choice(["success", "error", "warning", "info"])
                             message_map = {
                                 "success": "Operation completed successfully!",
                                 "error": "**Error**: Oops! Something went wrong. This event has been recorded in the logs.",
@@ -780,6 +811,14 @@ def background_collector():
                     subs.add(t)
                 except Exception:
                     pass
+        # Subscribe to data-logging status topic
+        dl_t = f"{DATA_LOGGING_PREFIX}/{m}"
+        if dl_t not in subs:
+            try:
+                MQTTService().subscribe(dl_t)
+                subs.add(dl_t)
+            except Exception:
+                pass
     # Drain each topic and append to per-module buffers
     for m in modules:
         topic = f"{LIVE_TOPIC_PREFIX}/{m}"
@@ -818,6 +857,15 @@ def background_collector():
                 except Exception:
                     continue
         st.session_state._live_x_counters[mod] = x_counter
+        # Drain data-logging status and store flag
+        dl_updates = MQTTService().drain(f"{DATA_LOGGING_PREFIX}/{m}", max_items=200)
+        for _, payload in dl_updates:
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if inner.get("event") == "logging_state":
+                    st.session_state[("_logging_active", mod)] = bool(inner.get("active"))
+            except Exception:
+                continue
 
     # Sequence transfer and execution status updates
     if "_seq_ui_state" not in st.session_state:
@@ -968,6 +1016,16 @@ def _render_sequence_status_panel(placeholder):
     phase = model.get("phase")
     with placeholder.container(border=True):
         st.subheader("Sequence Status")
+        # Show logging indicator if available
+        try:
+            mod_key = ("_logging_active", str(st.session_state.get("selected_module")))
+            la = st.session_state.get(mod_key)
+            if la is True:
+                st.caption("Data logging: ON")
+            elif la is False:
+                st.caption("Data logging: OFF")
+        except Exception:
+            pass
         if phase in ("transferring", "awaiting_execution") and not bool(model.get("transfer_done")):
             st.write("Transferring sequence to Alpha…")
             st.progress(int(model.get("transfer_pct", 0)))
