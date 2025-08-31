@@ -463,6 +463,14 @@ class ModuleHandler:
 
             # - AlphaCommsManager state notifications -> alphacommsmanager-status
             if source == "alpha_comms_manager":
+                # Mirror auto sampler acks into autosampler-status as well
+                try:
+                    if isinstance(inner, dict) and inner.get("command") == "auto_sampler_cmd_ack":
+                        self.mqtt_client.publish(
+                            f"autosampler-status/{self.module_id}", json.dumps(obj)
+                        )
+                except Exception:
+                    pass
                 return f"alphacommsmanager-status/{self.module_id}"
 
             # - file_storage_sensor -> file-info

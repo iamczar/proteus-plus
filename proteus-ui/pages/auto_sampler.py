@@ -8,6 +8,7 @@ from common.utils import inject_button_theme
 from common.utils import show_toast
 from common.utils import render_toast_area
 from services.module_manager import ModuleManager
+from services.mqtt_service import MQTTService
 
 
 st.set_page_config(page_title="Auto Sampler Control", layout="wide")
@@ -48,14 +49,15 @@ if "as_logs" not in st.session_state:
 for _sid in SAMPLERS:
     if f"as{_sid}_status" not in st.session_state:
         st.session_state[f"as{_sid}_status"] = "READY"  # READY | WAITING | ERROR
-    # Backward-compatible: if previous 'sec' key exists, convert to minutes
-    if f"as{_sid}_delay_min" not in st.session_state:
-        prev_sec = st.session_state.get(f"as{_sid}_delay_sec", 0)
-        st.session_state[f"as{_sid}_delay_min"] = int(prev_sec // 60) if isinstance(prev_sec, int) else 0
-    if f"as{_sid}_end_ts" not in st.session_state:
-        st.session_state[f"as{_sid}_end_ts"] = None
+    # Delay input in hh:mm (store hours, minutes separately)
+    if f"as{_sid}_delay_h" not in st.session_state:
+        st.session_state[f"as{_sid}_delay_h"] = 0
+    if f"as{_sid}_delay_m" not in st.session_state:
+        st.session_state[f"as{_sid}_delay_m"] = 0
     if f"as{_sid}_sensor" not in st.session_state:
         st.session_state[f"as{_sid}_sensor"] = random.choice(SENSOR_CHOICES)
+    if f"as{_sid}_state" not in st.session_state:
+        st.session_state[f"as{_sid}_state"] = "READY"
 
 
 def _append_log(message: str) -> None:
@@ -140,8 +142,9 @@ def _status_chip(label: str, active: bool, color: str) -> None:
 
 def _render_header(sid: int) -> None:
     key_prefix = f"as{sid}_"
-    status = st.session_state[f"{key_prefix}status"]
-    end_ts = st.session_state[f"{key_prefix}end_ts"]
+    status = st.session_state.get(f"{key_prefix}status", "READY")
+    sensor_value = st.session_state.get(f"{key_prefix}sensor", "UNKNOWN")
+    controller_state = st.session_state.get(f"{key_prefix}state", "—")
 
     with st.container(border=True):
         # Unified status panel (text + color)
@@ -161,26 +164,17 @@ def _render_header(sid: int) -> None:
             unsafe_allow_html=True,
         )
 
-        # Time remaining (minutes; show seconds when < 60s)
-        remaining_sec_exact = 0
-        if status == "WAITING" and end_ts:
-            remaining_sec_exact = max(0, int(end_ts - time.time()))
-        if remaining_sec_exact < 60:
-            display_text = f"{remaining_sec_exact} s"
-        else:
-            remaining_min = (remaining_sec_exact + 59) // 60
-            display_text = f"{remaining_min} min"
+        # Controller state/status row (from autosampler-status)
         st.markdown(
             f"""
             <div style='text-align:center;padding:10px;border-radius:8px;background:#EAEAF6;color:#111827;font-weight:700;'>
-                {display_text}
+                {controller_state}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         # Sensor status (display-only)
-        sensor_value = st.session_state.get(f"{key_prefix}sensor", "UNKNOWN")
         st.markdown(
             f"""
             <div style='text-align:center;padding:10px;border-radius:8px;background:#F59E0B;color:#111827;font-weight:800;'>
@@ -198,13 +192,23 @@ def _render_controls(sid: int) -> None:
     key_prefix = f"as{sid}_"
     # Controls (vertical)
     with st.container(border=True):
-        st.number_input(
-            "Delay (minutes)",
-            min_value=0,
-            max_value=24 * 60,
-            step=1,
-            key=f"{key_prefix}delay_min",
-        )
+        c_h, c_m = st.columns([1,1], gap="small")
+        with c_h:
+            st.number_input(
+                "Sample Collect Delay (hh)",
+                min_value=0,
+                max_value=24,
+                step=1,
+                key=f"{key_prefix}delay_h",
+            )
+        with c_m:
+            st.number_input(
+                "Sample Collect Delay (mm)",
+                min_value=0,
+                max_value=59,
+                step=1,
+                key=f"{key_prefix}delay_m",
+            )
 
         def require_selection() -> bool:
             if not st.session_state.as_selected_module:
@@ -216,29 +220,70 @@ def _render_controls(sid: int) -> None:
         run_clicked = st.button("RUN", key=f"{key_prefix}run")
         if run_clicked:
             if require_selection():
-                delay_min = int(st.session_state[f"{key_prefix}delay_min"]) or 0
-                delay_sec = delay_min * 60
-                st.session_state[f"{key_prefix}status"] = "WAITING" if delay_min > 0 else "READY"
-                st.session_state[f"{key_prefix}end_ts"] = time.time() + delay_sec if delay_min > 0 else None
+                # Convert hh:mm to decimal hours for hold_time
+                h = int(st.session_state.get(f"{key_prefix}delay_h", 0) or 0)
+                m = int(st.session_state.get(f"{key_prefix}delay_m", 0) or 0)
+                hold_time_hours = float(h) + float(m)/60.0
                 mod = st.session_state.as_selected_module
-                _append_log(f">> Auto Sampler {sid} ({mod}) : Waiting for command")
-                _append_log(f">> Auto Sampler {sid} ({mod}) : Delay Run Command Received")
-                if delay_min > 0:
-                    _append_log(f">> Auto Sampler {sid} ({mod}) : Executing in {delay_min} min")
-                else:
-                    _append_log(f">> Auto Sampler {sid} ({mod}) : Executing now")
+                # Publish MQTT command
+                try:
+                    topic = f"autosampler-command/{mod}"
+                    envelope = {
+                        "message_source": "proteus-ui",
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "message": {
+                            "command": "auto_sampler_cmd",
+                            "sampler_id": int(sid),
+                            "cmd": 2,  # RUN
+                            "hold_time": hold_time_hours,
+                        },
+                    }
+                    MQTTService().publish(topic, envelope)
+                    show_toast(f"RUN sent to sampler {sid}", "success", source="Auto Sampler")
+                except Exception as exc:
+                    show_toast(f"Failed to send RUN: {exc}", "error", source="Auto Sampler")
 
         reset_clicked = st.button("RESET", key=f"{key_prefix}reset")
         if reset_clicked:
-            st.session_state[f"{key_prefix}status"] = "READY"
-            st.session_state[f"{key_prefix}end_ts"] = None
-            _append_log(f">> Auto Sampler {sid} : Reset")
+            if require_selection():
+                mod = st.session_state.as_selected_module
+                try:
+                    topic = f"autosampler-command/{mod}"
+                    envelope = {
+                        "message_source": "proteus-ui",
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "message": {
+                            "command": "auto_sampler_cmd",
+                            "sampler_id": int(sid),
+                            "cmd": 1,  # RESET
+                            "hold_time": 0.0,
+                        },
+                    }
+                    MQTTService().publish(topic, envelope)
+                    show_toast(f"RESET sent to sampler {sid}", "info", source="Auto Sampler")
+                except Exception as exc:
+                    show_toast(f"Failed to send RESET: {exc}", "error", source="Auto Sampler")
 
         stop_clicked = st.button("STOP", key=f"{key_prefix}stop")
         if stop_clicked:
-            st.session_state[f"{key_prefix}status"] = "READY"
-            st.session_state[f"{key_prefix}end_ts"] = None
-            _append_log(f">> Auto Sampler {sid} : Stop command received")
+            if require_selection():
+                mod = st.session_state.as_selected_module
+                try:
+                    topic = f"autosampler-command/{mod}"
+                    envelope = {
+                        "message_source": "proteus-ui",
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "message": {
+                            "command": "auto_sampler_cmd",
+                            "sampler_id": int(sid),
+                            "cmd": 0,  # STOP
+                            "hold_time": 0.0,
+                        },
+                    }
+                    MQTTService().publish(topic, envelope)
+                    show_toast(f"STOP sent to sampler {sid}", "warning", source="Auto Sampler")
+                except Exception as exc:
+                    show_toast(f"Failed to send STOP: {exc}", "error", source="Auto Sampler")
 
 
 # Left side: headers, image, controls
@@ -306,22 +351,29 @@ with right_area:
             content = "\n".join(st.session_state.as_logs)
             log_area.markdown(f"<div class='log-box'>{content}</div>", unsafe_allow_html=True)
 
-        @st.fragment(run_every=1.0)
+        @st.fragment(run_every=0.5)
         def _refresh_logs():
-            # Update countdown / transition per sampler
-            for sid in SAMPLERS:
-                key_prefix = f"as{sid}_"
-                status = st.session_state.get(f"{key_prefix}status")
-                end_ts = st.session_state.get(f"{key_prefix}end_ts")
-                if status == "WAITING" and end_ts:
-                    remaining = int(end_ts - time.time())
-                    if remaining <= 0:
-                        st.session_state[f"{key_prefix}status"] = "READY"
-                        st.session_state[f"{key_prefix}end_ts"] = None
-                        _append_log(f">> Auto Sampler {sid} : Delay complete. Execution finished.")
-                    else:
-                        # keep UI fresh by re-rendering during countdown
-                        pass
+            # Drain autosampler status for selected module
+            mod = st.session_state.get("as_selected_module")
+            if mod:
+                topic = f"autosampler-status/{mod}"
+                try:
+                    for _, payload in MQTTService().drain(topic, max_items=500):
+                        if not isinstance(payload, dict):
+                            continue
+                        inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                        sid = inner.get("sampler_id") or inner.get("sampler")
+                        if sid in (1, 2, 3):
+                            prefix = f"as{int(sid)}_"
+                            st.session_state[f"{prefix}status"] = str(inner.get("status", st.session_state.get(f"{prefix}status", "")))
+                            st.session_state[f"{prefix}state"] = str(inner.get("state", st.session_state.get(f"{prefix}state", "")))
+                            if "sensor_state" in inner:
+                                st.session_state[f"{prefix}sensor"] = str(inner.get("sensor_state"))
+                        # Optional toast for ack
+                        if inner.get("command") == "auto_sampler_cmd_ack":
+                            show_toast("Auto sampler command acknowledged", "success", source="Auto Sampler")
+                except Exception:
+                    pass
 
             _render_logs()
             # Re-render headers so time remaining updates
