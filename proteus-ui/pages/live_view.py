@@ -1013,30 +1013,7 @@ except Exception:
 def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
-    # Build a compact state signature to detect changes
-    if model:
-        # Include logging-active flag in signature so panel updates on logging toggles
-        try:
-            logging_active_sig = st.session_state.get(("_logging_active", mod))
-        except Exception:
-            logging_active_sig = None
-        state_sig = (
-            model.get("phase"),
-            int(model.get("transfer_pct", 0)),
-            model.get("transfer_text", ""),
-            int(model.get("exec_current", 0)),
-            int(model.get("exec_total", 0)),
-            int(model.get("exec_pct", 0)),
-            logging_active_sig,
-        )
-    else:
-        state_sig = ("idle", 0, "", 0, 0, 0)
-    last_key = ("_status_sig", mod)
-    if st.session_state.get(last_key) == state_sig:
-        return
-    st.session_state[last_key] = state_sig
-
-    # Clear and redraw only when something changed
+    # Always redraw on rerun to avoid stale signature hiding content
     try:
         placeholder.empty()
     except Exception:
@@ -1086,18 +1063,13 @@ def _render_sequence_controller_state(placeholder):
             state_text = str(model.get("seq_state", "")).strip()
         except Exception:
             state_text = ""
-    state_sig = state_text or "—"
-    last_key = ("_seq_state_sig", mod)
-    if st.session_state.get(last_key) == state_sig:
-        return
-    st.session_state[last_key] = state_sig
     try:
         placeholder.empty()
     except Exception:
         pass
     with placeholder.container(border=True):
         st.subheader("Sequence Controller State")
-        st.caption(state_sig)
+        st.caption(state_text or "—")
 
 
 if module_selected:
