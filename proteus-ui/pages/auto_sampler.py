@@ -347,21 +347,20 @@ with right_area:
     with st.container(border=True):
         st.subheader("Auto Sampler Logs")
 
-        # Three side-by-side log boxes (one per sampler)
+        # Stacked log boxes (one per sampler) for longer entries
         log_box_css = """
         <style>
         .log-box { background-color: #252525; color: #00FF7D; padding: 1em; border-radius: 8px;
-                   height: 300px; overflow-y: scroll; font-family: monospace; font-size: 14px;
+                   height: 240px; overflow-y: scroll; font-family: monospace; font-size: 14px;
                    white-space: pre-wrap; border: 1px solid #333; }
         .log-title { font-weight: 700; margin: 0 0 6px 0; }
         </style>
         """
         st.markdown(log_box_css, unsafe_allow_html=True)
 
-        c1, c2, c3 = st.columns(3, gap="small")
-        log_area_1 = c1.empty()
-        log_area_2 = c2.empty()
-        log_area_3 = c3.empty()
+        log_area_1 = st.empty()
+        log_area_2 = st.empty()
+        log_area_3 = st.empty()
 
         def _render_logs():
             def render_for(idx: int, area):
@@ -378,6 +377,15 @@ with right_area:
             # Drain autosampler status for selected module
             mod = st.session_state.get("as_selected_module")
             if mod:
+                # Ensure subscription exists for the selected module
+                sub_key = "_as_status_sub"
+                want_topic = f"autosampler-status/{mod}"
+                if st.session_state.get(sub_key) != want_topic:
+                    try:
+                        MQTTService().subscribe(want_topic)
+                        st.session_state[sub_key] = want_topic
+                    except Exception:
+                        pass
                 topic = f"autosampler-status/{mod}"
                 try:
                     for _, payload in MQTTService().drain(topic, max_items=500):
