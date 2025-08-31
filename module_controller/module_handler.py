@@ -391,7 +391,7 @@ class ModuleHandler:
                             self._alpha_logging_active = bool(msg.get("active"))
                             # Publish a concise status on data-logging/<module-id>
                             status_payload = {
-                                "message_source": "module_controller",
+                                "message_source": "module_handler",
                                 "module_id": self.module_id,
                                 "timestamp": self._utc_timestamp(),
                                 "message": {
@@ -444,8 +444,12 @@ class ModuleHandler:
             inner = obj.get("message") if isinstance(obj.get("message"), dict) else {}
 
             # Explicit routing rules:
-            # - data_logger -> live-sensor-data
+            # - data_logger -> live-sensor-data (sensor_data only). System logging_state messages are handled separately.
             if source == "data_logger":
+                # If this is a system logging state message, do not route to live-sensor-data
+                inner_msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+                if isinstance(inner_msg, dict) and inner_msg.get("event") == "logging_state":
+                    return None
                 return f"live-sensor-data/{self.module_id}"
 
             # - SysLogger -> sys-logger
