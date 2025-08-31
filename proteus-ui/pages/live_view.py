@@ -588,13 +588,11 @@ if module_selected:
 else:
     st.info("Select a module to view live controls and graphs.")
 
-# Fragment to keep toasts fresh and expiring
-@st.fragment(run_every=0.5)
-def update_toasts():
+# Note: Avoid periodic toast fragment to reduce fragment invalidation on navigation
+try:
     render_toast_area(max_messages=3, container=toast_placeholder.container())
-
-# Invoke toast updater so it starts ticking immediately
-update_toasts()
+except Exception:
+    pass
 
 
 @st.cache_data
@@ -977,6 +975,13 @@ def background_collector():
         st.session_state._seq_toast_flags[mod] = flags
         st.session_state._cmd_toast_flags[mod] = cmd_flags
 
+    # Render status panels here to keep them in sync without a separate fragment
+    try:
+        _render_sequence_status_panel(right_status_placeholder)
+        _render_sequence_controller_state(right_seq_state_placeholder)
+    except Exception:
+        pass
+
 
 # Kick off background collector
 background_collector()
@@ -1074,10 +1079,3 @@ def _render_sequence_controller_state(placeholder):
 
 if module_selected:
     update_loop()
-
-    @st.fragment(run_every=1.2)
-    def _status_tick():
-        _render_sequence_status_panel(right_status_placeholder)
-        _render_sequence_controller_state(right_seq_state_placeholder)
-
-    _status_tick()
