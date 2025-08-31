@@ -1002,13 +1002,6 @@ def background_collector():
 # Kick off background collector
 background_collector()
 
-# Always render status panels every run so they persist across module swaps
-try:
-    _render_sequence_status_panel(right_status_placeholder)
-    _render_sequence_controller_state(right_seq_state_placeholder)
-except Exception:
-    pass
-
 
 def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
@@ -1070,6 +1063,14 @@ def _render_sequence_controller_state(placeholder):
     with placeholder.container(border=True):
         st.subheader("Sequence Controller State")
         st.caption(state_text or "—")
+
+
+# Always render status panels every run so they persist across module swaps
+try:
+    _render_sequence_status_panel(right_status_placeholder)
+    _render_sequence_controller_state(right_seq_state_placeholder)
+except Exception:
+    pass
 
 
 if module_selected:
