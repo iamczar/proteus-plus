@@ -402,11 +402,12 @@ class ModuleHandler:
                             self.mqtt_client.publish(f"data-logging/{self.module_id}", json.dumps(status_payload))
                 except Exception:
                     pass
-                # If this is data_logger payload, mirror to CSV if enabled
+                # If this is data_logger sensor payload, mirror to CSV if enabled
                 try:
                     src = str(obj.get("message_source", "")).lower()
                     if src == "data_logger" and self._data_logging_enabled and self._alpha_logging_active:
-                        self._write_data_log_row(obj)
+                        if obj.get("alpha_command") == "sensor_data" and isinstance(obj.get("data"), dict):
+                            self._write_data_log_row(obj)
                 except Exception:
                     pass
             except Exception as e:

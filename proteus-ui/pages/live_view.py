@@ -987,6 +987,11 @@ def _render_sequence_status_panel(placeholder):
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
     # Build a compact state signature to detect changes
     if model:
+        # Include logging-active flag in signature so panel updates on logging toggles
+        try:
+            logging_active_sig = st.session_state.get(("_logging_active", mod))
+        except Exception:
+            logging_active_sig = None
         state_sig = (
             model.get("phase"),
             int(model.get("transfer_pct", 0)),
@@ -994,6 +999,7 @@ def _render_sequence_status_panel(placeholder):
             int(model.get("exec_current", 0)),
             int(model.get("exec_total", 0)),
             int(model.get("exec_pct", 0)),
+            logging_active_sig,
         )
     else:
         state_sig = ("idle", 0, "", 0, 0, 0)
