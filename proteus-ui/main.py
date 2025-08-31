@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+from common.utils import load_ui_settings, inject_global_theme
 
 # Home
 dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", icon=":material/grid_view:")
@@ -24,6 +25,12 @@ st.logo(
     size = "Large"
     
 )
+
+# Apply persisted theme (light/dark) early
+_ui_cfg = load_ui_settings()
+_theme = (_ui_cfg.get("theme") or "Auto").lower()
+if _theme in ("light", "dark"):
+    inject_global_theme(_theme)
 
 pg = st.navigation(
     {

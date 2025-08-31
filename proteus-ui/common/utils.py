@@ -1,4 +1,5 @@
 ﻿import streamlit as st
+from pathlib import Path
 import random
 import time
 
@@ -154,6 +155,69 @@ def inject_button_theme(
     div.stButton {{
         margin: 0 var(--pp-btn-gap) var(--pp-btn-gap) 0;
     }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+
+# --- App-wide settings helpers (shared) ---
+def get_ui_settings_path() -> Path:
+    p = Path(__file__).resolve().parents[1] / "data"
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "settings.json"
+
+
+def load_ui_settings() -> dict:
+    try:
+        sp = get_ui_settings_path()
+        if sp.exists():
+            import json
+            with sp.open("r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_ui_settings(data: dict) -> None:
+    try:
+        sp = get_ui_settings_path()
+        import json
+        with sp.open("w", encoding="utf-8") as f:
+            json.dump(data or {}, f, indent=2)
+    except Exception:
+        pass
+
+
+def inject_global_theme(theme: str) -> None:
+    """Inject a light/dark theme by overriding base colors via CSS.
+
+    theme: 'light' | 'dark'
+    """
+    mode = (theme or "").strip().lower()
+    if mode not in ("light", "dark"):
+        return
+    if mode == "dark":
+        bg = "#0f172a"  # slate-900
+        text = "#e5e7eb"  # gray-200
+        surface = "#111827"
+        border = "#334155"
+    else:
+        bg = "#f8fafc"  # slate-50
+        text = "#0f172a"
+        surface = "#ffffff"
+        border = "#d1d5db"
+
+    css = f"""
+    <style>
+    .stApp, body {{ background-color: {bg} !important; color: {text} !important; }}
+    /* Cards/containers */
+    div[role="group"] > div {{ background-color: {surface}; }}
+    /* Inputs */
+    .stTextInput > div > div > input, .stSelectbox div[data-baseweb="select"] > div {{
+        color: {text} !important; border-color: {border} !important;
+    }}
+    /* Buttons pick up from injected button theme variables */
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)

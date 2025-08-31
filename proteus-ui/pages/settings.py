@@ -1,7 +1,10 @@
 import streamlit as st
 import subprocess
+import os
 import sys
 from pathlib import Path
+import json
+from common.utils import load_ui_settings, save_ui_settings
 
 st.set_page_config(page_title="Settings", layout="centered")
 st.session_state["_current_page_key"] = "proteus_ui_settings"
@@ -10,11 +13,15 @@ st.title("Settings")
 
 st.subheader("General Preferences")
 
+# Load persisted settings
+cfg = load_ui_settings()
+default_theme = cfg.get("theme", "Auto")
+
 # Theme toggle
 theme = st.radio(
     "Theme",
     ["Light", "Dark", "Auto"],
-    index=2,
+    index=["Light","Dark","Auto"].index(default_theme if default_theme in ("Light","Dark","Auto") else "Auto"),
     help="Choose your display mode"
 )
 
@@ -44,14 +51,20 @@ with col1:
     if st.button("Restart Proteus", use_container_width=True):
         try:
             # Restart all processes defined in the ecosystem file
-            subprocess.Popen(["pm2", "restart", str(ecosystem.name)], cwd=str(root))
+            if os.name == "nt":
+                subprocess.Popen(f"pm2 restart \"{ecosystem}\"", cwd=str(root), shell=True)
+            else:
+                subprocess.Popen(["pm2", "restart", str(ecosystem)], cwd=str(root))
             st.success("Restart signals sent.")
         except Exception as e:
             st.error(f"Failed to restart: {e}")
 with col2:
     if st.button("Stop Proteus", type="secondary", use_container_width=True):
         try:
-            subprocess.Popen(["pm2", "stop", "all"], cwd=str(root))
+            if os.name == "nt":
+                subprocess.Popen("pm2 stop all", cwd=str(root), shell=True)
+            else:
+                subprocess.Popen(["pm2", "stop", "all"], cwd=str(root))
             st.success("Stop signals sent.")
         except Exception as e:
             st.error(f"Failed to stop: {e}")
@@ -60,24 +73,13 @@ st.caption(f"ecosystem: {ecosystem}")
 
 st.markdown("---")
 
-st.subheader("Experimental Features")
-
-# Feature toggles
-beta_features = {
-    "New chart engine": st.toggle("Enable new chart engine"),
-    "Realtime sync": st.toggle("Enable realtime sync"),
-    "Compact layout": st.toggle("Use compact layout"),
-}
-
-st.markdown("---")
-
-# Save settings (in-memory mock)
+# Save settings (persist to file)
 if st.button("Save Settings"):
-    st.success("Settings saved successfully!")
-    st.json({
+    to_save = {
         "theme": theme,
         "language": language,
         "notifications": notifications,
         "username": username,
-        "beta_features": beta_features
-    })
+    }
+    save_ui_settings(to_save)
+    st.success("Settings saved successfully!")
