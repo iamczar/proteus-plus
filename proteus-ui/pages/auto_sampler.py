@@ -58,6 +58,10 @@ for _sid in SAMPLERS:
         st.session_state[f"as{_sid}_sensor"] = random.choice(SENSOR_CHOICES)
     if f"as{_sid}_state" not in st.session_state:
         st.session_state[f"as{_sid}_state"] = "READY"
+    if f"as{_sid}_hold_end_ts" not in st.session_state:
+        st.session_state[f"as{_sid}_hold_end_ts"] = None
+    if f"as{_sid}_delay_str" not in st.session_state:
+        st.session_state[f"as{_sid}_delay_str"] = "0:00"
 
 
 def _append_log(message: str) -> None:
@@ -144,7 +148,18 @@ def _render_header(sid: int) -> None:
     key_prefix = f"as{sid}_"
     status = st.session_state.get(f"{key_prefix}status", "READY")
     sensor_value = st.session_state.get(f"{key_prefix}sensor", "UNKNOWN")
-    controller_state = st.session_state.get(f"{key_prefix}state", "—")
+    # Remaining hold time countdown
+    end_ts = st.session_state.get(f"{key_prefix}hold_end_ts")
+    remaining_text = "0 s"
+    if isinstance(end_ts, (int, float)) and end_ts > time.time():
+        rem = int(end_ts - time.time())
+        h = rem // 3600
+        m = (rem % 3600) // 60
+        s = rem % 60
+        if h > 0:
+            remaining_text = f"{h}:{m:02d}:{s:02d}"
+        else:
+            remaining_text = f"{m:02d}:{s:02d}"
 
     with st.container(border=True):
         # Unified status panel (text + color)
@@ -164,11 +179,11 @@ def _render_header(sid: int) -> None:
             unsafe_allow_html=True,
         )
 
-        # Controller state/status row (from autosampler-status)
+        # Middle chip: remaining hold time (updates every refresh)
         st.markdown(
             f"""
             <div style='text-align:center;padding:10px;border-radius:8px;background:#EAEAF6;color:#111827;font-weight:700;'>
-                {controller_state}
+                {remaining_text}
             </div>
             """,
             unsafe_allow_html=True,
@@ -192,23 +207,11 @@ def _render_controls(sid: int) -> None:
     key_prefix = f"as{sid}_"
     # Controls (vertical)
     with st.container(border=True):
-        c_h, c_m = st.columns([1,1], gap="small")
-        with c_h:
-            st.number_input(
-                "Sample Collect Delay (hh)",
-                min_value=0,
-                max_value=24,
-                step=1,
-                key=f"{key_prefix}delay_h",
-            )
-        with c_m:
-            st.number_input(
-                "Sample Collect Delay (mm)",
-                min_value=0,
-                max_value=59,
-                step=1,
-                key=f"{key_prefix}delay_m",
-            )
+        st.text_input(
+            "Sample Collect Delay (hh:mm)",
+            key=f"{key_prefix}delay_str",
+            help="Enter hours and minutes, e.g., 0:30 or 1:15",
+        )
 
         def require_selection() -> bool:
             if not st.session_state.as_selected_module:
@@ -220,9 +223,17 @@ def _render_controls(sid: int) -> None:
         run_clicked = st.button("RUN", key=f"{key_prefix}run")
         if run_clicked:
             if require_selection():
-                # Convert hh:mm to decimal hours for hold_time
-                h = int(st.session_state.get(f"{key_prefix}delay_h", 0) or 0)
-                m = int(st.session_state.get(f"{key_prefix}delay_m", 0) or 0)
+                # Parse hh:mm to decimal hours for hold_time
+                delay_str = str(st.session_state.get(f"{key_prefix}delay_str", "0:00")).strip()
+                try:
+                    parts = delay_str.split(":")
+                    if len(parts) == 1:
+                        h, m = int(parts[0] or 0), 0
+                    else:
+                        h, m = int(parts[0] or 0), int(parts[1] or 0)
+                        m = max(0, min(59, m))
+                except Exception:
+                    h, m = 0, 0
                 hold_time_hours = float(h) + float(m)/60.0
                 mod = st.session_state.as_selected_module
                 # Publish MQTT command
@@ -240,6 +251,11 @@ def _render_controls(sid: int) -> None:
                     }
                     MQTTService().publish(topic, envelope)
                     show_toast(f"RUN sent to sampler {sid}", "success", source="Auto Sampler")
+                    # Start local countdown for display
+                    if hold_time_hours > 0:
+                        st.session_state[f"{key_prefix}hold_end_ts"] = time.time() + int(hold_time_hours * 3600)
+                    else:
+                        st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
                     show_toast(f"Failed to send RUN: {exc}", "error", source="Auto Sampler")
 
@@ -261,6 +277,7 @@ def _render_controls(sid: int) -> None:
                     }
                     MQTTService().publish(topic, envelope)
                     show_toast(f"RESET sent to sampler {sid}", "info", source="Auto Sampler")
+                    st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
                     show_toast(f"Failed to send RESET: {exc}", "error", source="Auto Sampler")
 
@@ -282,6 +299,7 @@ def _render_controls(sid: int) -> None:
                     }
                     MQTTService().publish(topic, envelope)
                     show_toast(f"STOP sent to sampler {sid}", "warning", source="Auto Sampler")
+                    st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
                     show_toast(f"Failed to send STOP: {exc}", "error", source="Auto Sampler")
 
@@ -316,6 +334,42 @@ with left_area:
             control_placeholders.append(ph)
             with ph.container():
                 _render_controls(sid)
+
+    # Left-side Sampler Logs (restored)
+    with st.container(border=True):
+        st.subheader("Sampler Logs")
+
+        log_box_css = """
+        <style>
+        .log-box-left {
+            background-color: #252525;
+            color: #00FF7D;
+            padding: 1em;
+            border-radius: 8px;
+            height: 220px;
+            overflow-y: scroll;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            border: 1px solid #333;
+            margin-bottom: 16px;
+        }
+        </style>
+        """
+        st.markdown(log_box_css, unsafe_allow_html=True)
+
+        log_area_left = st.empty()
+
+        def _render_left_logs():
+            content = "\n".join(st.session_state.as_logs)
+            log_area_left.markdown(f"<div class='log-box-left'>{content}</div>", unsafe_allow_html=True)
+
+        @st.fragment(run_every=0.5)
+        def _refresh_left_logs():
+            _render_left_logs()
+
+        _render_left_logs()
+        _refresh_left_logs()
 
 
 # -----------------------------
@@ -369,9 +423,18 @@ with right_area:
                             st.session_state[f"{prefix}state"] = str(inner.get("state", st.session_state.get(f"{prefix}state", "")))
                             if "sensor_state" in inner:
                                 st.session_state[f"{prefix}sensor"] = str(inner.get("sensor_state"))
+                            # Append concise status log line
+                            try:
+                                st_state = st.session_state[f"{prefix}state"]
+                                st_stat = st.session_state[f"{prefix}status"]
+                                st_sens = st.session_state.get(f"{prefix}sensor", "")
+                                _append_log(f"S{sid}: state={st_state} status={st_stat} sensor={st_sens}")
+                            except Exception:
+                                pass
                         # Optional toast for ack
                         if inner.get("command") == "auto_sampler_cmd_ack":
                             show_toast("Auto sampler command acknowledged", "success", source="Auto Sampler")
+                            _append_log(f"ACK: sampler {inner.get('sampler_id')} -> {inner.get('status','dispatched')}")
                 except Exception:
                     pass
 
