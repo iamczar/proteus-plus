@@ -66,6 +66,8 @@ for _sid in SAMPLERS:
         st.session_state[f"as{_sid}_hold_end_ts"] = None
     if f"as{_sid}_delay_str" not in st.session_state:
         st.session_state[f"as{_sid}_delay_str"] = "0:00"
+    if f"as{_sid}_holding_remaining" not in st.session_state:
+        st.session_state[f"as{_sid}_holding_remaining"] = None
 
 
 def _append_log(message: str) -> None:
@@ -154,8 +156,19 @@ def _render_header(sid: int) -> None:
     sensor_value = st.session_state.get(f"{key_prefix}sensor", "UNKNOWN")
     # Remaining hold time countdown
     end_ts = st.session_state.get(f"{key_prefix}hold_end_ts")
+    # If firmware reports holding remaining, prefer that
+    holding_remaining = st.session_state.get(f"{key_prefix}holding_remaining")
     remaining_text = "0 s"
-    if isinstance(end_ts, (int, float)) and end_ts > time.time():
+    if isinstance(holding_remaining, (int, float)) and holding_remaining > 0:
+        rem = int(holding_remaining)
+        h = rem // 3600
+        m = (rem % 3600) // 60
+        s = rem % 60
+        if h > 0:
+            remaining_text = f"{h}:{m:02d}:{s:02d}"
+        else:
+            remaining_text = f"{m:02d}:{s:02d}"
+    elif isinstance(end_ts, (int, float)) and end_ts > time.time():
         rem = int(end_ts - time.time())
         h = rem // 3600
         m = (rem % 3600) // 60
@@ -443,6 +456,17 @@ with right_area:
                                 st_stat = st.session_state[f"{prefix}status"]
                                 st_sens = st.session_state.get(f"{prefix}sensor", "")
                                 desc = str(inner.get("description", ""))
+                                # Capture holding remaining seconds if reported in description
+                                try:
+                                    if st_stat == "holding_position" and "remaining" in desc:
+                                        # Extract number before 's remaining'
+                                        import re
+                                        m = re.search(r"([0-9]+\.?[0-9]*)s remaining", desc)
+                                        if m:
+                                            secs = float(m.group(1))
+                                            st.session_state[f"{prefix}holding_remaining"] = int(secs)
+                                except Exception:
+                                    pass
                                 key = f"as_logs_{int(sid)}"
                                 new_line = f"{st_stat} | {st_state} | {desc} | sensor={st_sens}"
                                 # Deduplicate consecutive identical lines
