@@ -8,6 +8,8 @@ from common.utils import random_color
 from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Analyse View", layout="wide")
+# Mark current page for cross-page navigation detection
+st.session_state["_current_page_key"] = "proteus_ui_analyse_view"
 st.title("Analyse View")
 
 # Module selection

@@ -4,6 +4,7 @@ import plotly.express as px
 
 st.set_page_config(page_title="Analyse Historical Data", layout="wide")
 st.title("Analyse Historical Data")
+st.session_state["_current_page_key"] = "proteus_ui_plot_cvs"
 
 # Your actual headers
 HEADERS = [

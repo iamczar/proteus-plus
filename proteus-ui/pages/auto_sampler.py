@@ -12,6 +12,8 @@ from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Auto Sampler Control", layout="wide")
 st.title("Auto Sampler Control")
+# Mark current page for cross-page navigation detection
+st.session_state["_current_page_key"] = "proteus_ui_auto_sampler"
 
 # Consistent button styling (compact)
 inject_button_theme(height="32px", min_width="110px", font_size="14px", padding_x="10px")

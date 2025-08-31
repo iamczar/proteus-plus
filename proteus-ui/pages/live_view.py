@@ -19,6 +19,21 @@ from services.mqtt_service import MQTTService
 st.set_page_config(page_title="Live View", layout="wide")
 st.title("Live View")
 
+# Detect page entry and force safe re-init of charts/state to avoid stale references after navigation
+PAGE_KEY = "proteus_ui_live_view"
+last_page = st.session_state.get("_current_page_key")
+if last_page != PAGE_KEY:
+    st.session_state._current_page_key = PAGE_KEY
+    # Invalidate chart/init keys so new placeholders are created on this visit
+    try:
+        st.session_state._live_init_key = None
+    except Exception:
+        pass
+    try:
+        st.session_state.chart_elements_v2 = []
+    except Exception:
+        pass
+
 # Topics and history window
 MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"

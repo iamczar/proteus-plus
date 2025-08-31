@@ -10,6 +10,8 @@ from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Experiments", layout="wide")
 st.title("Experiments")
+# Mark current page for cross-page navigation detection
+st.session_state["_current_page_key"] = "proteus_ui_experiments"
 
 # Module selection
 ModuleManager().select_module()

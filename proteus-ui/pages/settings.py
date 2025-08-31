@@ -1,6 +1,7 @@
 import streamlit as st
 
 st.set_page_config(page_title="Settings", layout="centered")
+st.session_state["_current_page_key"] = "proteus_ui_settings"
 
 st.title("Settings")
 

@@ -7,6 +7,8 @@ from common.utils import render_toast_area
 
 st.set_page_config(page_title="Cycler Logs", layout="wide")
 st.title("Cycler Logs")
+# Mark current page for cross-page navigation detection
+st.session_state["_current_page_key"] = "proteus_ui_cycler_logs"
 
 # Module selection and toast area
 ModuleManager().select_module()

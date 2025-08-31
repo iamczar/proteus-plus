@@ -8,6 +8,7 @@ from common.utils import inject_button_theme
 from services.mqtt_service import MQTTService
 
 st.set_page_config(page_title="System Logs", layout="wide")
+st.session_state["_current_page_key"] = "proteus_ui_system_logs"
 
 st.title("System Logs")
 

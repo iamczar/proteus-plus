@@ -19,6 +19,7 @@ def _render_image() -> None:
 
 
 def main() -> None:
+    st.session_state["_current_page_key"] = "proteus_ui_pid_diagram"
     _render_image()
 
 
