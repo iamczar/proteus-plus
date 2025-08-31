@@ -588,11 +588,16 @@ if module_selected:
 else:
     st.info("Select a module to view live controls and graphs.")
 
-# Note: Avoid periodic toast fragment to reduce fragment invalidation on navigation
-try:
-    render_toast_area(max_messages=3, container=toast_placeholder.container())
-except Exception:
-    pass
+# Toasts are useful; keep a lightweight refresher
+@st.fragment(run_every=1.0)
+def update_toasts():
+    try:
+        render_toast_area(max_messages=3, container=toast_placeholder.container())
+    except Exception:
+        pass
+
+# Invoke so it starts ticking
+update_toasts()
 
 
 @st.cache_data
