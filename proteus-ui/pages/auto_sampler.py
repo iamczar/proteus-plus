@@ -335,49 +335,13 @@ with left_area:
             with ph.container():
                 _render_controls(sid)
 
-    # Left-side Sampler Logs (restored)
-    with st.container(border=True):
-        st.subheader("Sampler Logs")
-
-        log_box_css = """
-        <style>
-        .log-box-left {
-            background-color: #252525;
-            color: #00FF7D;
-            padding: 1em;
-            border-radius: 8px;
-            height: 220px;
-            overflow-y: scroll;
-            font-family: monospace;
-            font-size: 14px;
-            white-space: pre-wrap;
-            border: 1px solid #333;
-            margin-bottom: 16px;
-        }
-        </style>
-        """
-        st.markdown(log_box_css, unsafe_allow_html=True)
-
-        log_area_left = st.empty()
-
-        def _render_left_logs():
-            content = "\n".join(st.session_state.as_logs)
-            log_area_left.markdown(f"<div class='log-box-left'>{content}</div>", unsafe_allow_html=True)
-
-        @st.fragment(run_every=0.5)
-        def _refresh_left_logs():
-            _render_left_logs()
-
-        _render_left_logs()
-        _refresh_left_logs()
-
 
 # -----------------------------
 # Right: logs
 # -----------------------------
 with right_area:
     with st.container(border=True):
-        st.subheader("Logs")
+        st.subheader("Auto Sampler Logs")
 
         # Match the same styled log box used on system and cycler logs
         log_box_css = """
