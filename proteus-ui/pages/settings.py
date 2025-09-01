@@ -31,9 +31,10 @@ with col2:
     if st.button("Stop Proteus", type="secondary", use_container_width=True):
         try:
             if os.name == "nt":
-                subprocess.Popen("pm2 stop all", cwd=str(root), shell=True)
+                # Stop apps defined in the ecosystem file
+                subprocess.Popen(f"pm2 stop \"{ecosystem}\"", cwd=str(root), shell=True)
             else:
-                subprocess.Popen(["pm2", "stop", "all"], cwd=str(root))
+                subprocess.Popen(["pm2", "stop", str(ecosystem)], cwd=str(root))
             st.success("Stop signals sent.")
         except Exception as e:
             st.error(f"Failed to stop: {e}")
