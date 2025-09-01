@@ -1,8 +1,5 @@
 import os
 import streamlit as st
-from common.utils import load_ui_settings, inject_global_theme
-# Global page config (must be first Streamlit call)
-st.set_page_config(page_title="Proteus", layout="wide")
 
 # Home
 dashboard_page = st.Page("pages/dashboard.py", title="Dashboard", icon=":material/grid_view:")
@@ -28,11 +25,6 @@ st.logo(
     
 )
 
-# Apply persisted theme (light/dark) early
-_ui_cfg = load_ui_settings()
-_theme = (_ui_cfg.get("theme") or "Auto").lower()
-if _theme in ("light", "dark"):
-    inject_global_theme(_theme)
 
 pg = st.navigation(
     {

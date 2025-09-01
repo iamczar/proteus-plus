@@ -4,42 +4,11 @@ import os
 import sys
 from pathlib import Path
 import json
-from common.utils import load_ui_settings, save_ui_settings
 
 st.set_page_config(page_title="Settings", layout="centered")
 st.session_state["_current_page_key"] = "proteus_ui_settings"
 
 st.title("Settings")
-
-st.subheader("General Preferences")
-
-# Load persisted settings
-cfg = load_ui_settings()
-default_theme = cfg.get("theme", "Auto")
-
-# Theme toggle
-theme = st.radio(
-    "Theme",
-    ["Light", "Dark", "Auto"],
-    index=["Light","Dark","Auto"].index(default_theme if default_theme in ("Light","Dark","Auto") else "Auto"),
-    help="Choose your display mode"
-)
-
-# Language selection
-language = st.selectbox(
-    "Language",
-    ["English", "Spanish", "French", "German"],
-    index=0,
-    help="Select your preferred language"
-)
-
-# Notifications toggle
-notifications = st.checkbox("Enable email notifications", value=True)
-
-# Custom username input
-username = st.text_input("Display name", value="Guest")
-
-st.markdown("---")
 
 st.subheader("Proteus Services")
 
@@ -70,16 +39,3 @@ with col2:
             st.error(f"Failed to stop: {e}")
 
 st.caption(f"ecosystem: {ecosystem}")
-
-st.markdown("---")
-
-# Save settings (persist to file)
-if st.button("Save Settings"):
-    to_save = {
-        "theme": theme,
-        "language": language,
-        "notifications": notifications,
-        "username": username,
-    }
-    save_ui_settings(to_save)
-    st.success("Settings saved successfully!")
