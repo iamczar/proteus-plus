@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt
 
 st.set_page_config(page_title="Dashboard", layout="wide", page_icon="assets/cell_ag_logo.png")
+st.session_state["_current_page_key"] = "proteus_ui_reports"
 
 st.title("Dashboard Overview")
 

@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt
 
 st.set_page_config(page_title="Experiments", layout="wide")
+st.session_state["_current_page_key"] = "proteus_ui_metrics"
 
 st.title("Experiments")
 

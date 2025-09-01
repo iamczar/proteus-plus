@@ -63,72 +63,61 @@ class ModuleManager(metaclass=Singleton):
             return st.session_state.get("_available_modules", [])
 
     def select_module(self):
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            with st.container(border=True, key="module_selection_container"):
-                modules = self.get_available_modules()
-                if not modules:
-                    st.info("No modules detected. Waiting for module_controller/list-of-modules...")
-                    return
+        with st.container(border=True, key="module_selection_container"):
+            # Larger title styling
+            st.markdown(
+                """
+                <style>
+                /* Increase Module Selection label size */
+                div[data-baseweb="select"] label {
+                    font-size: 1.1rem !important;
+                    font-weight: 700 !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Use a subheader to match other panel titles
+            st.subheader("Module Selection")
+            modules = self.get_available_modules()
+            if not modules:
+                st.info("No modules detected. Waiting for module_controller/list-of-modules...")
+                return
 
-                previous_value = st.session_state.get("selected_module")
-                if previous_value is not None and previous_value not in modules:
-                    try:
-                        del st.session_state["selected_module"]
-                    except Exception:
-                        pass
-                    previous_value = None
+            previous_value = st.session_state.get("selected_module")
+            if previous_value is not None and previous_value not in modules:
+                try:
+                    del st.session_state["selected_module"]
+                except Exception:
+                    pass
+                previous_value = None
 
-                placeholder_label = "— Select a module —"
-                if previous_value is None:
-                    chosen = st.selectbox(
-                        label="Module Selection:",
-                        options=[placeholder_label] + modules,
-                        index=0,
-                        key="_module_select_first",
-                    )
-                else:
-                    chosen = st.selectbox(
-                        label="Module Selection:",
-                        options=modules,
-                        index=(modules.index(previous_value) if previous_value in modules else 0),
-                        key="_module_select_final",
-                    )
+            placeholder_label = "— Select a module —"
+            if previous_value is None:
+                chosen = st.selectbox(
+                    label="Module Selection:",
+                    options=[placeholder_label] + modules,
+                    index=0,
+                    key="_module_select_first",
+                    label_visibility="collapsed",
+                )
+            else:
+                chosen = st.selectbox(
+                    label="Module Selection:",
+                    options=modules,
+                    index=(modules.index(previous_value) if previous_value in modules else 0),
+                    key="_module_select_final",
+                    label_visibility="collapsed",
+                )
 
-                self.selected_modules = st.session_state.get("selected_module")
+            self.selected_modules = st.session_state.get("selected_module")
 
-                if chosen != placeholder_label and chosen != previous_value:
-                    st.session_state.selected_module = chosen
-                    show_toast(
-                        f"Selected module: **{chosen}**",
-                        "success",
-                        source="Module Selection",
-                    )
-                    # Force a single rerun so the page reliably swaps module context
-                    st.rerun()
-        # Right-hand status banners
-        with col2:
-            with st.container(border=True, key="sequence_status_container"):
-                mod = str(st.session_state.get("selected_module") or "")
-                model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
-                st.subheader("Sequence Status")
-                if not model:
-                    st.info("No sequence activity.")
-                else:
-                    phase = model.get("phase")
-                    if phase in ("transferring", "awaiting_execution"):
-                        st.markdown("**Transferring Sequence**")
-                        st.write(":hourglass_flowing_sand: Loading…")
-                        st.progress(int(model.get("transfer_pct", 0)))
-                        txt = model.get("transfer_text")
-                        if txt:
-                            st.caption(txt)
-                    if phase == "executing":
-                        st.markdown("**Executing Sequence**")
-                        cur = int(model.get("exec_current", 0))
-                        total = int(model.get("exec_total", 0))
-                        pct = int(model.get("exec_pct", 0))
-                        st.progress(pct)
-                        st.caption(f"{cur}/{total}")
-                    if phase == "completed":
-                        st.success("Sequence completed")
+            if chosen != placeholder_label and chosen != previous_value:
+                st.session_state.selected_module = chosen
+                show_toast(
+                    f"Selected module: **{chosen}**",
+                    "success",
+                    source="Module Selection",
+                )
+                # Force a single rerun so the page reliably swaps module context
+                st.rerun()

@@ -5,6 +5,7 @@ from io import BytesIO
 from common.utils import fixed_footer
 
 st.set_page_config(page_title="Dashboard", layout="wide")
+st.session_state["_current_page_key"] = "proteus_ui_dashboard"
 
 st.title("Dashboard")
 

@@ -1,4 +1,5 @@
 import threading
+import os
 import time
 import json
 import csv
@@ -38,6 +39,15 @@ class ModuleHandler:
         self._mqtt_thread: Optional[threading.Thread] = None
         # Sequence sending session state
         self._sequence_rows: Optional[List[Dict[str, Any]]] = None
+        # Experiment/logging context
+        self._experiment_dir: Optional[str] = None
+        self._run_id: Optional[str] = None
+        self._sequence_filename: Optional[str] = None
+        self._data_logging_enabled: bool = False
+        self._alpha_logging_active: bool = False
+        self._data_csv_path: Optional[str] = None
+        self._data_csv_file = None
+        self._data_csv_writer = None
 
     def start(self):
         if self._running:
@@ -65,6 +75,18 @@ class ModuleHandler:
         except Exception:
             pass
         self._serial = None
+        # Close any open data file
+        try:
+            if self._data_csv_file:
+                try:
+                    self._data_csv_file.flush()
+                except Exception:
+                    pass
+                self._data_csv_file.close()
+        except Exception:
+            pass
+        self._data_csv_file = None
+        self._data_csv_writer = None
         try:
             self.mqtt_client.disconnect()
         except Exception:
@@ -110,6 +132,24 @@ class ModuleHandler:
                 return
 
             cmd = str(inner.get("command", "")).strip()
+            if cmd == "set_experiment_context":
+                # {experiment_dir, run_id?, sequence_filename?}
+                exp_dir = inner.get("experiment_dir")
+                run_id = inner.get("run_id")
+                seq_fn = inner.get("sequence_filename")
+                if isinstance(exp_dir, str) and exp_dir:
+                    try:
+                        os.makedirs(exp_dir, exist_ok=True)
+                        self._experiment_dir = exp_dir
+                        self._run_id = str(run_id) if run_id else None
+                        self._sequence_filename = str(seq_fn) if seq_fn else None
+                        # Reset data file so it will reopen on next log write
+                        self._close_data_file()
+                        self._data_csv_path = None
+                        self.logger.info(f"{self.module_name}: experiment context set -> {exp_dir}")
+                    except Exception as e:
+                        self.logger.warn(f"{self.module_name}: failed to set experiment context: {e}")
+                return
             if cmd == "start_sequence":
                 file_path = inner.get("file_path")
                 if not file_path:
@@ -135,6 +175,11 @@ class ModuleHandler:
             }
             if cmd in ui_to_alpha:
                 self.send(self._wrap_alpha_envelope({"command": ui_to_alpha[cmd]}))
+                # Mirror UI logging command locally to start/stop file writes
+                if cmd == "start_data_log":
+                    self._data_logging_enabled = True
+                elif cmd == "stop_data_log":
+                    self._data_logging_enabled = False
                 return
 
             # Backward-compatible legacy payloads (plain string or direct sequence_cmd)
@@ -337,6 +382,34 @@ class ModuleHandler:
                 routed_topic = self._select_outbound_topic(obj)
                 if routed_topic:
                     self.mqtt_client.publish(routed_topic, json.dumps(obj))
+                # Track Alpha data_logger logging state via system message
+                try:
+                    src_local = str(obj.get("message_source", "")).lower()
+                    if src_local == "data_logger" and isinstance(obj.get("message"), dict):
+                        msg = obj["message"]
+                        if msg.get("event") == "logging_state":
+                            self._alpha_logging_active = bool(msg.get("active"))
+                            # Publish a concise status on data-logging/<module-id>
+                            status_payload = {
+                                "message_source": "module_handler",
+                                "module_id": self.module_id,
+                                "timestamp": self._utc_timestamp(),
+                                "message": {
+                                    "event": "logging_state",
+                                    "active": self._alpha_logging_active,
+                                },
+                            }
+                            self.mqtt_client.publish(f"data-logging/{self.module_id}", json.dumps(status_payload))
+                except Exception:
+                    pass
+                # If this is data_logger sensor payload, mirror to CSV if enabled
+                try:
+                    src = str(obj.get("message_source", "")).lower()
+                    if src == "data_logger" and self._data_logging_enabled and self._alpha_logging_active:
+                        if obj.get("alpha_command") == "sensor_data" and isinstance(obj.get("data"), dict):
+                            self._write_data_log_row(obj)
+                except Exception:
+                    pass
             except Exception as e:
                 self.logger.warn(f"{self.module_name}: mqtt publish failed: {e}")
 
@@ -372,8 +445,12 @@ class ModuleHandler:
             inner = obj.get("message") if isinstance(obj.get("message"), dict) else {}
 
             # Explicit routing rules:
-            # - data_logger -> live-sensor-data
+            # - data_logger -> live-sensor-data (sensor_data only). System logging_state messages are handled separately.
             if source == "data_logger":
+                # If this is a system logging state message, do not route to live-sensor-data
+                inner_msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+                if isinstance(inner_msg, dict) and inner_msg.get("event") == "logging_state":
+                    return None
                 return f"live-sensor-data/{self.module_id}"
 
             # - SysLogger -> sys-logger
@@ -386,6 +463,14 @@ class ModuleHandler:
 
             # - AlphaCommsManager state notifications -> alphacommsmanager-status
             if source == "alpha_comms_manager":
+                # Mirror auto sampler acks into autosampler-status as well
+                try:
+                    if isinstance(inner, dict) and inner.get("command") == "auto_sampler_cmd_ack":
+                        self.mqtt_client.publish(
+                            f"autosampler-status/{self.module_id}", json.dumps(obj)
+                        )
+                except Exception:
+                    pass
                 return f"alphacommsmanager-status/{self.module_id}"
 
             # - file_storage_sensor -> file-info
@@ -412,5 +497,104 @@ class ModuleHandler:
             except Exception:
                 pass
         self.stop()
+
+    # ------------------- Data logging helpers -------------------
+    def _ensure_data_file(self) -> None:
+        if not self._experiment_dir:
+            return
+        if self._data_csv_writer is not None:
+            return
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = f"{self.module_id}_data_{ts}.csv" if not self._run_id else f"{self.module_id}_data_{self._run_id}.csv"
+            path = os.path.join(self._experiment_dir, base_name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            f = open(path, "w", newline="")
+            writer = csv.writer(f)
+            # Header matching example 3006_data.csv
+            header = [
+                "TIME","NULLEADER","MODUID","COMMAND","STATEID","OXYMEASURED","PRESSUREMEASURED","FLOWMEASURED","TEMPMEASURED",
+                "CIRCPUMPSPEED","PRESSUREPUMPSPEED","PRESSUREPID","PRESSURESETPOINT","PRESSUREKP","PRESSUREKI","PRESSUREKD",
+                "OXYGENPID","OXYGENSETPOINT","OXYGENKP","OXYGENKI","OXYGENKD","OXYGENMEASURED1","OXYGENMEASURED2","OXYGENMEASURED3","OXYGENMEASURED4","NULLTRAILER"
+            ]
+            writer.writerow(header)
+            self._data_csv_file = f
+            self._data_csv_writer = writer
+            self._data_csv_path = path
+            self.logger.info(f"{self.module_name}: data log file opened -> {path}")
+        except Exception as e:
+            self.logger.warn(f"{self.module_name}: failed to open data file: {e}")
+
+    def _close_data_file(self) -> None:
+        try:
+            if self._data_csv_file:
+                try:
+                    self._data_csv_file.flush()
+                except Exception:
+                    pass
+                self._data_csv_file.close()
+        except Exception:
+            pass
+        self._data_csv_file = None
+        self._data_csv_writer = None
+
+    def _write_data_log_row(self, obj: Dict[str, Any]) -> None:
+        if not self._experiment_dir:
+            return
+        if self._data_csv_writer is None:
+            self._ensure_data_file()
+            if self._data_csv_writer is None:
+                return
+        try:
+            ts = obj.get("timestamp") or datetime.now().isoformat()
+            module_id = int(obj.get("module_id", self.module_id))
+            alpha_cmd = obj.get("alpha_command")
+            data = obj.get("data") if isinstance(obj.get("data"), dict) else {}
+            def num(key: str, default: float = 0.0) -> float:
+                try:
+                    v = data.get(key, default)
+                    return float(v)
+                except Exception:
+                    return float(default)
+            def intval(val, default: int = 0) -> int:
+                try:
+                    return int(float(val))
+                except Exception:
+                    return default
+            row = [
+                ts,
+                0,
+                module_id,
+                intval(alpha_cmd, 1515),
+                intval(data.get("state_id", 0)),
+                num("oxy_measured", 0.0),
+                num("pressure_measured", 0.0),
+                num("flow_measured", 0.0),
+                num("temp_measured", 0.0),
+                num("circ_pump_speed", 0.0),
+                num("pressure_pump_speed", 0.0),
+                num("pressure_pid", 0.0),
+                num("pressure_setpoint", 0.0),
+                num("pressure_kp", 0.0),
+                num("pressure_ki", 0.0),
+                num("pressure_kd", 0.0),
+                num("oxygen_pid", 0.0),
+                num("oxygen_setpoint", 0.0),
+                num("oxygen_kp", 0.0),
+                num("oxygen_ki", 0.0),
+                num("oxygen_kd", 0.0),
+                num("oxygen_measured_1", 0.0),
+                num("oxygen_measured_2", 0.0),
+                num("oxygen_measured_3", 0.0),
+                num("oxygen_measured_4", 0.0),
+                0,
+            ]
+            self._data_csv_writer.writerow(row)
+            try:
+                self._data_csv_file.flush()
+            except Exception:
+                pass
+        except Exception as e:
+            self.logger.warn(f"{self.module_name}: failed to write data row: {e}")
 
 

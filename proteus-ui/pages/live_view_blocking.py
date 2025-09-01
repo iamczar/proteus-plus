@@ -12,6 +12,8 @@ from services.module_manager import ModuleManager
 
 st.set_page_config(page_title="Live View (Blocking)", layout="wide")
 st.title("Live View (Blocking)")
+# Mark current page for cross-page navigation detection
+st.session_state["_current_page_key"] = "proteus_ui_live_view_blocking"
 
 st.markdown(
     """

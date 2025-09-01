@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="Proteus 2.0 - CSV Viewer", layout="wide")
-st.title("📊 Proteus 2.0 - 100MB CSV Data Viewer")
+st.set_page_config(page_title="Analyse Historical Data", layout="wide")
+st.title("Analyse Historical Data")
+st.session_state["_current_page_key"] = "proteus_ui_plot_cvs"
 
 # Your actual headers
 HEADERS = [
