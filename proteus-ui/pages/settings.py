@@ -1,6 +1,7 @@
 import streamlit as st
 import subprocess
 import os
+import streamlit.components.v1 as components
 import sys
 from pathlib import Path
 import json
@@ -36,6 +37,23 @@ with col2:
             else:
                 subprocess.Popen(["pm2", "stop", str(ecosystem)], cwd=str(root))
             st.success("Stop signals sent.")
+            # Attempt to close this browser tab/window (may be blocked by browser)
+            components.html(
+                """
+                <script>
+                setTimeout(function(){
+                  try {
+                    window.open('', '_self');
+                    window.close();
+                  } catch (e) {
+                    // ignore
+                  }
+                }, 500);
+                </script>
+                """,
+                height=0,
+            )
+            st.caption("If the tab did not close automatically, you can close it manually.")
         except Exception as e:
             st.error(f"Failed to stop: {e}")
 
