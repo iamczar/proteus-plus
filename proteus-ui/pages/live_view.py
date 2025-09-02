@@ -41,6 +41,7 @@ ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 MAX_POINTS = 8640  # show last ~2.4h at 1 Hz (adjust as needed)
 DATA_LOGGING_PREFIX = "data-logging"
+FILE_INFO_PREFIX = "file-info"
 
 # Disable interactivity for charts globally (keeps visuals the same)
 st.markdown(
@@ -68,10 +69,15 @@ inject_button_theme(
 if "_current_run_token" not in st.session_state:
     st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.randint(0, 1_000_000)}"
 
-# Module selection + right-hand Sequence Status panel row
+# Module selection + right-hand status panels row
 left_col, right_col = st.columns([1, 1], gap="large")
 right_status_placeholder = right_col.empty()
-right_seq_state_placeholder = right_col.empty()
+with right_col:
+    col_seq, col_storage = st.columns([1, 1], gap="medium")
+    with col_seq:
+        right_seq_state_placeholder = st.empty()
+    with col_storage:
+        right_storage_placeholder = st.empty()
 with left_col:
     ModuleManager().select_module()
     # Toast area directly under Module Selection
@@ -801,7 +807,7 @@ def update_loop():
     st.session_state._live_painted[mod] = painted
 
 
-# Background collector: subscribe to all module live topics and buffer data
+# Background collector: subscribe to topics and buffer/update UI state
 @st.fragment(run_every=0.5)
 def background_collector():
     modules = st.session_state.get("_available_modules", [])
@@ -811,7 +817,7 @@ def background_collector():
     if "_live_all_subs" not in st.session_state:
         st.session_state._live_all_subs = set()
     subs = st.session_state._live_all_subs
-    # Subscribe to all module live topics
+    # Subscribe to all module topics we care about
     for m in modules:
         topic = f"{LIVE_TOPIC_PREFIX}/{m}"
         if topic not in subs:
@@ -835,6 +841,14 @@ def background_collector():
             try:
                 MQTTService().subscribe(dl_t)
                 subs.add(dl_t)
+            except Exception:
+                pass
+        # Subscribe to file storage info topic
+        fi_t = f"{FILE_INFO_PREFIX}/{m}"
+        if fi_t not in subs:
+            try:
+                MQTTService().subscribe(fi_t)
+                subs.add(fi_t)
             except Exception:
                 pass
     # Drain each topic and append to per-module buffers
@@ -884,6 +898,25 @@ def background_collector():
                     st.session_state[("_logging_active", mod)] = bool(inner.get("active"))
             except Exception:
                 continue
+
+        # Drain file-info storage status
+        fi_updates = MQTTService().drain(f"{FILE_INFO_PREFIX}/{m}", max_items=200)
+        if fi_updates:
+            if "_storage_info" not in st.session_state:
+                st.session_state._storage_info = {}
+            for _, payload in fi_updates:
+                try:
+                    inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                    if inner.get("event") == "storage-status":
+                        st.session_state._storage_info[mod] = {
+                            "path": inner.get("path"),
+                            "free_percent": float(inner.get("free_percent", 0.0)),
+                            "free_bytes": int(inner.get("free_bytes", 0)),
+                            "used_bytes": int(inner.get("used_bytes", 0)),
+                            "total_bytes": int(inner.get("total_bytes", 0)),
+                        }
+                except Exception:
+                    continue
 
     # Sequence transfer and execution status updates
     if "_seq_ui_state" not in st.session_state:
@@ -1065,10 +1098,48 @@ def _render_sequence_controller_state(placeholder):
         st.caption(state_text or "—")
 
 
+def _human_bytes(num: int) -> str:
+    try:
+        step = 1024.0
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(num)
+        for unit in units:
+            if size < step:
+                return f"{size:.1f} {unit}"
+            size /= step
+        return f"{size*step:.1f} B"
+    except Exception:
+        return str(num)
+
+
+def _render_storage_panel(placeholder):
+    mod = str(st.session_state.get("selected_module"))
+    info = (st.session_state.get("_storage_info") or {}).get(mod)
+    try:
+        placeholder.empty()
+    except Exception:
+        pass
+    with placeholder.container(border=True):
+        st.subheader("Storage")
+        if not info:
+            st.caption("Waiting for storage info…")
+            return
+        path = info.get("path") or "—"
+        free_pct = float(info.get("free_percent", 0.0))
+        free_bytes = int(info.get("free_bytes", 0))
+        total_bytes = int(info.get("total_bytes", 0))
+        used_bytes = int(info.get("used_bytes", max(0, total_bytes - free_bytes)))
+        used_pct = int(100 - round(free_pct)) if total_bytes else 0
+        st.caption(f"{path} — {free_pct:.2f}% free")
+        st.progress(min(max(used_pct, 0), 100))
+        st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
+
+
 # Always render status panels every run so they persist across module swaps
 try:
     _render_sequence_status_panel(right_status_placeholder)
     _render_sequence_controller_state(right_seq_state_placeholder)
+    _render_storage_panel(right_storage_placeholder)
 except Exception:
     pass
 
@@ -1077,6 +1148,7 @@ def _refresh_status_panels():
     try:
         _render_sequence_status_panel(right_status_placeholder)
         _render_sequence_controller_state(right_seq_state_placeholder)
+        _render_storage_panel(right_storage_placeholder)
     except Exception:
         pass
 
