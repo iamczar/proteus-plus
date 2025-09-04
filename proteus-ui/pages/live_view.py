@@ -1113,7 +1113,7 @@ def _render_storage_panel(placeholder):
             st.subheader("Storage")
         with hdr_r:
             # Top-right action button so it's always visible
-            if st.button("Clear Data Logs", key="btn_clear_logs", disabled=not bool(module_id), use_container_width=True):
+            if st.button("Clear Data Logs", key="btn_clear_logs", disabled=not bool(module_id)):
                 if module_id:
                     try:
                         topic = f"{MQTT_TOPIC}/{module_id}"
@@ -1139,6 +1139,14 @@ def _render_storage_panel(placeholder):
         st.progress(min(max(used_pct, 0), 100))
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
+
+# Render panels once immediately so the UI is populated on first load
+try:
+    _render_sequence_status_panel(right_status_placeholder)
+    _render_sequence_controller_state(right_seq_state_placeholder)
+    _render_storage_panel(right_storage_placeholder)
+except Exception:
+    pass
 
 # Panels are refreshed on a timer below
 
