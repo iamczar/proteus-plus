@@ -1138,18 +1138,19 @@ def _render_storage_panel(placeholder):
 
 @st.fragment(run_every=1.0)
 def _status_panels_fragment():
-    # Build placeholders locally inside the fragment so they persist across reruns
-    with right_status_container:
-        main_ph = st.empty()
-        right_col1, right_col2 = st.columns([1, 1], gap="medium")
-        with right_col1:
-            seq_state_ph = st.empty()
-        with right_col2:
-            storage_ph = st.empty()
+    # Clear previous content each tick to avoid duplicate stacks
+    content_ph = right_status_container.empty()
     try:
-        _render_sequence_status_panel(main_ph)
-        _render_sequence_controller_state(seq_state_ph)
-        _render_storage_panel(storage_ph)
+        with content_ph.container():
+            main_ph = st.empty()
+            right_col1, right_col2 = st.columns([1, 1], gap="medium")
+            with right_col1:
+                seq_state_ph = st.empty()
+            with right_col2:
+                storage_ph = st.empty()
+            _render_sequence_status_panel(main_ph)
+            _render_sequence_controller_state(seq_state_ph)
+            _render_storage_panel(storage_ph)
     except Exception:
         pass
 
