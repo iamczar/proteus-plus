@@ -77,10 +77,19 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Reserve a fixed spot for the status panels (stable across reruns)
-    if "_right_status_container" not in st.session_state:
-        st.session_state._right_status_container = st.container()
-    right_status_container = st.session_state._right_status_container
+    # Right-side status panels rendered synchronously (no fragment to avoid duplication)
+    right_status_container = st.container()
+    with right_status_container:
+        main_ph = st.empty()
+        rc1, rc2 = st.columns([1, 1], gap="medium")
+        with rc1:
+            seq_state_ph = st.empty()
+        with rc2:
+            storage_ph = st.empty()
+        # Render once per rerun
+        _render_sequence_status_panel(main_ph)
+        _render_sequence_controller_state(seq_state_ph)
+        _render_storage_panel(storage_ph)
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1138,26 +1147,7 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-@st.fragment(run_every=1.0)
-def _status_panels_fragment():
-    # Clear previous content each tick to avoid duplicate stacks
-    content_ph = right_status_container.empty()
-    try:
-        with content_ph.container():
-            main_ph = st.empty()
-            right_col1, right_col2 = st.columns([1, 1], gap="medium")
-            with right_col1:
-                seq_state_ph = st.empty()
-            with right_col2:
-                storage_ph = st.empty()
-            _render_sequence_status_panel(main_ph)
-            _render_sequence_controller_state(seq_state_ph)
-            _render_storage_panel(storage_ph)
-    except Exception:
-        pass
-
-# Mount the fragment
-_status_panels_fragment()
+# (Removed fragment-based rendering for status panels to prevent duplicate mounts)
 
 
 if module_selected:
