@@ -77,8 +77,8 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Mount the status panels fragment in the right column
-    pass
+    # Reserve a fixed spot for the status panels
+    right_status_container = st.container()
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1139,12 +1139,13 @@ def _render_storage_panel(placeholder):
 @st.fragment(run_every=1.0)
 def _status_panels_fragment():
     # Build placeholders locally inside the fragment so they persist across reruns
-    right_col1, right_col2 = st.columns([1, 1], gap="medium")
-    with right_col1:
-        seq_state_ph = st.empty()
-    with right_col2:
-        storage_ph = st.empty()
-    main_ph = st.empty()
+    with right_status_container:
+        main_ph = st.empty()
+        right_col1, right_col2 = st.columns([1, 1], gap="medium")
+        with right_col1:
+            seq_state_ph = st.empty()
+        with right_col2:
+            storage_ph = st.empty()
     try:
         _render_sequence_status_panel(main_ph)
         _render_sequence_controller_state(seq_state_ph)
