@@ -77,19 +77,8 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Right-side status panels rendered synchronously (no fragment to avoid duplication)
+    # Reserve container; render happens later after function definitions
     right_status_container = st.container()
-    with right_status_container:
-        main_ph = st.empty()
-        rc1, rc2 = st.columns([1, 1], gap="medium")
-        with rc1:
-            seq_state_ph = st.empty()
-        with rc2:
-            storage_ph = st.empty()
-        # Render once per rerun
-        _render_sequence_status_panel(main_ph)
-        _render_sequence_controller_state(seq_state_ph)
-        _render_storage_panel(storage_ph)
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1147,7 +1136,20 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-# (Removed fragment-based rendering for status panels to prevent duplicate mounts)
+# Render status panels once per rerun into the reserved container
+try:
+    with right_status_container:
+        main_ph = st.empty()
+        rc1, rc2 = st.columns([1, 1], gap="medium")
+        with rc1:
+            seq_state_ph = st.empty()
+        with rc2:
+            storage_ph = st.empty()
+        _render_sequence_status_panel(main_ph)
+        _render_sequence_controller_state(seq_state_ph)
+        _render_storage_panel(storage_ph)
+except Exception:
+    pass
 
 
 if module_selected:
