@@ -77,8 +77,10 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Reserve a fixed spot for the status panels
-    right_status_container = st.container()
+    # Reserve a fixed spot for the status panels (stable across reruns)
+    if "_right_status_container" not in st.session_state:
+        st.session_state._right_status_container = st.container()
+    right_status_container = st.session_state._right_status_container
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
