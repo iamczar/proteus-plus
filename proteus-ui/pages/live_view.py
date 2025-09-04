@@ -341,7 +341,6 @@ def _experiment_picker_dialog() -> None:
         st.warning("No files found in the experiments folder.")
         if st.button("Close"):
             st.session_state._show_experiment_dialog = False
-            st.rerun()
         return
     current_filename = None
     if st.session_state.experiment_file_path:
@@ -1040,11 +1039,6 @@ background_collector()
 def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
     model = (st.session_state.get("_seq_ui_state") or {}).get(mod)
-    # Always redraw on rerun to avoid stale signature hiding content
-    try:
-        placeholder.empty()
-    except Exception:
-        pass
 
     if not model:
         with placeholder.container(border=True):
@@ -1090,10 +1084,6 @@ def _render_sequence_controller_state(placeholder):
             state_text = str(model.get("seq_state", "")).strip()
         except Exception:
             state_text = ""
-    try:
-        placeholder.empty()
-    except Exception:
-        pass
     with placeholder.container(border=True):
         st.subheader("Sequence Controller State")
         st.caption(state_text or "—")
@@ -1116,14 +1106,13 @@ def _human_bytes(num: int) -> str:
 def _render_storage_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
     info = (st.session_state.get("_storage_info") or {}).get(mod)
-    try:
-        placeholder.empty()
-    except Exception:
-        pass
     with placeholder.container(border=True):
         st.subheader("Storage")
+        module_id = st.session_state.get("selected_module")
         if not info:
             st.caption("Waiting for storage info…")
+            # Keep the button mounted to avoid disappearing UI
+            st.button("Clear Data Logs", key="btn_clear_logs", disabled=True)
             return
         path = info.get("path") or "—"
         free_pct = float(info.get("free_percent", 0.0))
@@ -1135,8 +1124,7 @@ def _render_storage_panel(placeholder):
         st.progress(min(max(used_pct, 0), 100))
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
         # Action: Clear data logs on device to free up space
-        if st.button("Clear Data Logs", key="btn_clear_logs"):
-            module_id = st.session_state.get("selected_module")
+        if st.button("Clear Data Logs", key="btn_clear_logs", disabled=not bool(module_id)):
             if module_id:
                 try:
                     topic = f"{MQTT_TOPIC}/{module_id}"
@@ -1151,15 +1139,9 @@ def _render_storage_panel(placeholder):
                     show_toast(f"Failed to request cleanup: {exc}", "error", source="Storage")
 
 
-# Always render status panels every run so they persist across module swaps
-try:
-    _render_sequence_status_panel(right_status_placeholder)
-    _render_sequence_controller_state(right_seq_state_placeholder)
-    _render_storage_panel(right_storage_placeholder)
-except Exception:
-    pass
+# Panels are refreshed on a timer below
 
-@st.fragment(run_every=0.5)
+@st.fragment(run_every=1.0)
 def _refresh_status_panels():
     try:
         _render_sequence_status_panel(right_status_placeholder)
