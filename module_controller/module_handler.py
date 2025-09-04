@@ -172,6 +172,7 @@ class ModuleHandler:
                 "retrieve_data": "retrieve_data",
                 "start_data_log": "start_data_log",
                 "stop_data_log": "stop_data_log",
+                "clear_session_logs": "clear_session_logs",
             }
             if cmd in ui_to_alpha:
                 self.send(self._wrap_alpha_envelope({"command": ui_to_alpha[cmd]}))

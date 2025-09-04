@@ -192,6 +192,7 @@ def _map_alpha_to_ui_command(alpha_cmd: str) -> str | None:
         "retrieve_data": "retrieve_data",
         "start_data_log": "start_data_log",
         "stop_data_log": "stop_data_log",
+        "clear_session_logs": "clear_session_logs",
     }
     return mapping.get(alpha_cmd)
 
@@ -1133,6 +1134,21 @@ def _render_storage_panel(placeholder):
         st.caption(f"{path} — {free_pct:.2f}% free")
         st.progress(min(max(used_pct, 0), 100))
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
+        # Action: Clear data logs on device to free up space
+        if st.button("Clear Data Logs", key="btn_clear_logs"):
+            module_id = st.session_state.get("selected_module")
+            if module_id:
+                try:
+                    topic = f"{MQTT_TOPIC}/{module_id}"
+                    envelope = {
+                        "message_source": "proteus-ui",
+                        "timestamp": datetime.now().isoformat(),
+                        "message": {"command": "clear_session_logs"},
+                    }
+                    MQTTService().publish(topic, envelope)
+                    show_toast("Requested log cleanup on device.", "info", source="Storage")
+                except Exception as exc:
+                    show_toast(f"Failed to request cleanup: {exc}", "error", source="Storage")
 
 
 # Always render status panels every run so they persist across module swaps
