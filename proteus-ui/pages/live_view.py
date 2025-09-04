@@ -1107,12 +1107,27 @@ def _render_storage_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
     info = (st.session_state.get("_storage_info") or {}).get(mod)
     with placeholder.container(border=True):
-        st.subheader("Storage")
         module_id = st.session_state.get("selected_module")
+        hdr_l, hdr_r = st.columns([3, 1])
+        with hdr_l:
+            st.subheader("Storage")
+        with hdr_r:
+            # Top-right action button so it's always visible
+            if st.button("Clear Data Logs", key="btn_clear_logs", disabled=not bool(module_id), use_container_width=True):
+                if module_id:
+                    try:
+                        topic = f"{MQTT_TOPIC}/{module_id}"
+                        envelope = {
+                            "message_source": "proteus-ui",
+                            "timestamp": datetime.now().isoformat(),
+                            "message": {"command": "clear_session_logs"},
+                        }
+                        MQTTService().publish(topic, envelope)
+                        show_toast("Requested log cleanup on device.", "info", source="Storage")
+                    except Exception as exc:
+                        show_toast(f"Failed to request cleanup: {exc}", "error", source="Storage")
         if not info:
             st.caption("Waiting for storage info…")
-            # Keep the button mounted to avoid disappearing UI
-            st.button("Clear Data Logs", key="btn_clear_logs", disabled=True)
             return
         path = info.get("path") or "—"
         free_pct = float(info.get("free_percent", 0.0))
@@ -1123,20 +1138,6 @@ def _render_storage_panel(placeholder):
         st.caption(f"{path} — {free_pct:.2f}% free")
         st.progress(min(max(used_pct, 0), 100))
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
-        # Action: Clear data logs on device to free up space
-        if st.button("Clear Data Logs", key="btn_clear_logs", disabled=not bool(module_id)):
-            if module_id:
-                try:
-                    topic = f"{MQTT_TOPIC}/{module_id}"
-                    envelope = {
-                        "message_source": "proteus-ui",
-                        "timestamp": datetime.now().isoformat(),
-                        "message": {"command": "clear_session_logs"},
-                    }
-                    MQTTService().publish(topic, envelope)
-                    show_toast("Requested log cleanup on device.", "info", source="Storage")
-                except Exception as exc:
-                    show_toast(f"Failed to request cleanup: {exc}", "error", source="Storage")
 
 
 # Panels are refreshed on a timer below
