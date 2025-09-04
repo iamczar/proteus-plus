@@ -380,6 +380,7 @@ def experiment_controls():
             "Resume Experiment",
             "Start Logging",
             "Stop Logging",
+            "Clear Data Logs",
             "Retrieve Data",
         ]
 
@@ -539,6 +540,23 @@ def experiment_controls():
                                     show_toast("Stop logging sent.", "info", source="Logging")
                                 else:
                                     show_toast("Failed to stop logging.", "error", source="Logging")
+                    elif label == "Clear Data Logs":
+                        if st.button(label, key=f"btn_{label}"):
+                            module_id = st.session_state.get("selected_module")
+                            if not module_id:
+                                show_toast("No module selected.", "error", source="Storage")
+                            else:
+                                try:
+                                    topic = f"{MQTT_TOPIC}/{module_id}"
+                                    envelope = {
+                                        "message_source": "proteus-ui",
+                                        "timestamp": datetime.now().isoformat(),
+                                        "message": {"command": "clear_session_logs"},
+                                    }
+                                    MQTTService().publish(topic, envelope)
+                                    show_toast("Requested log cleanup on device.", "info", source="Storage")
+                                except Exception as exc:
+                                    show_toast(f"Failed to request cleanup: {exc}", "error", source="Storage")
                     elif label == "Retrieve Data":
                         if st.button(label, key=f"btn_{label}"):
                             module_id = st.session_state.get("selected_module")
