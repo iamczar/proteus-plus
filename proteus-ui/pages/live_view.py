@@ -71,18 +71,14 @@ if "_current_run_token" not in st.session_state:
 
 # Module selection + right-hand status panels row
 left_col, right_col = st.columns([1, 1], gap="large")
-right_status_placeholder = right_col.empty()
-with right_col:
-    col_seq, col_storage = st.columns([1, 1], gap="medium")
-    with col_seq:
-        right_seq_state_placeholder = st.empty()
-    with col_storage:
-        right_storage_placeholder = st.empty()
 with left_col:
     ModuleManager().select_module()
     # Toast area directly under Module Selection
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
+with right_col:
+    # Mount the status panels fragment in the right column
+    pass
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1140,26 +1136,24 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-# Render panels once immediately so the UI is populated on first load
-try:
-    _render_sequence_status_panel(right_status_placeholder)
-    _render_sequence_controller_state(right_seq_state_placeholder)
-    _render_storage_panel(right_storage_placeholder)
-except Exception:
-    pass
-
-# Panels are refreshed on a timer below
-
 @st.fragment(run_every=1.0)
-def _refresh_status_panels():
+def _status_panels_fragment():
+    # Build placeholders locally inside the fragment so they persist across reruns
+    right_col1, right_col2 = st.columns([1, 1], gap="medium")
+    with right_col1:
+        seq_state_ph = st.empty()
+    with right_col2:
+        storage_ph = st.empty()
+    main_ph = st.empty()
     try:
-        _render_sequence_status_panel(right_status_placeholder)
-        _render_sequence_controller_state(right_seq_state_placeholder)
-        _render_storage_panel(right_storage_placeholder)
+        _render_sequence_status_panel(main_ph)
+        _render_sequence_controller_state(seq_state_ph)
+        _render_storage_panel(storage_ph)
     except Exception:
         pass
 
-_refresh_status_panels()
+# Mount the fragment
+_status_panels_fragment()
 
 
 if module_selected:
