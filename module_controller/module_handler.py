@@ -462,6 +462,10 @@ class ModuleHandler:
                 # All other data_logger system events go to sys-logger
                 return f"sys-logger/{self.module_id}"
 
+            # - data_logger_ack -> sys-logger (explicit maintenance/status acks)
+            if source == "data_logger_ack":
+                return f"sys-logger/{self.module_id}"
+
             # - SysLogger -> sys-logger
             if source == "syslogger":
                 return f"sys-logger/{self.module_id}"
