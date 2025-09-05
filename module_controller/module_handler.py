@@ -446,13 +446,21 @@ class ModuleHandler:
             inner = obj.get("message") if isinstance(obj.get("message"), dict) else {}
 
             # Explicit routing rules:
-            # - data_logger -> live-sensor-data (sensor_data only). System logging_state messages are handled separately.
+            # - data_logger:
+            #   * sensor_data -> live-sensor-data
+            #   * maintenance/status events (logging_state, maintenance_entered, maintenance_scan,
+            #     delete_failed, logs_cleared, etc.) -> sys-logger
             if source == "data_logger":
-                # If this is a system logging state message, do not route to live-sensor-data
                 inner_msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
-                if isinstance(inner_msg, dict) and inner_msg.get("event") == "logging_state":
-                    return None
-                return f"live-sensor-data/{self.module_id}"
+                alpha_cmd = obj.get("alpha_command")
+                # Route sensor stream distinctly
+                if alpha_cmd == "sensor_data" or (isinstance(inner_msg, dict) and "data" in obj):
+                    # Filter out logging_state system messages from the sensor stream
+                    if isinstance(inner_msg, dict) and inner_msg.get("event") == "logging_state":
+                        return None
+                    return f"live-sensor-data/{self.module_id}"
+                # All other data_logger system events go to sys-logger
+                return f"sys-logger/{self.module_id}"
 
             # - SysLogger -> sys-logger
             if source == "syslogger":
