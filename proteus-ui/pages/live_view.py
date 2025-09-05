@@ -77,7 +77,7 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Reserve container; render happens later after function definitions
+    # Reserve container; a periodic fragment below will refresh its contents
     right_status_container = st.container()
 
 # Ensure persistent toast store exists early
@@ -1136,20 +1136,24 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-# Render status panels once per rerun into the reserved container
-try:
-    with right_status_container:
-        main_ph = st.empty()
-        rc1, rc2 = st.columns([1, 1], gap="medium")
-        with rc1:
-            seq_state_ph = st.empty()
-        with rc2:
-            storage_ph = st.empty()
-        _render_sequence_status_panel(main_ph)
-        _render_sequence_controller_state(seq_state_ph)
-        _render_storage_panel(storage_ph)
-except Exception:
-    pass
+@st.fragment(run_every=0.7)
+def _status_panels_tick():
+    try:
+        content = right_status_container.empty()
+        with content.container():
+            main_ph = st.empty()
+            rc1, rc2 = st.columns([1, 1], gap="medium")
+            with rc1:
+                seq_state_ph = st.empty()
+            with rc2:
+                storage_ph = st.empty()
+            _render_sequence_status_panel(main_ph)
+            _render_sequence_controller_state(seq_state_ph)
+            _render_storage_panel(storage_ph)
+    except Exception:
+        pass
+
+_status_panels_tick()
 
 
 if module_selected:
