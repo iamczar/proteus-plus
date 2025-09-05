@@ -77,8 +77,10 @@ with left_col:
     toast_placeholder = st.empty()
     render_toast_area(max_messages=3, container=toast_placeholder.container())
 with right_col:
-    # Reserve container; a periodic fragment below will refresh its contents
-    right_status_container = st.container()
+    # Reserve a single persistent placeholder; reuse across reruns to avoid duplicates
+    if "_right_status_placeholder" not in st.session_state:
+        st.session_state._right_status_placeholder = st.empty()
+    right_status_placeholder = st.session_state._right_status_placeholder
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1139,8 +1141,9 @@ def _render_storage_panel(placeholder):
 @st.fragment(run_every=0.7)
 def _status_panels_tick():
     try:
-        content = right_status_container.empty()
-        with content.container():
+        # Clear and redraw inside the persistent placeholder
+        right_status_placeholder.empty()
+        with right_status_placeholder.container():
             main_ph = st.empty()
             rc1, rc2 = st.columns([1, 1], gap="medium")
             with rc1:
