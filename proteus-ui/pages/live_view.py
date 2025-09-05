@@ -1138,11 +1138,10 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-@st.fragment(run_every=0.7)
+@st.fragment(run_every=1.5)
 def _status_panels_tick():
     try:
-        # Clear and redraw inside the persistent placeholder
-        right_status_placeholder.empty()
+        # Redraw without explicit clear to minimize flicker
         with right_status_placeholder.container():
             main_ph = st.empty()
             rc1, rc2 = st.columns([1, 1], gap="medium")
