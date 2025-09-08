@@ -20,23 +20,54 @@ col1, col2 = st.columns(2, gap="small")
 with col1:
     if st.button("Restart Proteus", use_container_width=True):
         try:
-            # Restart all processes defined in the ecosystem file
+            # Open a new tab which polls until the app is back, then close this tab
+            components.html(
+                """
+                <script>
+                (function() {
+                  try {
+                    var target = window.location.origin;
+                    var newTab = window.open('about:blank', '_blank');
+                    if (newTab && newTab.document) {
+                      var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Proteus restarting…</title></head>' +
+                                 '<body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.5;">' +
+                                 '<h3>Proteus is restarting…</h3>' +
+                                 '<p>This tab will load Proteus automatically when it is back online.</p>' +
+                                 '<script>' +
+                                 '  const target = ' + JSON.stringify(target) + ';' +
+                                 '  function tryLoad() { fetch(target, { cache: "no-store" }).then(function(r){ if (r && r.ok) { location.replace(target); } }).catch(function(_){}); }' +
+                                 '  tryLoad(); setInterval(tryLoad, 2000);' +
+                                 '</' + 'script>' +
+                                 '</body></html>';
+                      try { newTab.document.open(); newTab.document.write(html); newTab.document.close(); } catch (e) {}
+                    }
+                  } catch (e) { /* ignore */ }
+                  // Attempt to close this tab; fall back to navigating to about:blank
+                  setTimeout(function(){
+                    try {
+                      window.open('', '_self');
+                      window.close();
+                      setTimeout(function(){ location.replace('about:blank'); }, 300);
+                    } catch (e) {
+                      location.replace('about:blank');
+                    }
+                  }, 300);
+                })();
+                </script>
+                """,
+                height=0,
+            )
+            # Delay the restart slightly so the client JS can render and execute
             if os.name == "nt":
-                subprocess.Popen(f"pm2 restart \"{ecosystem}\"", cwd=str(root), shell=True)
+                subprocess.Popen(f"cmd /C ""timeout /T 1 /NOBREAK > NUL && pm2 restart \"{ecosystem}\"""", cwd=str(root), shell=True)
             else:
-                subprocess.Popen(["pm2", "restart", str(ecosystem)], cwd=str(root))
-            st.success("Restart signals sent.")
+                subprocess.Popen(["bash", "-lc", f"sleep 1; pm2 restart {ecosystem}"], cwd=str(root))
+            st.success("Restart signals scheduled.")
         except Exception as e:
             st.error(f"Failed to restart: {e}")
 with col2:
     if st.button("Stop Proteus", type="secondary", use_container_width=True):
         try:
-            if os.name == "nt":
-                # Stop apps defined in the ecosystem file
-                subprocess.Popen(f"pm2 stop \"{ecosystem}\"", cwd=str(root), shell=True)
-            else:
-                subprocess.Popen(["pm2", "stop", str(ecosystem)], cwd=str(root))
-            st.success("Stop signals sent.")
             # Attempt to close this browser tab/window (may be blocked by browser)
             components.html(
                 """
@@ -45,14 +76,22 @@ with col2:
                   try {
                     window.open('', '_self');
                     window.close();
+                    setTimeout(function(){ location.replace('about:blank'); }, 300);
                   } catch (e) {
-                    // ignore
+                    // Fallback: navigate away if the browser blocks close()
+                    location.replace('about:blank');
                   }
                 }, 500);
                 </script>
                 """,
                 height=0,
             )
+            # Delay the stop slightly so the client JS can render and execute
+            if os.name == "nt":
+                subprocess.Popen(f"cmd /C ""timeout /T 1 /NOBREAK > NUL && pm2 stop \"{ecosystem}\"""", cwd=str(root), shell=True)
+            else:
+                subprocess.Popen(["bash", "-lc", f"sleep 1; pm2 stop {ecosystem}"], cwd=str(root))
+            st.success("Stop signals scheduled.")
             st.caption("If the tab did not close automatically, you can close it manually.")
         except Exception as e:
             st.error(f"Failed to stop: {e}")
