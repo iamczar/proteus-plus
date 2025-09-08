@@ -33,6 +33,10 @@ if last_page != PAGE_KEY:
         st.session_state.chart_elements_v2 = []
     except Exception:
         pass
+    try:
+        st.session_state._status_panel_placeholders = None
+    except Exception:
+        pass
 
 # Topics and history window
 MQTT_TOPIC = "sequence-commands"
@@ -81,6 +85,23 @@ with right_col:
     if "_right_status_placeholder" not in st.session_state:
         st.session_state._right_status_placeholder = st.empty()
     right_status_placeholder = st.session_state._right_status_placeholder
+    # Build the three panel placeholders once and reuse them to prevent flicker
+    if not st.session_state.get("_status_panel_placeholders"):
+        try:
+            with right_status_placeholder.container():
+                main_ph = st.empty()
+                rc1, rc2 = st.columns([1, 1], gap="medium")
+                with rc1:
+                    seq_state_ph = st.empty()
+                with rc2:
+                    storage_ph = st.empty()
+            st.session_state._status_panel_placeholders = {
+                "main": main_ph,
+                "seq_state": seq_state_ph,
+                "storage": storage_ph,
+            }
+        except Exception:
+            pass
 
 # Ensure persistent toast store exists early
 if "_toasts" not in st.session_state:
@@ -1141,17 +1162,27 @@ def _render_storage_panel(placeholder):
 @st.fragment(run_every=1.5)
 def _status_panels_tick():
     try:
-        # Redraw without explicit clear to minimize flicker
-        with right_status_placeholder.container():
-            main_ph = st.empty()
-            rc1, rc2 = st.columns([1, 1], gap="medium")
-            with rc1:
-                seq_state_ph = st.empty()
-            with rc2:
-                storage_ph = st.empty()
-            _render_sequence_status_panel(main_ph)
-            _render_sequence_controller_state(seq_state_ph)
-            _render_storage_panel(storage_ph)
+        phs = st.session_state.get("_status_panel_placeholders") or {}
+        main_ph = phs.get("main")
+        seq_state_ph = phs.get("seq_state")
+        storage_ph = phs.get("storage")
+        # If placeholders were not initialized (or lost), rebuild once
+        if not (main_ph and seq_state_ph and storage_ph):
+            with right_status_placeholder.container():
+                main_ph = st.empty()
+                rc1, rc2 = st.columns([1, 1], gap="medium")
+                with rc1:
+                    seq_state_ph = st.empty()
+                with rc2:
+                    storage_ph = st.empty()
+            st.session_state._status_panel_placeholders = {
+                "main": main_ph,
+                "seq_state": seq_state_ph,
+                "storage": storage_ph,
+            }
+        _render_sequence_status_panel(main_ph)
+        _render_sequence_controller_state(seq_state_ph)
+        _render_storage_panel(storage_ph)
     except Exception:
         pass
 
