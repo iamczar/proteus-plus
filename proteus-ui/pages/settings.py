@@ -59,7 +59,8 @@ with col1:
             )
             # Delay the restart slightly so the client JS can render and execute
             if os.name == "nt":
-                subprocess.Popen(f"cmd /C ""timeout /T 1 /NOBREAK > NUL && pm2 restart \"{ecosystem}\"""", cwd=str(root), shell=True)
+                # Use ping for delay to avoid 'input redirection' errors with timeout
+                subprocess.Popen(f"cmd /C ""ping -n 2 127.0.0.1 >NUL && pm2 restart \"{ecosystem}\"""", cwd=str(root), shell=True)
             else:
                 subprocess.Popen(["bash", "-lc", f"sleep 1; pm2 restart {ecosystem}"], cwd=str(root))
             st.success("Restart signals scheduled.")
@@ -88,9 +89,10 @@ with col2:
             )
             # Delay the stop slightly so the client JS can render and execute
             if os.name == "nt":
-                subprocess.Popen(f"cmd /C ""timeout /T 1 /NOBREAK > NUL && pm2 stop \"{ecosystem}\"""", cwd=str(root), shell=True)
+                # Use ping for delay to avoid 'input redirection' errors with timeout
+                subprocess.Popen("cmd /C \"ping -n 2 127.0.0.1 >NUL && pm2 stop all\"", cwd=str(root), shell=True)
             else:
-                subprocess.Popen(["bash", "-lc", f"sleep 1; pm2 stop {ecosystem}"], cwd=str(root))
+                subprocess.Popen(["bash", "-lc", "sleep 1; pm2 stop all"], cwd=str(root))
             st.success("Stop signals scheduled.")
             st.caption("If the tab did not close automatically, you can close it manually.")
         except Exception as e:
