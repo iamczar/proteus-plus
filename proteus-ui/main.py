@@ -9,7 +9,7 @@ live_view = st.Page("pages/live_view.py", title="Live View", icon=":material/sho
 auto_sampler = st.Page("pages/auto_sampler.py", title="Auto Sampler Control", icon=":material/science:")
 pid_diagram = st.Page("pages/pid_diagram.py", title="PI&D", icon=":material/image:")
 pid_tuning = st.Page("pages/pid_tuning.py", title="PID Tuning", icon=":material/tune:")
-csv_viewer = st.Page("pages/plot_cvs.py", title="Display Big Data", icon=":material/article:")
+csv_viewer = st.Page("pages/plot_cvs.py", title="Analyse Historical Data", icon=":material/article:")
 cycler_logs = st.Page("pages/cycler_logs.py", title="Cycler Logs", icon=":material/article:")
 
 # System
