@@ -12,7 +12,8 @@ module.exports = {
       script: "./venv/Scripts/python.exe",
       args: "-m module_controller",
       cwd: __dirname,
-      autorestart: true
+      autorestart: true,
+      max_restarts: 5
     }
   ]
 };
