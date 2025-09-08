@@ -73,24 +73,25 @@ with col2:
             components.html(
                 """
                 <script>
-                setTimeout(function(){
-                  try {
-                    window.open('', '_self');
-                    window.close();
-                    setTimeout(function(){ location.replace('about:blank'); }, 300);
-                  } catch (e) {
-                    // Fallback: navigate away if the browser blocks close()
-                    location.replace('about:blank');
+                (function(){
+                  function attemptClose(){
+                    try { window.top.open('', '_self'); } catch(e){}
+                    try { window.top.close(); } catch(e){}
+                    try { window.top.location.replace('about:blank'); } catch(e){}
                   }
-                }, 500);
+                  // Try immediately and retry a couple of times in case of race conditions
+                  attemptClose();
+                  setTimeout(attemptClose, 250);
+                  setTimeout(attemptClose, 750);
+                })();
                 </script>
                 """,
                 height=0,
             )
             # Delay the stop slightly so the client JS can render and execute
             if os.name == "nt":
-                # Windows: delay, then stop all PM2 apps
-                subprocess.Popen('cmd /C "ping -n 2 127.0.0.1 >NUL & pm2 stop all"', cwd=str(root), shell=True)
+                # Windows: longer delay, then stop all PM2 apps
+                subprocess.Popen('cmd /C "ping -n 4 127.0.0.1 >NUL & pm2 stop all"', cwd=str(root), shell=True)
             else:
                 subprocess.Popen(["bash", "-lc", "sleep 1; pm2 stop all"], cwd=str(root))
             st.success("Stop signals scheduled.")
