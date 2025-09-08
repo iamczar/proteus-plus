@@ -57,12 +57,8 @@ with col1:
                 """,
                 height=0,
             )
-            # Delay the restart slightly so the client JS can render and execute
-            if os.name == "nt":
-                # Use ping for delay to avoid 'input redirection' errors with timeout
-                subprocess.Popen(f"cmd /C ""ping -n 2 127.0.0.1 >NUL && pm2 restart \"{ecosystem}\"""", cwd=str(root), shell=True)
-            else:
-                subprocess.Popen(["bash", "-lc", f"sleep 1; pm2 restart {ecosystem}"], cwd=str(root))
+            # Windows-only: delay so client JS can execute, then restart apps defined in the ecosystem file
+            subprocess.Popen(f'cmd /C "ping -n 2 127.0.0.1 >NUL && pm2 restart \"{ecosystem}\""', cwd=str(root), shell=True)
             st.success("Restart signals scheduled.")
         except Exception as e:
             st.error(f"Failed to restart: {e}")
@@ -88,12 +84,8 @@ with col2:
                 """,
                 height=0,
             )
-            # Delay the stop slightly so the client JS can render and execute
-            if os.name == "nt":
-                # Windows: longer delay, then stop all PM2 apps
-                subprocess.Popen('cmd /C "ping -n 4 127.0.0.1 >NUL & pm2 stop all"', cwd=str(root), shell=True)
-            else:
-                subprocess.Popen(["bash", "-lc", "sleep 1; pm2 stop all"], cwd=str(root))
+            # Windows-only: longer delay so client JS can execute, then stop apps defined in the ecosystem file
+            subprocess.Popen(f'cmd /C "ping -n 4 127.0.0.1 >NUL & pm2 stop \"{ecosystem}\""', cwd=str(root), shell=True)
             st.success("Stop signals scheduled.")
             st.caption("If the tab did not close automatically, you can close it manually.")
         except Exception as e:
