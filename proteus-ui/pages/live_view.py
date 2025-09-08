@@ -1016,9 +1016,11 @@ def background_collector():
                         pass
                     # Track hold remaining time (ms) if provided
                     try:
-                        hold_ms = inner.get("hold_remaining_ms")
-                        if isinstance(hold_ms, (int, float)):
-                            model["hold_remaining_ms"] = int(hold_ms)
+                        hold_sec = inner.get("hold_remaining_sec")
+                        if isinstance(hold_sec, (int, float)):
+                            model["hold_remaining_sec"] = float(hold_sec)
+                        else:
+                            model.pop("hold_remaining_sec", None)
                     except Exception:
                         pass
                     total = inner.get("total_sequences")
@@ -1112,9 +1114,9 @@ def _render_sequence_controller_state(placeholder):
         st.caption(state_text or "—")
         # Show remaining hold time if available
         try:
-            ms = int((model or {}).get("hold_remaining_ms", 0) or 0)
-            if ms > 0:
-                st.caption(f"Hold remaining: {ms/1000.0:.2f}s")
+            sec = float((model or {}).get("hold_remaining_sec", 0.0) or 0.0)
+            if sec > 0:
+                st.caption(f"Hold remaining: {sec:.2f}s")
         except Exception:
             pass
 
