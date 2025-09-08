@@ -89,8 +89,8 @@ with col2:
             )
             # Delay the stop slightly so the client JS can render and execute
             if os.name == "nt":
-                # Use ping for delay to avoid 'input redirection' errors with timeout
-                subprocess.Popen("cmd /C \"ping -n 2 127.0.0.1 >NUL && pm2 stop all\"", cwd=str(root), shell=True)
+                # Windows: delay, then stop all PM2 apps
+                subprocess.Popen('cmd /C "ping -n 2 127.0.0.1 >NUL & pm2 stop all"', cwd=str(root), shell=True)
             else:
                 subprocess.Popen(["bash", "-lc", "sleep 1; pm2 stop all"], cwd=str(root))
             st.success("Stop signals scheduled.")
