@@ -1116,7 +1116,7 @@ def _render_sequence_controller_state(placeholder):
         try:
             sec = float((model or {}).get("hold_remaining_sec", 0.0) or 0.0)
             if sec > 0:
-                st.caption(f"Hold remaining: {sec:.2f}s")
+                st.caption(f"Next sequence in: {sec:.2f}s")
         except Exception:
             pass
 
