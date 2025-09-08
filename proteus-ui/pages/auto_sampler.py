@@ -400,25 +400,40 @@ with right_area:
         <style>
         .log-box { background-color: #252525; color: #00FF7D; padding: 1em; border-radius: 8px;
                    height: 240px; overflow-y: scroll; font-family: monospace; font-size: 14px;
-                   white-space: pre-wrap; border: 1px solid #333; }
+                   white-space: pre-wrap; border: 1px solid #333; margin-bottom: 24px; }
         .log-title { font-weight: 700; margin: 0 0 6px 0; }
         </style>
         """
         st.markdown(log_box_css, unsafe_allow_html=True)
 
-        log_area_1 = st.empty()
-        log_area_2 = st.empty()
-        log_area_3 = st.empty()
+        # Per-sampler headers with Clear buttons (must be outside fragments)
+        def _render_log_header(idx: int):
+            title_col, btn_col = st.columns([5, 1], gap="small")
+            with title_col:
+                st.markdown(f"<div class='log-title'>Sampler {idx}</div>", unsafe_allow_html=True)
+            with btn_col:
+                if st.button("Clear", key=f"as_clear_logs_{idx}"):
+                    st.session_state[f"as_logs_{idx}"] = []
+                    try:
+                        show_toast(f"Cleared logs for sampler {idx}", "info", source="Auto Sampler")
+                    except Exception:
+                        pass
+
+        # Pair each header with its own log placeholder directly below
+        log_areas = {}
+        for _idx in [1, 2, 3]:
+            _render_log_header(_idx)
+            log_areas[_idx] = st.empty()
 
         def _render_logs():
-            def render_for(idx: int, area):
+            def render_for(idx: int):
+                area = log_areas[idx]
                 lines = st.session_state.get(f"as_logs_{idx}", [])[-200:]
-                html = f"<div class='log-title'>Sampler {idx}</div>" + \
-                       f"<div class='log-box'>{'\n'.join(lines)}</div>"
-                area.markdown(html, unsafe_allow_html=True)
-            render_for(1, log_area_1)
-            render_for(2, log_area_2)
-            render_for(3, log_area_3)
+                content = "\n".join(lines)
+                area.markdown(f"<div class='log-box'>{content}</div>", unsafe_allow_html=True)
+            render_for(1)
+            render_for(2)
+            render_for(3)
 
         @st.fragment(run_every=0.5)
         def _refresh_logs():
