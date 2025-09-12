@@ -124,8 +124,8 @@ def inject_button_theme(
         --pp-btn-shadow-active: {shadow_active};
     }}
 
-    /* Base Streamlit button */
-    div.stButton > button {{
+    /* Base Streamlit button (main content only) */
+    section[data-testid="stMain"] div.stButton > button {{
         white-space: nowrap;
         min-width: var(--pp-btn-min-width);
         height: var(--pp-btn-height);
@@ -140,25 +140,126 @@ def inject_button_theme(
         transition: transform .02s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease;
     }}
 
-    div.stButton > button:hover {{
+    section[data-testid="stMain"] div.stButton > button:hover {{
         border-color: var(--pp-btn-border-hover);
         box-shadow: var(--pp-btn-shadow-hover);
         transform: translateY(-1px);
     }}
 
-    div.stButton > button:active {{
+    section[data-testid="stMain"] div.stButton > button:active {{
         transform: translateY(0);
         box-shadow: var(--pp-btn-shadow-active);
     }}
 
-    /* Consistent spacing around buttons */
-    div.stButton {{
+    /* Consistent spacing around buttons (main content only) */
+    section[data-testid="stMain"] div.stButton {{
         margin: 0 var(--pp-btn-gap) var(--pp-btn-gap) 0;
     }}
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
 
+
+# --- Sidebar Settings (reusable across pages) ---
+def render_sidebar_settings() -> None:
+    """Render the Proteus service controls at the bottom of the sidebar.
+
+    Adds Restart/Stop controls that interact with PM2 using the repo's
+    ecosystem file. Intended to be called once after page content renders
+    so it appears after any page-defined sidebar widgets.
+    """
+    import subprocess
+    import streamlit.components.v1 as components
+    from pathlib import Path
+
+    with st.sidebar:
+        st.header("Proteus Services")
+
+        root = Path(__file__).resolve().parents[2]
+        ecosystem = root / "ecosystem.config.js"
+
+        col1, col2 = st.columns(2, gap="small")
+        with col1:
+            restart_clicked = st.button("Restart", use_container_width=True, key="_sidebar_restart")
+        with col2:
+            stop_clicked = st.button("Stop", type="secondary", use_container_width=True, key="_sidebar_stop")
+
+        if restart_clicked:
+            try:
+                components.html(
+                    """
+                    <script>
+                    (function() {
+                      try {
+                        var target = window.location.origin;
+                        var newTab = window.open('about:blank', '_blank');
+                        if (newTab && newTab.document) {
+                          var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Proteus restarting…</title></head>' +
+                                     '<body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; line-height: 1.5;">' +
+                                     '<h3>Proteus is restarting…</h3>' +
+                                     '<p>This tab will load Proteus automatically when it is back online.</p>' +
+                                     '<script>' +
+                                     '  const target = ' + JSON.stringify(target) + ';' +
+                                     '  function tryLoad() { fetch(target, { cache: "no-store" }).then(function(r){ if (r && r.ok) { location.replace(target); } }).catch(function(_){}); }' +
+                                     '  tryLoad(); setInterval(tryLoad, 2000);' +
+                                     '</' + 'script>' +
+                                     '</body></html>';
+                          try { newTab.document.open(); newTab.document.write(html); newTab.document.close(); } catch (e) {}
+                        }
+                      } catch (e) { /* ignore */ }
+                      setTimeout(function(){
+                        try {
+                          window.top.open('', '_self');
+                          window.top.close();
+                          setTimeout(function(){ location.replace('about:blank'); }, 300);
+                        } catch (e) {
+                          location.replace('about:blank');
+                        }
+                      }, 300);
+                    })();
+                    </script>
+                    """,
+                    height=0,
+                )
+                subprocess.Popen(
+                    f'cmd /C "ping -n 2 127.0.0.1 >NUL && pm2 restart \"{ecosystem}\""',
+                    cwd=str(root),
+                    shell=True,
+                )
+                st.success("Restart signals scheduled.")
+            except Exception as e:
+                st.error(f"Failed to restart: {e}")
+
+        if stop_clicked:
+            try:
+                components.html(
+                    """
+                    <script>
+                    (function(){
+                      function attemptClose(){
+                        try { window.top.open('', '_self'); } catch(e){}
+                        try { window.top.close(); } catch(e){}
+                        try { window.top.location.replace('about:blank'); } catch(e){}
+                      }
+                      attemptClose();
+                      setTimeout(attemptClose, 250);
+                      setTimeout(attemptClose, 750);
+                    })();
+                    </script>
+                    """,
+                    height=0,
+                )
+                subprocess.Popen(
+                    f'cmd /C "ping -n 4 127.0.0.1 >NUL & pm2 stop \"{ecosystem}\""',
+                    cwd=str(root),
+                    shell=True,
+                )
+                st.success("Stop signals scheduled.")
+                st.caption("If the tab did not close automatically, you can close it manually.")
+            except Exception as e:
+                st.error(f"Failed to stop: {e}")
+
+        st.caption(f"ecosystem: {ecosystem}")
 
 # --- App-wide settings helpers (shared) ---
 def get_ui_settings_path() -> Path:
