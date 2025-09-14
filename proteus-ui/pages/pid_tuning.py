@@ -10,6 +10,8 @@ from common.utils import inject_button_theme
 from common.utils import show_toast
 from common.utils import render_toast_area
 from services.module_manager import ModuleManager
+from services.mqtt_service import MQTTService
+from datetime import datetime
 
 
 st.set_page_config(page_title="PID Tuning", layout="wide")
@@ -124,6 +126,21 @@ def _load_config(kind: str, filename: str | None) -> None:
         show_toast("Config kind does not match.", "error", source="PID Tuning")
 
 
+def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
+    try:
+        topic = f"pid-commands/{module_id}"
+        envelope = {
+            "message_source": "proteus-ui",
+            "timestamp": datetime.now().isoformat(),
+            "message": payload,
+        }
+        MQTTService().publish(topic, envelope)
+        return True
+    except Exception as exc:
+        show_toast(f"Publish failed: {exc}", "error", source="PID Tuning")
+        return False
+
+
 def _update_demo_data():
     # Simple data synthesizer so charts are not empty
     if not st.session_state.pt_running:
@@ -229,11 +246,19 @@ with left:
                 if not mod:
                     st.warning("Select a module first.")
                 else:
-                    show_toast(
-                        f"Flow PID sent to {mod}",
-                        "success",
-                        source="Flow Control Gains",
-                    )
+                    ok = _publish_pid_command(mod, {
+                        "type": "flow_pid",
+                        "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
+                        "kp": float(st.session_state.pt_flow_kp),
+                        "ki": float(st.session_state.pt_flow_ki),
+                        "kd": float(st.session_state.pt_flow_kd),
+                    })
+                    if ok:
+                        show_toast(
+                            f"Flow PID sent to {mod}",
+                            "success",
+                            source="Flow Control Gains",
+                        )
 
     # Pressure Controller Gains window
     with gains_cols[1]:
@@ -248,11 +273,19 @@ with left:
                 if not mod:
                     st.warning("Select a module first.")
                 else:
-                    show_toast(
-                        f"Pressure PID sent to {mod}",
-                        "success",
-                        source="Pressure Controller Gains",
-                    )
+                    ok = _publish_pid_command(mod, {
+                        "type": "pressure_pid",
+                        "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
+                        "kp": float(st.session_state.pt_pressure_kp),
+                        "ki": float(st.session_state.pt_pressure_ki),
+                        "kd": float(st.session_state.pt_pressure_kd),
+                    })
+                    if ok:
+                        show_toast(
+                            f"Pressure PID sent to {mod}",
+                            "success",
+                            source="Pressure Controller Gains",
+                        )
 
 with right:
     with st.container(border=True):
@@ -267,12 +300,24 @@ with right:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.session_state.pt_flow_enabled:
                 if st.button("Disable PID", key="pt_disable_flow"):
-                    st.session_state.pt_flow_enabled = False
-                    show_toast("Flow PID disabled", "warning", source="PID Tuning")
+                    mod = st.session_state.get("pt_selected_module")
+                    if not mod:
+                        st.warning("Select a module first.")
+                    else:
+                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": False})
+                        if ok:
+                            st.session_state.pt_flow_enabled = False
+                            show_toast("Flow PID disabled", "warning", source="PID Tuning")
             else:
                 if st.button("Enable PID", key="pt_enable_flow"):
-                    st.session_state.pt_flow_enabled = True
-                    show_toast("Flow PID enabled", "success", source="PID Tuning")
+                    mod = st.session_state.get("pt_selected_module")
+                    if not mod:
+                        st.warning("Select a module first.")
+                    else:
+                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": True})
+                        if ok:
+                            st.session_state.pt_flow_enabled = True
+                            show_toast("Flow PID enabled", "success", source="PID Tuning")
 
             # Save/Load for flow
             if st.button("Save Config", key="pt_save_flow"):
@@ -291,12 +336,24 @@ with right:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.session_state.pt_pressure_enabled:
                 if st.button("Disable PID", key="pt_disable_pressure"):
-                    st.session_state.pt_pressure_enabled = False
-                    show_toast("Pressure PID disabled", "warning", source="PID Tuning")
+                    mod = st.session_state.get("pt_selected_module")
+                    if not mod:
+                        st.warning("Select a module first.")
+                    else:
+                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": False})
+                        if ok:
+                            st.session_state.pt_pressure_enabled = False
+                            show_toast("Pressure PID disabled", "warning", source="PID Tuning")
             else:
                 if st.button("Enable PID", key="pt_enable_pressure"):
-                    st.session_state.pt_pressure_enabled = True
-                    show_toast("Pressure PID enabled", "success", source="PID Tuning")
+                    mod = st.session_state.get("pt_selected_module")
+                    if not mod:
+                        st.warning("Select a module first.")
+                    else:
+                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": True})
+                        if ok:
+                            st.session_state.pt_pressure_enabled = True
+                            show_toast("Pressure PID enabled", "success", source="PID Tuning")
 
             # Save/Load for pressure
             if st.button("Save Config", key="pt_save_pressure"):
