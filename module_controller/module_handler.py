@@ -462,6 +462,12 @@ class ModuleHandler:
                 # All other data_logger system events go to sys-logger
                 return f"sys-logger/{self.module_id}"
 
+            # - PID status routing from controllers
+            if source == "pid_flow":
+                return f"pid-flow-status/{self.module_id}"
+            if source == "pid_pressure":
+                return f"pid-pressure-status/{self.module_id}"
+
             # - data_logger_ack -> sys-logger (explicit maintenance/status acks)
             if source == "data_logger_ack":
                 return f"sys-logger/{self.module_id}"
