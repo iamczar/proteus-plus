@@ -1,3 +1,4 @@
+import io
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -17,61 +18,107 @@ HEADERS = [
     "NULLTRAILER"
 ]
 
-# Upload CSV file
+
+@st.cache_data(show_spinner=False)
+def load_data_from_bytes(file_bytes: bytes) -> pd.DataFrame:
+    buffer = io.BytesIO(file_bytes)
+    buffer.seek(0)
+    df = pd.read_csv(buffer, header=None)
+    df.columns = HEADERS
+
+    # Try parsing the TIME column safely
+    df["PARSED_TIME"] = pd.to_datetime(df["TIME"], errors="coerce")
+
+    # Separate bad rows
+    bad_rows = df[df["PARSED_TIME"].isna()]
+    good_df = df.dropna(subset=["PARSED_TIME"]).copy()
+
+    # Replace TIME with parsed result and drop helper
+    good_df["TIME"] = good_df["PARSED_TIME"]
+    good_df.drop(columns=["PARSED_TIME"], inplace=True)
+
+    # Log bad rows to a CSV file (in project root)
+    if not bad_rows.empty:
+        bad_rows_path = "bad_rows_log.csv"
+        bad_rows.to_csv(bad_rows_path, index=False)
+        st.warning(
+            f"⚠️ Skipped {len(bad_rows)} rows with invalid timestamps. Logged to `{bad_rows_path}`"
+        )
+
+    return good_df
+
+
+# Upload CSV file (persist across reloads)
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
-if uploaded_file:
-    @st.cache_data
-    def load_data(file):
-        df = pd.read_csv(file, header=None)
-        df.columns = HEADERS
+file_bytes = None
+if uploaded_file is not None:
+    file_bytes = uploaded_file.getvalue()
+    st.session_state["plot_cvs_file"] = {
+        "name": getattr(uploaded_file, "name", "uploaded.csv"),
+        "bytes": file_bytes,
+    }
+elif "plot_cvs_file" in st.session_state:
+    # Restore previously uploaded file after a page reload
+    file_bytes = st.session_state["plot_cvs_file"].get("bytes")
 
-        # Try parsing the TIME column safely
-        df["PARSED_TIME"] = pd.to_datetime(df["TIME"], errors="coerce")
-
-        # Separate bad rows
-        bad_rows = df[df["PARSED_TIME"].isna()]
-        good_df = df.dropna(subset=["PARSED_TIME"]).copy()
-
-        # Replace TIME with parsed result and drop helper
-        good_df["TIME"] = good_df["PARSED_TIME"]
-        good_df.drop(columns=["PARSED_TIME"], inplace=True)
-
-        # Log bad rows to a CSV file (in project root)
-        if not bad_rows.empty:
-            bad_rows_path = "bad_rows_log.csv"
-            bad_rows.to_csv(bad_rows_path, index=False)
-            st.warning(f"⚠️ Skipped {len(bad_rows)} rows with invalid timestamps. Logged to `{bad_rows_path}`")
-
-        return good_df
-
-    df = load_data(uploaded_file)
+if file_bytes is not None:
+    df = load_data_from_bytes(file_bytes)
     st.success(f"Loaded {len(df):,} rows with {len(df.columns)} columns")
 
     # Sidebar controls
     st.sidebar.header("Filter & View Options")
 
-    # Time range slider
-    min_time = df["TIME"].min().to_pydatetime()
-    max_time = df["TIME"].max().to_pydatetime()
-    time_range = st.sidebar.slider(
-        "Time Range", min_value=min_time, max_value=max_time,
-        value=(min_time, max_time)
-    )
+    # Read query params for persistence
+    params = dict(st.query_params)
+    raw_cols = params.get("cols")
+    raw_ds = params.get("ds")
 
-    # Column selection
     numeric_cols = df.columns.drop(["TIME"])
-    selected_cols = st.sidebar.multiselect(
-        "Select columns to plot", options=numeric_cols,
-        default=["OXYMEASURED", "PRESSUREMEASURED"]
+    default_cols = [c for c in ["OXYMEASURED", "PRESSUREMEASURED"] if c in list(numeric_cols)]
+    if raw_cols:
+        cols_from_params = [c for c in str(raw_cols).split(",") if c in list(numeric_cols)]
+        if cols_from_params:
+            default_cols = cols_from_params
+
+    downsample_options = [1, 5, 10, 50, 100, 500, 1000]
+    downsample_from_params = None
+    try:
+        if raw_ds is not None:
+            downsample_from_params = int(str(raw_ds))
+    except Exception:
+        downsample_from_params = None
+    downsample_index = (
+        downsample_options.index(downsample_from_params)
+        if downsample_from_params in downsample_options
+        else 3
     )
 
-    # Downsample
-    downsample = st.sidebar.selectbox("Downsample (every nth row)", [1, 5, 10, 50, 100, 500, 1000], index=3)
+    # Widgets
+    selected_cols = st.sidebar.multiselect(
+        "Select columns to plot",
+        options=list(numeric_cols),
+        default=default_cols,
+    )
 
-    # Filter and downsample
-    filtered = df[(df["TIME"] >= time_range[0]) & (df["TIME"] <= time_range[1])]
-    filtered = filtered.iloc[::downsample]
+    downsample = st.sidebar.selectbox(
+        "Downsample (every nth row)",
+        downsample_options,
+        index=downsample_index,
+    )
+
+    # Sync widget state to the URL so reloads restore the same view
+    new_params = {
+        "cols": ",".join(selected_cols) if selected_cols else "",
+        "ds": str(downsample),
+    }
+    current_params = {k: str(v) for k, v in dict(st.query_params).items()}
+    if current_params != new_params:
+        st.query_params.clear()
+        st.query_params.update(new_params)
+
+    # Data sampling (no time filtering)
+    filtered = df.iloc[::downsample]
 
     # Line chart
     if selected_cols:
@@ -79,11 +126,19 @@ if uploaded_file:
             filtered,
             x="TIME",
             y=selected_cols,
-            title="📈 Selected Sensor Trends"
+            title="📈 Selected Sensor Trends",
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Please select at least one column to visualize.")
 
+    # Utilities
+    with st.sidebar.expander("Data source", expanded=False):
+        file_name = st.session_state.get("plot_cvs_file", {}).get("name", "uploaded.csv")
+        st.caption(f"File: {file_name}")
+        if st.button("Clear uploaded file"):
+            st.session_state.pop("plot_cvs_file", None)
+            st.query_params.clear()
+            st.rerun()
 else:
     st.info("👆 Upload a CSV file above to get started.")
