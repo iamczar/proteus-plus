@@ -319,14 +319,6 @@ with right:
                             st.session_state.pt_flow_enabled = True
                             show_toast("Flow PID enabled", "success", source="PID Tuning")
 
-            # Save/Load for flow
-            if st.button("Save Config", key="pt_save_flow"):
-                _save_config("flow")
-            existing = sorted([p.name for p in PID_CONFIG_DIR.glob("flow_pid_*.json")])
-            sel = st.selectbox("Load PID Config", options=[""] + existing, key="pt_load_select_flow")
-            if st.button("Load PID Config", key="pt_load_flow"):
-                _load_config("flow", sel if sel else None)
-
         # Pressure PID column (right)
         with c2:
             _status_chip(
@@ -355,24 +347,7 @@ with right:
                             st.session_state.pt_pressure_enabled = True
                             show_toast("Pressure PID enabled", "success", source="PID Tuning")
 
-            # Save/Load for pressure
-            if st.button("Save Config", key="pt_save_pressure"):
-                _save_config("pressure")
-            existing = sorted([p.name for p in PID_CONFIG_DIR.glob("pressure_pid_*.json")])
-            sel = st.selectbox("Load PID Config", options=[""] + existing, key="pt_load_select_pressure")
-            if st.button("Load PID Config", key="pt_load_pressure"):
-                _load_config("pressure", sel if sel else None)
-
-    # Run/Stop across both columns
-    with st.container(border=True):
-        if not st.session_state.pt_running:
-            if st.button("Run", key="pt_run"):
-                st.session_state.pt_running = True
-                show_toast("PID Tuning: Run started", "success", source="PID Tuning")
-        else:
-            if st.button("Stop", key="pt_stop"):
-                st.session_state.pt_running = False
-                show_toast("PID Tuning: Stopped", "warning", source="PID Tuning")
+    # Removed Run/Stop and Save/Load UI for streamlined PID control
 
 
 # -----------------------------
