@@ -39,6 +39,8 @@ for k, v in defaults_pressure.items():
 st.session_state.setdefault("pt_pressure_enabled", False)
 st.session_state.setdefault("pt_flow_enabled", False)
 st.session_state.setdefault("pt_running", False)
+st.session_state.setdefault("pt_flow_status", {})
+st.session_state.setdefault("pt_pressure_status", {})
 
 # Data buffers for demo charts (simple ring buffers)
 st.session_state.setdefault("pt_data", {
@@ -225,6 +227,38 @@ def _refresh_toasts():
 _refresh_toasts()
 
 
+# PID status subscription and polling
+@st.fragment(run_every=1.0)
+def _pid_status_tick():
+    mod = st.session_state.get("pt_selected_module")
+    if not mod:
+        return
+    try:
+        t_flow = f"pid-flow-status/{mod}"
+        t_press = f"pid-pressure-status/{mod}"
+        MQTTService().subscribe(t_flow)
+        MQTTService().subscribe(t_press)
+        # Drain and keep only the latest
+        for _, payload in MQTTService().drain(t_flow, max_items=100):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
+                    st.session_state.pt_flow_status = inner
+            except Exception:
+                pass
+        for _, payload in MQTTService().drain(t_press, max_items=100):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
+                    st.session_state.pt_pressure_status = inner
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+_pid_status_tick()
+
+
 # -----------------------------
 # Second + Third blocks: Gains + PID controls
 # -----------------------------
@@ -319,6 +353,19 @@ with right:
                             st.session_state.pt_flow_enabled = True
                             show_toast("Flow PID enabled", "success", source="PID Tuning")
 
+            # Live flow PID status panel
+            try:
+                s = st.session_state.get("pt_flow_status") or {}
+                with st.container(border=True):
+                    st.caption("Current Flow PID Status")
+                    st.markdown(
+                        f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f} | "
+                        f"Kp: {float(s.get('kp', 0.0)):.3f} | Ki: {float(s.get('ki', 0.0)):.3f} | Kd: {float(s.get('kd', 0.0)):.3f} | "
+                        f"Mode: {str(s.get('mode', '—'))} | Enabled: {bool(s.get('pid_enabled', False))}"
+                    )
+            except Exception:
+                pass
+
         # Pressure PID column (right)
         with c2:
             _status_chip(
@@ -346,6 +393,19 @@ with right:
                         if ok:
                             st.session_state.pt_pressure_enabled = True
                             show_toast("Pressure PID enabled", "success", source="PID Tuning")
+
+            # Live pressure PID status panel
+            try:
+                s2 = st.session_state.get("pt_pressure_status") or {}
+                with st.container(border=True):
+                    st.caption("Current Pressure PID Status")
+                    st.markdown(
+                        f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f} | "
+                        f"Kp: {float(s2.get('kp', 0.0)):.3f} | Ki: {float(s2.get('ki', 0.0)):.3f} | Kd: {float(s2.get('kd', 0.0)):.3f} | "
+                        f"Mode: {str(s2.get('mode', '—'))} | Enabled: {bool(s2.get('pid_enabled', False))}"
+                    )
+            except Exception:
+                pass
 
     # Removed Run/Stop and Save/Load UI for streamlined PID control
 
