@@ -358,11 +358,12 @@ with right:
                 s = st.session_state.get("pt_flow_status") or {}
                 with st.container(border=True):
                     st.caption("Current Flow PID Status")
-                    st.markdown(
-                        f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f} | "
-                        f"Kp: {float(s.get('kp', 0.0)):.3f} | Ki: {float(s.get('ki', 0.0)):.3f} | Kd: {float(s.get('kd', 0.0)):.3f} | "
-                        f"Mode: {str(s.get('mode', '—'))} | Enabled: {bool(s.get('pid_enabled', False))}"
-                    )
+                    st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
+                    st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
+                    st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
+                    st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
+                    st.markdown(f"Mode: {str(s.get('mode', '—'))}")
+                    st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
             except Exception:
                 pass
 
@@ -399,11 +400,12 @@ with right:
                 s2 = st.session_state.get("pt_pressure_status") or {}
                 with st.container(border=True):
                     st.caption("Current Pressure PID Status")
-                    st.markdown(
-                        f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f} | "
-                        f"Kp: {float(s2.get('kp', 0.0)):.3f} | Ki: {float(s2.get('ki', 0.0)):.3f} | Kd: {float(s2.get('kd', 0.0)):.3f} | "
-                        f"Mode: {str(s2.get('mode', '—'))} | Enabled: {bool(s2.get('pid_enabled', False))}"
-                    )
+                    st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
+                    st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
+                    st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
+                    st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
+                    st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
+                    st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
             except Exception:
                 pass
 
