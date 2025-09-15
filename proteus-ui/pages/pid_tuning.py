@@ -41,6 +41,7 @@ st.session_state.setdefault("pt_flow_enabled", False)
 st.session_state.setdefault("pt_running", False)
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
+st.session_state.setdefault("_pt_pid_ack_seen", False)
 
 # Data buffers for demo charts (simple ring buffers)
 st.session_state.setdefault("pt_data", {
@@ -236,8 +237,10 @@ def _pid_status_tick():
     try:
         t_flow = f"pid-flow-status/{mod}"
         t_press = f"pid-pressure-status/{mod}"
+        t_am = f"alphacommsmanager-status/{mod}"
         MQTTService().subscribe(t_flow)
         MQTTService().subscribe(t_press)
+        MQTTService().subscribe(t_am)
         # Drain and keep only the latest
         for _, payload in MQTTService().drain(t_flow, max_items=100):
             try:
@@ -251,6 +254,16 @@ def _pid_status_tick():
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
                     st.session_state.pt_pressure_status = inner
+            except Exception:
+                pass
+        # Alpha acks for PID
+        for _, payload in MQTTService().drain(t_am, max_items=50):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                cmd = str(inner.get("command", "")).lower() if isinstance(inner, dict) else ""
+                status = str(inner.get("status", "")).lower() if isinstance(inner, dict) else ""
+                if cmd == "pid_cmd" and status in ("ack", "acknowledged", "received"):
+                    show_toast("PID command acknowledged by Alpha.", "success", source="PID Tuning")
             except Exception:
                 pass
     except Exception:
