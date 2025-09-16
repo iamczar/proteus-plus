@@ -41,7 +41,6 @@ st.session_state.setdefault("pt_flow_enabled", False)
 st.session_state.setdefault("pt_running", False)
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
-st.session_state.setdefault("pt_auto_refresh", True)
 st.session_state.setdefault("_pt_pid_ack_seen", False)
 
 # Data buffers for demo charts (simple ring buffers)
@@ -278,20 +277,29 @@ def _refresh_pid_status_once(module_id: str | int) -> None:
         t_press = f"pid-pressure-status/{module_id}"
         MQTTService().subscribe(t_flow)
         MQTTService().subscribe(t_press)
+        updated = False
         for _, payload in MQTTService().drain(t_flow, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
-                    st.session_state.pt_flow_status = inner
+                    if inner != (st.session_state.get("pt_flow_status") or {}):
+                        st.session_state.pt_flow_status = inner
+                        updated = True
             except Exception:
                 pass
         for _, payload in MQTTService().drain(t_press, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
-                    st.session_state.pt_pressure_status = inner
+                    if inner != (st.session_state.get("pt_pressure_status") or {}):
+                        st.session_state.pt_pressure_status = inner
+                        updated = True
             except Exception:
                 pass
+        if updated:
+            # Only refresh the page when values changed to avoid flicker
+            import streamlit as _st
+            _st.rerun()
     except Exception:
         pass
 
@@ -374,7 +382,8 @@ with right:
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
-            st.toggle("Auto-refresh", key="pt_auto_refresh")
+            st.toggle("Auto-refresh", key="pt_auto_refresh_flow")
+            st.toggle("Auto-refresh", key="pt_auto_refresh_pressure")
             if st.session_state.pt_flow_enabled:
                 if st.button("Disable PID", key="pt_disable_flow"):
                     mod = st.session_state.get("pt_selected_module")
@@ -417,12 +426,11 @@ with right:
                 st.session_state.pt_pressure_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh / auto-refresh toggle (no nested columns)
+            # Manual refresh (no nested columns)
             if st.button("Refresh Status", key="pt_refresh_pressure_status"):
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
-            st.toggle("Auto-refresh", key="pt_auto_refresh")
             if st.session_state.pt_pressure_enabled:
                 if st.button("Disable PID", key="pt_disable_pressure"):
                     mod = st.session_state.get("pt_selected_module")
