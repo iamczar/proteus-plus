@@ -378,7 +378,7 @@ with right:
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             # Manual refresh / auto-refresh toggle (no nested columns to avoid Streamlit nesting error)
-            if st.button("Refresh Status", key="pt_refresh_flow_status"):
+            if st.button("Get PID Values", key="pt_refresh_flow_status"):
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
@@ -426,7 +426,7 @@ with right:
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             # Manual refresh (no nested columns)
-            if st.button("Refresh Status", key="pt_refresh_pressure_status"):
+            if st.button("Get PID Values", key="pt_refresh_pressure_status"):
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
