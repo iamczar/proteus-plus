@@ -41,6 +41,7 @@ st.session_state.setdefault("pt_flow_enabled", False)
 st.session_state.setdefault("pt_running", False)
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
+st.session_state.setdefault("pt_auto_refresh", True)
 st.session_state.setdefault("_pt_pid_ack_seen", False)
 
 # Data buffers for demo charts (simple ring buffers)
@@ -271,6 +272,29 @@ def _pid_status_tick():
 
 _pid_status_tick()
 
+def _refresh_pid_status_once(module_id: str | int) -> None:
+    try:
+        t_flow = f"pid-flow-status/{module_id}"
+        t_press = f"pid-pressure-status/{module_id}"
+        MQTTService().subscribe(t_flow)
+        MQTTService().subscribe(t_press)
+        for _, payload in MQTTService().drain(t_flow, max_items=100):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
+                    st.session_state.pt_flow_status = inner
+            except Exception:
+                pass
+        for _, payload in MQTTService().drain(t_press, max_items=100):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
+                    st.session_state.pt_pressure_status = inner
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 
 # -----------------------------
 # Second + Third blocks: Gains + PID controls
@@ -345,6 +369,15 @@ with right:
                 st.session_state.pt_flow_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # Manual refresh / auto-refresh toggle
+            cfr1, cfr2 = st.columns([1, 1])
+            with cfr1:
+                if st.button("Refresh Status", key="pt_refresh_flow_status"):
+                    mod = st.session_state.get("pt_selected_module")
+                    if mod:
+                        _refresh_pid_status_once(mod)
+            with cfr2:
+                st.toggle("Auto-refresh", key="pt_auto_refresh")
             if st.session_state.pt_flow_enabled:
                 if st.button("Disable PID", key="pt_disable_flow"):
                     mod = st.session_state.get("pt_selected_module")
@@ -387,6 +420,15 @@ with right:
                 st.session_state.pt_pressure_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # Manual refresh / auto-refresh toggle
+            cpr1, cpr2 = st.columns([1, 1])
+            with cpr1:
+                if st.button("Refresh Status", key="pt_refresh_pressure_status"):
+                    mod = st.session_state.get("pt_selected_module")
+                    if mod:
+                        _refresh_pid_status_once(mod)
+            with cpr2:
+                st.toggle("Auto-refresh", key="pt_auto_refresh")
             if st.session_state.pt_pressure_enabled:
                 if st.button("Disable PID", key="pt_disable_pressure"):
                     mod = st.session_state.get("pt_selected_module")
