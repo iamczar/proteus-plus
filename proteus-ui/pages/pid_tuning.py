@@ -369,15 +369,12 @@ with right:
                 st.session_state.pt_flow_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh / auto-refresh toggle
-            cfr1, cfr2 = st.columns([1, 1])
-            with cfr1:
-                if st.button("Refresh Status", key="pt_refresh_flow_status"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if mod:
-                        _refresh_pid_status_once(mod)
-            with cfr2:
-                st.toggle("Auto-refresh", key="pt_auto_refresh")
+            # Manual refresh / auto-refresh toggle (no nested columns to avoid Streamlit nesting error)
+            if st.button("Refresh Status", key="pt_refresh_flow_status"):
+                mod = st.session_state.get("pt_selected_module")
+                if mod:
+                    _refresh_pid_status_once(mod)
+            st.toggle("Auto-refresh", key="pt_auto_refresh")
             if st.session_state.pt_flow_enabled:
                 if st.button("Disable PID", key="pt_disable_flow"):
                     mod = st.session_state.get("pt_selected_module")
@@ -420,15 +417,12 @@ with right:
                 st.session_state.pt_pressure_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh / auto-refresh toggle
-            cpr1, cpr2 = st.columns([1, 1])
-            with cpr1:
-                if st.button("Refresh Status", key="pt_refresh_pressure_status"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if mod:
-                        _refresh_pid_status_once(mod)
-            with cpr2:
-                st.toggle("Auto-refresh", key="pt_auto_refresh")
+            # Manual refresh / auto-refresh toggle (no nested columns)
+            if st.button("Refresh Status", key="pt_refresh_pressure_status"):
+                mod = st.session_state.get("pt_selected_module")
+                if mod:
+                    _refresh_pid_status_once(mod)
+            st.toggle("Auto-refresh", key="pt_auto_refresh")
             if st.session_state.pt_pressure_enabled:
                 if st.button("Disable PID", key="pt_disable_pressure"):
                     mod = st.session_state.get("pt_selected_module")
