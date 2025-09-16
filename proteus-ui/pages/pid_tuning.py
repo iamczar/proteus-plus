@@ -382,8 +382,7 @@ with right:
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
-            st.toggle("Auto-refresh", key="pt_auto_refresh_flow")
-            st.toggle("Auto-refresh", key="pt_auto_refresh_pressure")
+            # Auto-refresh toggles removed
             if st.session_state.pt_flow_enabled:
                 if st.button("Disable PID", key="pt_disable_flow"):
                     mod = st.session_state.get("pt_selected_module")
