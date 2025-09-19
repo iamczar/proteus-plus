@@ -144,40 +144,37 @@ def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
         return False
 
 
-def _update_demo_data():
-    # Simple data synthesizer so charts are not empty
-    if not st.session_state.pt_running:
-        return
-    buf = st.session_state.pt_data
-    t = int(time.time())
-    buf["t"].append(t)
-
-    # Fake around desireds
-    d_ox = float(st.session_state.pt_flow_desired_oxygen)
-    d_flow = 0.5 * d_ox  # arbitrary relation for demo
-    d_press = float(st.session_state.pt_pressure_desired_pressure)
-    d_ppump = 50.0 * d_press
-
-    import random
-    buf["ox_desired"].append(d_ox)
-    buf["ox_meas1"].append(max(0.0, d_ox + random.uniform(-50, 50)))
-    buf["ox_meas2"].append(max(0.0, d_ox + random.uniform(-50, 50)))
-    buf["ox_meas3"].append(max(0.0, d_ox + random.uniform(-50, 50)))
-
-    buf["flow_desired"].append(d_flow)
-    buf["flow_actual"].append(max(0.0, d_flow + random.uniform(-10, 10)))
-
-    buf["press_pump_desired"].append(d_ppump)
-    buf["press_pump_actual"].append(max(0.0, d_ppump + random.uniform(-5, 5)))
-
-    buf["pressure_desired"].append(d_press)
-    buf["pressure_actual"].append(max(0.0, d_press + random.uniform(-0.2, 0.2)))
-
-    # Keep last N points
-    N = 120
-    for k in list(buf.keys()):
-        if len(buf[k]) > N:
-            buf[k] = buf[k][-N:]
+def _append_live_point(payload: dict) -> None:
+    try:
+        data = payload.get("data") or {}
+        if not isinstance(data, dict):
+            return
+        # Timestamp
+        ts = payload.get("timestamp")
+        try:
+            t_epoch = int(time.time()) if ts is None else int(pd.to_datetime(ts).timestamp())
+        except Exception:
+            t_epoch = int(time.time())
+        buf = st.session_state.pt_data
+        buf["t"].append(t_epoch)
+        # Series values from live data
+        buf["ox_desired"].append(float(data.get("oxygen_setpoint", 0.0)))
+        buf["ox_meas1"].append(float(data.get("oxygen_measured_1", 0.0)))
+        buf["ox_meas2"].append(float(data.get("oxygen_measured_2", 0.0)))
+        buf["ox_meas3"].append(float(data.get("oxygen_measured_3", 0.0)))
+        buf["flow_desired"].append(float(data.get("circ_flow_speed_desired", 0.0)))
+        buf["flow_actual"].append(float(data.get("flow_measured", 0.0)))
+        buf["press_pump_desired"].append(float(data.get("pressure_flow_speed_desired", 0.0)))
+        buf["press_pump_actual"].append(float(data.get("pressure_pump_speed", 0.0)))
+        buf["pressure_desired"].append(float(data.get("pressure_setpoint", 0.0)))
+        buf["pressure_actual"].append(float(data.get("pressure_measured", 0.0)))
+        # Ring buffer trim
+        N = MAX_POINTS
+        for k in list(buf.keys()):
+            if len(buf[k]) > N:
+                buf[k] = buf[k][-N:]
+    except Exception:
+        pass
 
 
 # -----------------------------
@@ -560,7 +557,18 @@ _init_pid_charts_altair()
 
 @st.fragment(run_every=1.0)
 def _update_charts_stream():
-    _update_demo_data()
+    # Subscribe and drain live-sensor-data for the selected module
+    mod = st.session_state.get("pt_selected_module")
+    if mod:
+        topic = f"live-sensor-data/{mod}"
+        try:
+            MQTTService().subscribe(topic)
+            msgs = MQTTService().drain(topic, max_items=200)
+            for _, payload in msgs:
+                if isinstance(payload, dict) and payload.get("alpha_command") == "sensor_data":
+                    _append_live_point(payload)
+        except Exception:
+            pass
     data = st.session_state.pt_data
     charts = st.session_state.get("pt_chart_elements", [])
     if len(charts) != 4:
