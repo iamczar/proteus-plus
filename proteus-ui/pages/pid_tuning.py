@@ -12,6 +12,7 @@ from common.utils import render_toast_area
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 from datetime import datetime
+from collections import deque
 
 
 st.set_page_config(page_title="PID Tuning", layout="wide")
@@ -57,6 +58,9 @@ st.session_state.setdefault("pt_data", {
     "pressure_desired": [],
     "pressure_actual": [],
 })
+st.session_state.setdefault("_pt_live_buffers", None)
+st.session_state.setdefault("_pt_live_painted", 0)
+st.session_state.setdefault("_pt_live_sub_topic", None)
 
 
 # -----------------------------
@@ -175,6 +179,34 @@ def _append_live_point(payload: dict) -> None:
                 buf[k] = buf[k][-N:]
     except Exception:
         pass
+
+
+# --- Background collector and painter, mirroring live_view ---
+@st.fragment(run_every=0.5)
+def _pt_background_collector():
+    mod = st.session_state.get("pt_selected_module")
+    if not mod:
+        return
+    topic = f"{LIVE_TOPIC_PREFIX}/{mod}"
+    # Subscribe once per module selection
+    if st.session_state.get("_pt_live_sub_topic") != topic:
+        try:
+            MQTTService().subscribe(topic)
+            st.session_state._pt_live_sub_topic = topic
+        except Exception:
+            return
+        # Reset buffers and painted counter on module change
+        st.session_state._pt_live_painted = 0
+
+    updates = MQTTService().drain(topic, max_items=500)
+    if not updates:
+        return
+    for _, payload in updates:
+        try:
+            if isinstance(payload, dict) and payload.get("alpha_command") == "sensor_data":
+                _append_live_point(payload)
+        except Exception:
+            continue
 
 
 # -----------------------------
@@ -558,18 +590,7 @@ _init_pid_charts_altair()
 
 @st.fragment(run_every=1.0)
 def _update_charts_stream():
-    # Subscribe and drain live-sensor-data for the selected module
-    mod = st.session_state.get("pt_selected_module")
-    if mod:
-        topic = f"live-sensor-data/{mod}"
-        try:
-            MQTTService().subscribe(topic)
-            msgs = MQTTService().drain(topic, max_items=200)
-            for _, payload in msgs:
-                if isinstance(payload, dict) and payload.get("alpha_command") == "sensor_data":
-                    _append_live_point(payload)
-        except Exception:
-            pass
+    # Just paint whatever is accumulated by the background collector
     data = st.session_state.pt_data
     charts = st.session_state.get("pt_chart_elements", [])
     if len(charts) != 4:
