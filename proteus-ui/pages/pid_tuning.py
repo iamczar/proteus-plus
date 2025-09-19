@@ -243,6 +243,25 @@ with st.container(border=True):
 
         if chosen != placeholder_label and chosen != previous_value:
             st.session_state.pt_selected_module = chosen
+            # Reset chart state and buffers on module change
+            try:
+                st.session_state.pt_chart_elements = []
+                st.session_state.pt_painted_len = 0
+                st.session_state.pt_data = {
+                    "t": [],
+                    "ox_desired": [],
+                    "ox_meas1": [],
+                    "ox_meas2": [],
+                    "ox_meas3": [],
+                    "flow_desired": [],
+                    "flow_actual": [],
+                    "press_pump_desired": [],
+                    "press_pump_actual": [],
+                    "pressure_desired": [],
+                    "pressure_actual": [],
+                }
+            except Exception:
+                pass
             show_toast(f"Selected module: **{chosen}**", "success", source="Module Selection (local)")
             st.rerun()
 
@@ -399,29 +418,29 @@ else:
 
             # Flow PID column (left)
             with c1:
+                s = st.session_state.get("pt_flow_status") or {}
+                flow_enabled = bool(s.get("pid_enabled", False))
                 _status_chip(
-                    f"Flow PID {'Active' if st.session_state.pt_flow_enabled else 'Inactive'}",
-                    st.session_state.pt_flow_enabled,
+                    f"Flow PID {'Active' if flow_enabled else 'Inactive'}",
+                    flow_enabled,
                 )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 if st.button("Get PID Values", key="pt_refresh_flow_status"):
                     mod = st.session_state.get("pt_selected_module")
                     if mod:
                         _refresh_pid_status_once(mod)
-                if st.session_state.pt_flow_enabled:
-                    if st.button("Disable PID", key="pt_disable_flow"):
-                        mod = st.session_state.get("pt_selected_module")
-                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": False})
-                        if ok:
-                            st.session_state.pt_flow_enabled = False
-                            show_toast("Flow PID disabled", "warning", source="PID Tuning")
-                else:
-                    if st.button("Enable PID", key="pt_enable_flow"):
-                        mod = st.session_state.get("pt_selected_module")
-                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": True})
-                        if ok:
-                            st.session_state.pt_flow_enabled = True
-                            show_toast("Flow PID enabled", "success", source="PID Tuning")
+                # Toggle button reflects live state and always sends the inverse
+                toggle_label = "Disable PID" if flow_enabled else "Enable PID"
+                if st.button(toggle_label, key="pt_toggle_flow_pid"):
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not flow_enabled
+                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                    if ok:
+                        show_toast(
+                            ("Flow PID enabled" if target else "Flow PID disabled"),
+                            ("success" if target else "warning"),
+                            source="PID Tuning",
+                        )
 
                 # Live flow PID status panel
                 try:
@@ -439,33 +458,32 @@ else:
 
             # Pressure PID column (right)
             with c2:
+                s2 = st.session_state.get("pt_pressure_status") or {}
+                pressure_enabled = bool(s2.get("pid_enabled", False))
                 _status_chip(
-                    f"Pressure PID {'Active' if st.session_state.pt_pressure_enabled else 'Inactive'}",
-                    st.session_state.pt_pressure_enabled,
+                    f"Pressure PID {'Active' if pressure_enabled else 'Inactive'}",
+                    pressure_enabled,
                 )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 if st.button("Get PID Values", key="pt_refresh_pressure_status"):
                     mod = st.session_state.get("pt_selected_module")
                     if mod:
                         _refresh_pid_status_once(mod)
-                if st.session_state.pt_pressure_enabled:
-                    if st.button("Disable PID", key="pt_disable_pressure"):
-                        mod = st.session_state.get("pt_selected_module")
-                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": False})
-                        if ok:
-                            st.session_state.pt_pressure_enabled = False
-                            show_toast("Pressure PID disabled", "warning", source="PID Tuning")
-                else:
-                    if st.button("Enable PID", key="pt_enable_pressure"):
-                        mod = st.session_state.get("pt_selected_module")
-                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": True})
-                        if ok:
-                            st.session_state.pt_pressure_enabled = True
-                            show_toast("Pressure PID enabled", "success", source="PID Tuning")
+                # Toggle button reflects live state and always sends the inverse
+                toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
+                if st.button(toggle_label2, key="pt_toggle_pressure_pid"):
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not pressure_enabled
+                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                    if ok:
+                        show_toast(
+                            ("Pressure PID enabled" if target else "Pressure PID disabled"),
+                            ("success" if target else "warning"),
+                            source="PID Tuning",
+                        )
 
                 # Live pressure PID status panel
                 try:
-                    s2 = st.session_state.get("pt_pressure_status") or {}
                     with st.container(border=True):
                         st.caption("Current Pressure PID Status")
                         st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
@@ -568,11 +586,15 @@ def _init_pid_charts_altair() -> None:
     st.session_state.pt_painted_len = 0
 
 
-_init_pid_charts_altair()
+if st.session_state.get("pt_selected_module"):
+    _init_pid_charts_altair()
 
 
 @st.fragment(run_every=1.0)
 def _update_charts_stream():
+    # Only render when a module is selected
+    if not st.session_state.get("pt_selected_module"):
+        return
     # Just paint whatever is accumulated by the background collector
     data = st.session_state.pt_data
     charts = st.session_state.get("pt_chart_elements", [])
