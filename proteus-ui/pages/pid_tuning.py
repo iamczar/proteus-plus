@@ -482,7 +482,8 @@ st.markdown(
 )
 
 
-MAX_POINTS = 120
+LIVE_TOPIC_PREFIX = "live-sensor-data"
+MAX_POINTS = 18000  # ~5 hours @ 1 Hz
 
 
 def _base_single_series_chart(color: str) -> alt.Chart:
@@ -532,7 +533,7 @@ def _init_pid_charts_altair() -> None:
     with c2:
         with st.container(border=True):
             st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            chart = _base_single_series_chart("#3B82F6")
+            chart = _base_multi_series_chart()
             elements.append(st.altair_chart(chart, use_container_width=True))
 
     # Row 2
@@ -540,12 +541,12 @@ def _init_pid_charts_altair() -> None:
     with c3:
         with st.container(border=True):
             st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            chart = _base_single_series_chart("#10B981")
+            chart = _base_multi_series_chart()
             elements.append(st.altair_chart(chart, use_container_width=True))
     with c4:
         with st.container(border=True):
             st.subheader("Desired Pressure vs Actual Pressure  Time")
-            chart = _base_single_series_chart("#F59E0B")
+            chart = _base_multi_series_chart()
             elements.append(st.altair_chart(chart, use_container_width=True))
 
     st.session_state.pt_chart_elements = elements
@@ -591,16 +592,31 @@ def _update_charts_stream():
         )
         charts[0].add_rows(df1)
 
-        # Chart 2: Flow pump desired vs actual (stack as two sequential rows)
-        df2 = pd.DataFrame({"x": [ts, ts], "y": [data["flow_desired"][i], data["flow_actual"][i]]})
+        # Chart 2: Flow pump desired vs actual (multi-series)
+        df2 = pd.DataFrame(
+            [
+                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+            ]
+        )
         charts[1].add_rows(df2)
 
-        # Chart 3: Pressure pump desired vs actual
-        df3 = pd.DataFrame({"x": [ts, ts], "y": [data["press_pump_desired"][i], data["press_pump_actual"][i]]})
+        # Chart 3: Pressure pump desired vs actual (multi-series)
+        df3 = pd.DataFrame(
+            [
+                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+            ]
+        )
         charts[2].add_rows(df3)
 
-        # Chart 4: Pressure desired vs actual
-        df4 = pd.DataFrame({"x": [ts, ts], "y": [data["pressure_desired"][i], data["pressure_actual"][i]]})
+        # Chart 4: Pressure desired vs actual (multi-series)
+        df4 = pd.DataFrame(
+            [
+                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+            ]
+        )
         charts[3].add_rows(df4)
 
     st.session_state.pt_painted_len = end
