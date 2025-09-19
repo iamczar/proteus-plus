@@ -336,24 +336,25 @@ def _refresh_pid_status_once(module_id: str | int) -> None:
 # -----------------------------
 # Second + Third blocks: Gains + PID controls
 # -----------------------------
-left, right = st.columns([2.0, 1.1], gap="small")
+mod_for_panels = st.session_state.get("pt_selected_module")
+if not mod_for_panels:
+    st.info("Select a module to enable PID controls and PID status panels.")
+else:
+    left, right = st.columns([2.0, 1.1], gap="small")
 
-with left:
-    gains_cols = st.columns([1, 1], gap="small")
+    with left:
+        gains_cols = st.columns([1, 1], gap="small")
 
-    # Flow Controller Gains window
-    with gains_cols[0]:
-        with st.container(border=True):
-            st.subheader("Flow Control Gains")
-            st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen")
-            st.number_input("Proportional Gain", key="pt_flow_kp")
-            st.number_input("Integral Gain", key="pt_flow_ki")
-            st.number_input("Derivative Gain", key="pt_flow_kd")
-            if st.button("Send", key="pt_flow_send"):
-                mod = st.session_state.get("pt_selected_module")
-                if not mod:
-                    st.warning("Select a module first.")
-                else:
+        # Flow Controller Gains window
+        with gains_cols[0]:
+            with st.container(border=True):
+                st.subheader("Flow Control Gains")
+                st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen")
+                st.number_input("Proportional Gain", key="pt_flow_kp")
+                st.number_input("Integral Gain", key="pt_flow_ki")
+                st.number_input("Derivative Gain", key="pt_flow_kd")
+                if st.button("Send", key="pt_flow_send"):
+                    mod = st.session_state.get("pt_selected_module")
                     ok = _publish_pid_command(mod, {
                         "type": "flow_pid",
                         "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
@@ -368,19 +369,16 @@ with left:
                             source="Flow Control Gains",
                         )
 
-    # Pressure Controller Gains window
-    with gains_cols[1]:
-        with st.container(border=True):
-            st.subheader("Pressure Controller Gains")
-            st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure")
-            st.number_input("Proportional Gain", key="pt_pressure_kp")
-            st.number_input("Integral Gain", key="pt_pressure_ki")
-            st.number_input("Derivative Gain", key="pt_pressure_kd")
-            if st.button("Send", key="pt_pressure_send"):
-                mod = st.session_state.get("pt_selected_module")
-                if not mod:
-                    st.warning("Select a module first.")
-                else:
+        # Pressure Controller Gains window
+        with gains_cols[1]:
+            with st.container(border=True):
+                st.subheader("Pressure Controller Gains")
+                st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure")
+                st.number_input("Proportional Gain", key="pt_pressure_kp")
+                st.number_input("Integral Gain", key="pt_pressure_ki")
+                st.number_input("Derivative Gain", key="pt_pressure_kd")
+                if st.button("Send", key="pt_pressure_send"):
+                    mod = st.session_state.get("pt_selected_module")
                     ok = _publish_pid_command(mod, {
                         "type": "pressure_pid",
                         "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
@@ -395,106 +393,91 @@ with left:
                             source="Pressure Controller Gains",
                         )
 
-with right:
-    with st.container(border=True):
-        c1, c2 = st.columns([1, 1], gap="small")
+    with right:
+        with st.container(border=True):
+            c1, c2 = st.columns([1, 1], gap="small")
 
-        # Flow PID column (left)
-        with c1:
-            _status_chip(
-                f"Flow PID {'Active' if st.session_state.pt_flow_enabled else 'Inactive'}",
-                st.session_state.pt_flow_enabled,
-            )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh / auto-refresh toggle (no nested columns to avoid Streamlit nesting error)
-            if st.button("Get PID Values", key="pt_refresh_flow_status"):
-                mod = st.session_state.get("pt_selected_module")
-                if mod:
-                    _refresh_pid_status_once(mod)
-            # Auto-refresh toggles removed
-            if st.session_state.pt_flow_enabled:
-                if st.button("Disable PID", key="pt_disable_flow"):
+            # Flow PID column (left)
+            with c1:
+                _status_chip(
+                    f"Flow PID {'Active' if st.session_state.pt_flow_enabled else 'Inactive'}",
+                    st.session_state.pt_flow_enabled,
+                )
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                if st.button("Get PID Values", key="pt_refresh_flow_status"):
                     mod = st.session_state.get("pt_selected_module")
-                    if not mod:
-                        st.warning("Select a module first.")
-                    else:
+                    if mod:
+                        _refresh_pid_status_once(mod)
+                if st.session_state.pt_flow_enabled:
+                    if st.button("Disable PID", key="pt_disable_flow"):
+                        mod = st.session_state.get("pt_selected_module")
                         ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": False})
                         if ok:
                             st.session_state.pt_flow_enabled = False
                             show_toast("Flow PID disabled", "warning", source="PID Tuning")
-            else:
-                if st.button("Enable PID", key="pt_enable_flow"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if not mod:
-                        st.warning("Select a module first.")
-                    else:
+                else:
+                    if st.button("Enable PID", key="pt_enable_flow"):
+                        mod = st.session_state.get("pt_selected_module")
                         ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": True})
                         if ok:
                             st.session_state.pt_flow_enabled = True
                             show_toast("Flow PID enabled", "success", source="PID Tuning")
 
-            # Live flow PID status panel
-            try:
-                s = st.session_state.get("pt_flow_status") or {}
-                with st.container(border=True):
-                    st.caption("Current Flow PID Status")
-                    st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
-                    st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
-                    st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
-                    st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
-                    st.markdown(f"Mode: {str(s.get('mode', '—'))}")
-                    st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
-            except Exception:
-                pass
+                # Live flow PID status panel
+                try:
+                    s = st.session_state.get("pt_flow_status") or {}
+                    with st.container(border=True):
+                        st.caption("Current Flow PID Status")
+                        st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
+                        st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
+                        st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
+                        st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
+                        st.markdown(f"Mode: {str(s.get('mode', '—'))}")
+                        st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
+                except Exception:
+                    pass
 
-        # Pressure PID column (right)
-        with c2:
-            _status_chip(
-                f"Pressure PID {'Active' if st.session_state.pt_pressure_enabled else 'Inactive'}",
-                st.session_state.pt_pressure_enabled,
-            )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh (no nested columns)
-            if st.button("Get PID Values", key="pt_refresh_pressure_status"):
-                mod = st.session_state.get("pt_selected_module")
-                if mod:
-                    _refresh_pid_status_once(mod)
-            if st.session_state.pt_pressure_enabled:
-                if st.button("Disable PID", key="pt_disable_pressure"):
+            # Pressure PID column (right)
+            with c2:
+                _status_chip(
+                    f"Pressure PID {'Active' if st.session_state.pt_pressure_enabled else 'Inactive'}",
+                    st.session_state.pt_pressure_enabled,
+                )
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                if st.button("Get PID Values", key="pt_refresh_pressure_status"):
                     mod = st.session_state.get("pt_selected_module")
-                    if not mod:
-                        st.warning("Select a module first.")
-                    else:
+                    if mod:
+                        _refresh_pid_status_once(mod)
+                if st.session_state.pt_pressure_enabled:
+                    if st.button("Disable PID", key="pt_disable_pressure"):
+                        mod = st.session_state.get("pt_selected_module")
                         ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": False})
                         if ok:
                             st.session_state.pt_pressure_enabled = False
                             show_toast("Pressure PID disabled", "warning", source="PID Tuning")
-            else:
-                if st.button("Enable PID", key="pt_enable_pressure"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if not mod:
-                        st.warning("Select a module first.")
-                    else:
+                else:
+                    if st.button("Enable PID", key="pt_enable_pressure"):
+                        mod = st.session_state.get("pt_selected_module")
                         ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": True})
                         if ok:
                             st.session_state.pt_pressure_enabled = True
                             show_toast("Pressure PID enabled", "success", source="PID Tuning")
 
-            # Live pressure PID status panel
-            try:
-                s2 = st.session_state.get("pt_pressure_status") or {}
-                with st.container(border=True):
-                    st.caption("Current Pressure PID Status")
-                    st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
-                    st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
-                    st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
-                    st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
-                    st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
-                    st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
-            except Exception:
-                pass
+                # Live pressure PID status panel
+                try:
+                    s2 = st.session_state.get("pt_pressure_status") or {}
+                    with st.container(border=True):
+                        st.caption("Current Pressure PID Status")
+                        st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
+                        st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
+                        st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
+                        st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
+                        st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
+                        st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
+                except Exception:
+                    pass
 
-    # Removed Run/Stop and Save/Load UI for streamlined PID control
+        # Removed Run/Stop and Save/Load UI for streamlined PID control
 
 
 # -----------------------------
