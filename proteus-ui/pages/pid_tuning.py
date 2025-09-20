@@ -60,6 +60,10 @@ MAX_POINTS = 18000  # ~5 hours @ 1 Hz
 # -----------------------------
 # Helpers
 # -----------------------------
+def get_mqtt() -> MQTTService:
+    if "_pt_mqtt" not in st.session_state:
+        st.session_state._pt_mqtt = MQTTService()
+    return st.session_state._pt_mqtt
 def _pt_append_log(message: str) -> None:
     try:
         st.session_state.pt_logs.append(message)
@@ -140,12 +144,12 @@ def _pt_background_collector():
     # Subscribe once per module selection
     if st.session_state.get("_pt_live_sub_topic") != topic:
         try:
-            MQTTService().subscribe(topic)
+            get_mqtt().subscribe(topic)
             st.session_state._pt_live_sub_topic = topic
         except Exception:
             return
 
-    updates = MQTTService().drain(topic, max_items=500)
+    updates = get_mqtt().drain(topic, max_items=500)
     if not updates:
         return
     for _, payload in updates:
@@ -201,7 +205,7 @@ with st.container(border=True):
                 "pressure_actual": [],
             }
             _pt_append_log(f">> Selected module: {chosen}")
-            st.rerun()
+            # No explicit rerun; Streamlit triggers one automatically on select change
 
 # Terminal-style log panel CSS
 st.markdown(
@@ -224,21 +228,34 @@ def _pid_status_tick():
     if not mod:
         return
     try:
+        # Subscribe once per module
+        subs = st.session_state.setdefault("_pt_pid_subs", set())
+        need = {
+            f"pid-flow-status/{mod}",
+            f"pid-pressure-status/{mod}",
+            f"alphacommsmanager-status/{mod}",
+        }
+        new_topics = need - subs
+        if new_topics:
+            mqtt = get_mqtt()
+            for t in new_topics:
+                try:
+                    mqtt.subscribe(t)
+                except Exception:
+                    pass
+            subs |= new_topics
         t_flow = f"pid-flow-status/{mod}"
         t_press = f"pid-pressure-status/{mod}"
         t_am = f"alphacommsmanager-status/{mod}"
-        MQTTService().subscribe(t_flow)
-        MQTTService().subscribe(t_press)
-        MQTTService().subscribe(t_am)
         # Drain and keep only the latest
-        for _, payload in MQTTService().drain(t_flow, max_items=100):
+        for _, payload in get_mqtt().drain(t_flow, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
                     st.session_state.pt_flow_status = inner
             except Exception:
                 pass
-        for _, payload in MQTTService().drain(t_press, max_items=100):
+        for _, payload in get_mqtt().drain(t_press, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
@@ -246,7 +263,7 @@ def _pid_status_tick():
             except Exception:
                 pass
         # Alpha acks for PID
-        for _, payload in MQTTService().drain(t_am, max_items=50):
+        for _, payload in get_mqtt().drain(t_am, max_items=50):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 cmd = str(inner.get("command", "")).lower() if isinstance(inner, dict) else ""
@@ -341,12 +358,14 @@ else:
                 # Removed manual getter; status updates via periodic heartbeat
                 # Toggle button reflects live state and always sends the inverse
                 toggle_label = "Disable PID" if flow_enabled else "Enable PID"
-                if st.button(toggle_label, key="pt_toggle_flow_pid"):
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not flow_enabled
-                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                with st.form("pt_flow_enable_form"):
+                    submitted_toggle = st.form_submit_button(toggle_label)
+                    if submitted_toggle:
+                        mod = st.session_state.get("pt_selected_module")
+                        target = not flow_enabled
+                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
                         # Do not force rerun; rely on next heartbeat to refresh chip
 
                 # Live flow PID status panel
@@ -375,12 +394,14 @@ else:
                 # Removed manual getter; status updates via periodic heartbeat
                 # Toggle button reflects live state and always sends the inverse
                 toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
-                if st.button(toggle_label2, key="pt_toggle_pressure_pid"):
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not pressure_enabled
-                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                with st.form("pt_pressure_enable_form"):
+                    submitted_toggle2 = st.form_submit_button(toggle_label2)
+                    if submitted_toggle2:
+                        mod = st.session_state.get("pt_selected_module")
+                        target = not pressure_enabled
+                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
                         # Do not force rerun; rely on next heartbeat
 
                 # Live pressure PID status panel
@@ -402,8 +423,9 @@ else:
             # Optional clear button aligned to the right
             header_cols = st.columns([6, 1], gap="small")
             with header_cols[1]:
-                if st.button("Clear", key="pt_clear_logs"):
-                    st.session_state.pt_logs = []
+                with st.form("pt_clear_logs_form"):
+                    if st.form_submit_button("Clear"):
+                        st.session_state.pt_logs = []
             log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
             st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
@@ -491,9 +513,6 @@ def _base_chart(df: pd.DataFrame) -> alt.Chart:
             y=alt.Y("y:Q", title=None),
             color=alt.Color("series:N", legend=alt.Legend(title=None)),
         )
-        .transform_window(index="row_number()", sort=[alt.SortField("x")])
-        .transform_window(max_index="max(index)", frame=[None, None])
-        .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
     )
 
 
@@ -504,8 +523,13 @@ def _charts_tick():
     buf = st.session_state.get("pt_data", {})
     if not buf or not buf.get("t"):
         return
+    # Slice to reduce browser work; repaint last N points only
+    end = len(buf.get("t", []))
+    N = min(MAX_POINTS, 6000)
+    start = max(0, end - N)
+    sliced = {k: v[start:end] for k, v in buf.items()}
 
-    df1, df2, df3, df4 = _build_long_df(buf)
+    df1, df2, df3, df4 = _build_long_df(sliced)
 
     c1, c2 = st.columns([1, 1], gap="small")
     with c1:
