@@ -5,8 +5,6 @@ import pandas as pd
 import altair as alt
 
 from common.utils import inject_button_theme
-from common.utils import show_toast
-from common.utils import render_toast_area
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 from datetime import datetime
@@ -36,6 +34,7 @@ for k, v in defaults_pressure.items():
 
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
+st.session_state.setdefault("pt_logs", [])
 
 # Data buffers for demo charts (simple ring buffers)
 st.session_state.setdefault("pt_data", {
@@ -61,6 +60,12 @@ MAX_POINTS = 18000  # ~5 hours @ 1 Hz
 # -----------------------------
 # Helpers
 # -----------------------------
+def _pt_append_log(message: str) -> None:
+    try:
+        st.session_state.pt_logs.append(message)
+        st.session_state.pt_logs = st.session_state.pt_logs[-400:]
+    except Exception:
+        pass
 def _status_chip(label: str, active: bool) -> None:
     bg = "#10B981" if active else "#F59E0B"
     txt = "white" if active else "#111827"
@@ -85,9 +90,10 @@ def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
             "message": payload,
         }
         MQTTService().publish(topic, envelope)
+        _pt_append_log(f">> SEND {payload}")
         return True
     except Exception as exc:
-        show_toast(f"Publish failed: {exc}", "error", source="PID Tuning")
+        _pt_append_log(f"!! Publish failed: {exc}")
         return False
 
 
@@ -195,18 +201,21 @@ with st.container(border=True):
                 "pressure_desired": [],
                 "pressure_actual": [],
             }
-            show_toast(f"Selected module: **{chosen}**", "success", source="Module Selection (local)")
+            _pt_append_log(f">> Selected module: {chosen}")
             st.rerun()
 
-# Toasts area
-toast_placeholder = st.empty()
-render_toast_area(container=toast_placeholder.container())
-
-@st.fragment(run_every=0.6)
-def _refresh_toasts():
-    render_toast_area(container=toast_placeholder.container())
-
-_refresh_toasts()
+# Terminal-style log panel CSS
+st.markdown(
+    """
+    <style>
+    .pt-log-box { background-color: #111316; color: #D1FAE5; padding: 10px; border-radius: 8px;
+                  height: 180px; overflow-y: auto; font-family: monospace; font-size: 13px;
+                  border: 1px solid #28323a; white-space: pre-wrap; }
+    .pt-log-title { font-weight: 700; margin: 0 0 6px 0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # PID status subscription and polling
@@ -244,7 +253,7 @@ def _pid_status_tick():
                 cmd = str(inner.get("command", "")).lower() if isinstance(inner, dict) else ""
                 status = str(inner.get("status", "")).lower() if isinstance(inner, dict) else ""
                 if cmd == "pid_cmd" and status in ("ack", "acknowledged", "received"):
-                    show_toast("PID command acknowledged by Alpha.", "success", source="PID Tuning")
+                    _pt_append_log("<< ACK pid_cmd from Alpha")
             except Exception:
                 pass
     except Exception:
@@ -287,12 +296,6 @@ else:
                             "kd": float(st.session_state.pt_flow_kd),
                         }
                         ok = _publish_pid_command(mod, payload)
-                        if ok:
-                            show_toast(
-                                f"Flow PID sent to {mod}",
-                                "success",
-                                source="Flow Control Gains",
-                            )
                         try:
                             st.session_state["_pt_last_edit_ts"] = time.time()
                         except Exception:
@@ -318,12 +321,6 @@ else:
                             "kd": float(st.session_state.pt_pressure_kd),
                         }
                         ok = _publish_pid_command(mod, payload)
-                        if ok:
-                            show_toast(
-                                f"Pressure PID sent to {mod}",
-                                "success",
-                                source="Pressure Controller Gains",
-                            )
                         try:
                             st.session_state["_pt_last_edit_ts"] = time.time()
                         except Exception:
@@ -350,11 +347,7 @@ else:
                     target = not flow_enabled
                     ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
                     if ok:
-                        show_toast(
-                            ("Flow PID enabled" if target else "Flow PID disabled"),
-                            ("success" if target else "warning"),
-                            source="PID Tuning",
-                        )
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
                         # Do not force rerun; rely on next heartbeat to refresh chip
 
                 # Live flow PID status panel
@@ -388,11 +381,7 @@ else:
                     target = not pressure_enabled
                     ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
                     if ok:
-                        show_toast(
-                            ("Pressure PID enabled" if target else "Pressure PID disabled"),
-                            ("success" if target else "warning"),
-                            source="PID Tuning",
-                        )
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
                         # Do not force rerun; rely on next heartbeat
 
                 # Live pressure PID status panel
@@ -407,6 +396,17 @@ else:
                         st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
                 except Exception:
                     pass
+
+        # Terminal-style logs below the status panels
+        with st.container(border=True):
+            st.subheader("PID Tuning Logs")
+            # Optional clear button aligned to the right
+            header_cols = st.columns([6, 1], gap="small")
+            with header_cols[1]:
+                if st.button("Clear", key="pt_clear_logs"):
+                    st.session_state.pt_logs = []
+            log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
+            st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
 
