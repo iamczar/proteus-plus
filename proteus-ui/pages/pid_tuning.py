@@ -65,6 +65,8 @@ st.session_state.setdefault("_pt_live_sub_topic", None)
 # Live data topic and window
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 MAX_POINTS = 18000  # ~5 hours @ 1 Hz
+DEBOUNCE_SEC = 0.6
+st.session_state.setdefault("_pt_last_edit_ts", 0.0)
 
 
 # -----------------------------
@@ -87,6 +89,12 @@ def _status_chip(label: str, active: bool) -> None:
         unsafe_allow_html=True,
     )
 
+
+def _mark_ui_edit():
+    try:
+        st.session_state["_pt_last_edit_ts"] = time.time()
+    except Exception:
+        pass
 
 def _save_config(kind: str) -> None:
     ts = time.strftime("%Y%m%d-%H%M%S")
@@ -191,6 +199,12 @@ def _pt_background_collector():
     mod = st.session_state.get("pt_selected_module")
     if not mod:
         return
+    # Debounce background updates briefly after field edits to avoid transient blanks
+    try:
+        if (time.time() - float(st.session_state.get("_pt_last_edit_ts", 0.0))) < DEBOUNCE_SEC:
+            return
+    except Exception:
+        pass
     topic = f"{LIVE_TOPIC_PREFIX}/{mod}"
     # Subscribe once per module selection
     if st.session_state.get("_pt_live_sub_topic") != topic:
@@ -372,10 +386,10 @@ else:
         with gains_cols[0]:
             with st.container(border=True):
                 st.subheader("Flow Control Gains")
-                st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen")
-                st.number_input("Proportional Gain", key="pt_flow_kp")
-                st.number_input("Integral Gain", key="pt_flow_ki")
-                st.number_input("Derivative Gain", key="pt_flow_kd")
+                st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen", on_change=_mark_ui_edit)
+                st.number_input("Proportional Gain", key="pt_flow_kp", on_change=_mark_ui_edit)
+                st.number_input("Integral Gain", key="pt_flow_ki", on_change=_mark_ui_edit)
+                st.number_input("Derivative Gain", key="pt_flow_kd", on_change=_mark_ui_edit)
                 if st.button("Send", key="pt_flow_send"):
                     mod = st.session_state.get("pt_selected_module")
                     payload = {
@@ -397,10 +411,10 @@ else:
         with gains_cols[1]:
             with st.container(border=True):
                 st.subheader("Pressure Controller Gains")
-                st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure")
-                st.number_input("Proportional Gain", key="pt_pressure_kp")
-                st.number_input("Integral Gain", key="pt_pressure_ki")
-                st.number_input("Derivative Gain", key="pt_pressure_kd")
+                st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure", on_change=_mark_ui_edit)
+                st.number_input("Proportional Gain", key="pt_pressure_kp", on_change=_mark_ui_edit)
+                st.number_input("Integral Gain", key="pt_pressure_ki", on_change=_mark_ui_edit)
+                st.number_input("Derivative Gain", key="pt_pressure_kd", on_change=_mark_ui_edit)
                 if st.button("Send", key="pt_pressure_send"):
                     mod = st.session_state.get("pt_selected_module")
                     payload = {
@@ -597,9 +611,14 @@ if st.session_state.get("pt_selected_module"):
 
 @st.fragment(run_every=1.0)
 def _update_charts_stream():
-    # Only render when a module is selected
+    # Only render when a module is selected and not during edit debounce window
     if not st.session_state.get("pt_selected_module"):
         return
+    try:
+        if (time.time() - float(st.session_state.get("_pt_last_edit_ts", 0.0))) < DEBOUNCE_SEC:
+            return
+    except Exception:
+        pass
     # Just paint whatever is accumulated by the background collector
     data = st.session_state.pt_data
     charts = st.session_state.get("pt_chart_elements", [])
