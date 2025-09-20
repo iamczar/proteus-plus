@@ -65,7 +65,7 @@ st.session_state.setdefault("_pt_live_sub_topic", None)
 # Live data topic and window
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 MAX_POINTS = 18000  # ~5 hours @ 1 Hz
-DEBOUNCE_SEC = 0.6
+DEBOUNCE_SEC = 0.2
 st.session_state.setdefault("_pt_last_edit_ts", 0.0)
 
 
@@ -199,12 +199,6 @@ def _pt_background_collector():
     mod = st.session_state.get("pt_selected_module")
     if not mod:
         return
-    # Debounce background updates briefly after field edits to avoid transient blanks
-    try:
-        if (time.time() - float(st.session_state.get("_pt_last_edit_ts", 0.0))) < DEBOUNCE_SEC:
-            return
-    except Exception:
-        pass
     topic = f"{LIVE_TOPIC_PREFIX}/{mod}"
     # Subscribe once per module selection
     if st.session_state.get("_pt_live_sub_topic") != topic:
@@ -623,14 +617,9 @@ if st.session_state.get("pt_selected_module"):
 
 @st.fragment(run_every=1.0)
 def _update_charts_stream():
-    # Only render when a module is selected and not during edit debounce window
+    # Only render when a module is selected
     if not st.session_state.get("pt_selected_module"):
         return
-    try:
-        if (time.time() - float(st.session_state.get("_pt_last_edit_ts", 0.0))) < DEBOUNCE_SEC:
-            return
-    except Exception:
-        pass
     # Just paint whatever is accumulated by the background collector
     data = st.session_state.pt_data
     charts = st.session_state.get("pt_chart_elements", [])
