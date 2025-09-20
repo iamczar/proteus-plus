@@ -234,7 +234,8 @@ st.markdown(
 @st.fragment(run_every=0.5)
 def _logs_tick():
     st.subheader("PID Tuning Logs")
-    with st.form("pt_clear_logs_form"):
+    form_key = "pt_clear_logs_form_main"
+    with st.form(form_key):
         if st.form_submit_button("Clear"):
             st.session_state.pt_logs = []
     log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
@@ -476,7 +477,14 @@ else:
 
             # Terminal-style logs below the status panels
             with st.container(border=True):
-                _logs_tick()
+                # Use a unique key for the nested logs form to avoid duplicate form keys
+                st.subheader("PID Tuning Logs")
+                nested_form_key = "pt_clear_logs_form_right"
+                with st.form(nested_form_key):
+                    if st.form_submit_button("Clear"):
+                        st.session_state.pt_logs = []
+                log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
+                st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
         _pid_right_panel()
 
