@@ -450,38 +450,58 @@ def _base_multi_series_chart() -> alt.Chart:
 
 # Initialize chart containers once and keep updating (Altair)
 def _init_pid_charts_altair() -> None:
-    if "pt_chart_elements" in st.session_state and len(st.session_state.pt_chart_elements) == 4:
-        return
-    elements = []
+    # Ensure stable placeholders that persist in session state
+    placeholders_key = "pt_chart_placeholders"
+    if placeholders_key not in st.session_state or len(st.session_state.get(placeholders_key) or []) != 4:
+        ph1, ph2 = st.columns([1, 1], gap="small")
+        with ph1:
+            with st.container(border=True):
+                st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
+                p1 = st.empty()
+        with ph2:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
+                p2 = st.empty()
 
-    # Row 1
-    c1, c2 = st.columns([1, 1], gap="small")
-    with c1:
-        with st.container(border=True):
-            st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            chart = _base_multi_series_chart()
-            elements.append(st.altair_chart(chart, use_container_width=True))
-    with c2:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            chart = _base_multi_series_chart()
-            elements.append(st.altair_chart(chart, use_container_width=True))
+        ph3, ph4 = st.columns([1, 1], gap="small")
+        with ph3:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
+                p3 = st.empty()
+        with ph4:
+            with st.container(border=True):
+                st.subheader("Desired Pressure vs Actual Pressure  Time")
+                p4 = st.empty()
 
-    # Row 2
-    c3, c4 = st.columns([1, 1], gap="small")
-    with c3:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            chart = _base_multi_series_chart()
-            elements.append(st.altair_chart(chart, use_container_width=True))
-    with c4:
-        with st.container(border=True):
-            st.subheader("Desired Pressure vs Actual Pressure  Time")
-            chart = _base_multi_series_chart()
-            elements.append(st.altair_chart(chart, use_container_width=True))
+        st.session_state[placeholders_key] = [p1, p2, p3, p4]
+        # Create charts once
+        st.session_state.pt_chart_elements = [
+            p1.altair_chart(_base_multi_series_chart(), use_container_width=True),
+            p2.altair_chart(_base_multi_series_chart(), use_container_width=True),
+            p3.altair_chart(_base_multi_series_chart(), use_container_width=True),
+            p4.altair_chart(_base_multi_series_chart(), use_container_width=True),
+        ]
+    else:
+        # Reconstruct layout and reuse existing chart elements without recreating
+        ph1, ph2 = st.columns([1, 1], gap="small")
+        with ph1:
+            with st.container(border=True):
+                st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
+                st.session_state[placeholders_key][0].container()
+        with ph2:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
+                st.session_state[placeholders_key][1].container()
 
-    st.session_state.pt_chart_elements = elements
-    st.session_state.pt_painted_len = 0
+        ph3, ph4 = st.columns([1, 1], gap="small")
+        with ph3:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
+                st.session_state[placeholders_key][2].container()
+        with ph4:
+            with st.container(border=True):
+                st.subheader("Desired Pressure vs Actual Pressure  Time")
+                st.session_state[placeholders_key][3].container()
 
 
 if st.session_state.get("pt_selected_module"):
