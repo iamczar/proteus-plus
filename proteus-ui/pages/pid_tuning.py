@@ -391,7 +391,7 @@ else:
                     st.number_input("Proportional Gain", key="pt_flow_kp")
                     st.number_input("Integral Gain", key="pt_flow_ki")
                     st.number_input("Derivative Gain", key="pt_flow_kd")
-                    submitted = st.form_submit_button("Send")
+                    submitted = st.form_submit_button("Send", key="pt_flow_submit")
                     if submitted:
                         mod = st.session_state.get("pt_selected_module")
                         payload = {
@@ -418,7 +418,7 @@ else:
                     st.number_input("Proportional Gain", key="pt_pressure_kp")
                     st.number_input("Integral Gain", key="pt_pressure_ki")
                     st.number_input("Derivative Gain", key="pt_pressure_kd")
-                    submitted2 = st.form_submit_button("Send")
+                    submitted2 = st.form_submit_button("Send", key="pt_pressure_submit")
                     if submitted2:
                         mod = st.session_state.get("pt_selected_module")
                         payload = {
