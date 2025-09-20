@@ -581,25 +581,88 @@ def _charts_tick():
 
     df1, df2, df3, df4 = _build_long_df(sliced)
 
+    # Sticky Y domains to prevent bouncing
+    def _sticky_domain(state_key_min: str, state_key_max: str, values: list[float], default_min: float = 0.0, pad_ratio: float = 0.1):
+        try:
+            if not values:
+                return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min))
+            vmin = float(min(values))
+            vmax = float(max(values))
+            # Pad
+            if vmax == vmin:
+                vmax = vmin + 1.0
+            span = max(1e-6, vmax - vmin)
+            vmin_p = min(default_min, vmin - pad_ratio * span)
+            vmax_p = vmax + pad_ratio * span
+            old_min = st.session_state.get(state_key_min, vmin_p)
+            old_max = st.session_state.get(state_key_max, vmax_p)
+            new_min = min(old_min, vmin_p)
+            new_max = max(old_max, vmax_p)
+            st.session_state[state_key_min] = new_min
+            st.session_state[state_key_max] = new_max
+            return (new_min, new_max)
+        except Exception:
+            return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min + 1.0))
+
     c1, c2 = st.columns([1, 1], gap="small")
     with c1:
         with st.container(border=True):
             st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            st.altair_chart(_base_chart(df1).properties(height=340), use_container_width=True)
+            dom1 = _sticky_domain("y1_min", "y1_max", df1["y"].tolist(), default_min=0.0, pad_ratio=0.05)
+            chart1 = (
+                alt.Chart(df1)
+                .mark_line()
+                .encode(
+                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom1), clamp=True)),
+                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                )
+            )
+            st.altair_chart(chart1.properties(height=340), use_container_width=True)
     with c2:
         with st.container(border=True):
             st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            st.altair_chart(_base_chart(df2).properties(height=340), use_container_width=True)
+            dom2 = _sticky_domain("y2_min", "y2_max", df2["y"].tolist(), default_min=0.0, pad_ratio=0.05)
+            chart2 = (
+                alt.Chart(df2)
+                .mark_line()
+                .encode(
+                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom2), clamp=True)),
+                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                )
+            )
+            st.altair_chart(chart2.properties(height=340), use_container_width=True)
 
     c3, c4 = st.columns([1, 1], gap="small")
     with c3:
         with st.container(border=True):
             st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            st.altair_chart(_base_chart(df3).properties(height=340), use_container_width=True)
+            dom3 = _sticky_domain("y3_min", "y3_max", df3["y"].tolist(), default_min=0.0, pad_ratio=0.05)
+            chart3 = (
+                alt.Chart(df3)
+                .mark_line()
+                .encode(
+                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom3), clamp=True)),
+                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                )
+            )
+            st.altair_chart(chart3.properties(height=340), use_container_width=True)
     with c4:
         with st.container(border=True):
             st.subheader("Desired Pressure vs Actual Pressure  Time")
-            st.altair_chart(_base_chart(df4).properties(height=340), use_container_width=True)
+            dom4 = _sticky_domain("y4_min", "y4_max", df4["y"].tolist(), default_min=0.0, pad_ratio=0.05)
+            chart4 = (
+                alt.Chart(df4)
+                .mark_line()
+                .encode(
+                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom4), clamp=True)),
+                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                )
+            )
+            st.altair_chart(chart4.properties(height=340), use_container_width=True)
 
 _charts_tick()
 
