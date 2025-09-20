@@ -234,6 +234,30 @@ def _logs_tick():
     st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
 
+def _refresh_pid_status_once(module_id: str | int) -> None:
+    try:
+        # Ensure subscriptions exist
+        subs = st.session_state.setdefault("_pt_pid_subs", set())
+        for t in (f"pid-flow-status/{module_id}", f"pid-pressure-status/{module_id}"):
+            if t not in subs:
+                try:
+                    get_mqtt().subscribe(t)
+                except Exception:
+                    pass
+                subs.add(t)
+        # Drain once
+        for _, payload in get_mqtt().drain(f"pid-flow-status/{module_id}", max_items=200):
+            inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+            if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
+                st.session_state.pt_flow_status = inner
+        for _, payload in get_mqtt().drain(f"pid-pressure-status/{module_id}", max_items=200):
+            inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+            if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
+                st.session_state.pt_pressure_status = inner
+    except Exception:
+        pass
+
+
 # PID status subscription and polling
 @st.fragment(run_every=1.0)
 def _pid_status_tick():
@@ -360,6 +384,11 @@ else:
                 flow_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # Manual refresh button
+            if st.button("Get PID Values", key="pt_get_flow_status"):
+                mod = st.session_state.get("pt_selected_module")
+                if mod:
+                    _refresh_pid_status_once(mod)
             # Removed manual getter; status updates via periodic heartbeat
             # Toggle button reflects live state and always sends the inverse
             toggle_label = "Disable PID" if flow_enabled else "Enable PID"
@@ -371,6 +400,8 @@ else:
                     ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
                     if ok:
                         _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                        # Optimistically update label; heartbeat will confirm
+                        st.session_state.pt_flow_status = {**(st.session_state.get('pt_flow_status') or {}), "pid_enabled": target}
                         # Do not force rerun; rely on next heartbeat to refresh chip
 
                 # Live flow PID status panel
@@ -396,6 +427,10 @@ else:
                 pressure_enabled,
             )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            if st.button("Get PID Values", key="pt_get_pressure_status"):
+                mod = st.session_state.get("pt_selected_module")
+                if mod:
+                    _refresh_pid_status_once(mod)
             # Removed manual getter; status updates via periodic heartbeat
             # Toggle button reflects live state and always sends the inverse
             toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
@@ -407,6 +442,7 @@ else:
                     ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
                     if ok:
                         _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                        st.session_state.pt_pressure_status = {**(st.session_state.get('pt_pressure_status') or {}), "pid_enabled": target}
                         # Do not force rerun; rely on next heartbeat
 
                 # Live pressure PID status panel
