@@ -576,105 +576,79 @@ def _style_chart(c: alt.Chart) -> alt.Chart:
 
 
 @st.fragment(run_every=1.0)
-def _charts_tick():
+def _charts_stream():
     if not st.session_state.get("pt_selected_module"):
         return
-    buf = st.session_state.get("pt_data", {})
-    if not buf or not buf.get("t"):
+    data = st.session_state.get("pt_data", {})
+    if not data or not data.get("t"):
         return
-    # Slice to reduce browser work; repaint last N points only
-    end = len(buf.get("t", []))
-    N = min(MAX_POINTS, 6000)
-    start = max(0, end - N)
-    sliced = {k: v[start:end] for k, v in buf.items()}
 
-    df1, df2, df3, df4 = _build_long_df(sliced)
+    # Initialize charts once
+    if "_pt_stream_charts" not in st.session_state or len(st.session_state.get("_pt_stream_charts") or []) != 4:
+        c1, c2 = st.columns([1, 1], gap="small")
+        charts = []
+        with c1:
+            with st.container(border=True):
+                st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
+                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+        with c2:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
+                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
 
-    # Sticky Y domains to prevent bouncing
-    def _sticky_domain(state_key_min: str, state_key_max: str, values: list[float], default_min: float = 0.0, pad_ratio: float = 0.1):
-        try:
-            if not values:
-                return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min))
-            vmin = float(min(values))
-            vmax = float(max(values))
-            # Pad
-            if vmax == vmin:
-                vmax = vmin + 1.0
-            span = max(1e-6, vmax - vmin)
-            # Never go below default_min (e.g., keep 0 as the floor so the x-axis stays at the bottom)
-            vmin_p = max(default_min, vmin - pad_ratio * span)
-            vmax_p = vmax + pad_ratio * span
-            old_min = st.session_state.get(state_key_min, vmin_p)
-            old_max = st.session_state.get(state_key_max, vmax_p)
-            new_min = min(old_min, vmin_p)
-            new_max = max(old_max, vmax_p)
-            st.session_state[state_key_min] = new_min
-            st.session_state[state_key_max] = new_max
-            return (new_min, new_max)
-        except Exception:
-            return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min + 1.0))
+        c3, c4 = st.columns([1, 1], gap="small")
+        with c3:
+            with st.container(border=True):
+                st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
+                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+        with c4:
+            with st.container(border=True):
+                st.subheader("Desired Pressure vs Actual Pressure  Time")
+                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+        st.session_state._pt_stream_charts = charts
+        st.session_state._pt_stream_painted = 0
 
-    c1, c2 = st.columns([1, 1], gap="small")
-    with c1:
-        with st.container(border=True):
-            st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            dom1 = _sticky_domain("y1_min", "y1_max", df1["y"].tolist(), default_min=0.0, pad_ratio=0.05)
-            chart1 = (
-                alt.Chart(df1)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom1), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart1).properties(height=340), use_container_width=True)
-    with c2:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            dom2 = _sticky_domain("y2_min", "y2_max", df2["y"].tolist(), default_min=0.0, pad_ratio=0.05)
-            chart2 = (
-                alt.Chart(df2)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom2), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart2).properties(height=340), use_container_width=True)
+    charts = st.session_state._pt_stream_charts
+    start = int(st.session_state.get("_pt_stream_painted", 0))
+    end = len(data.get("t", []))
+    if end <= start:
+        return
 
-    c3, c4 = st.columns([1, 1], gap="small")
-    with c3:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            dom3 = _sticky_domain("y3_min", "y3_max", df3["y"].tolist(), default_min=0.0, pad_ratio=0.05)
-            chart3 = (
-                alt.Chart(df3)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom3), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart3).properties(height=340), use_container_width=True)
-    with c4:
-        with st.container(border=True):
-            st.subheader("Desired Pressure vs Actual Pressure  Time")
-            dom4 = _sticky_domain("y4_min", "y4_max", df4["y"].tolist(), default_min=0.0, pad_ratio=0.05)
-            chart4 = (
-                alt.Chart(df4)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom4), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart4).properties(height=340), use_container_width=True)
+    for i in range(start, end):
+        ts = pd.to_datetime(int(data["t"][i]), unit="s")
+        # Chart 1: Oxygen desired + 3 measured
+        df1 = pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+            {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+            {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+            {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+        ])
+        charts[0].add_rows(df1)
 
-_charts_tick()
+        # Chart 2: Flow desired vs actual
+        df2 = pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+        ])
+        charts[1].add_rows(df2)
+
+        # Chart 3: Pressure pump desired vs actual
+        df3 = pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+        ])
+        charts[2].add_rows(df3)
+
+        # Chart 4: Pressure desired vs actual
+        df4 = pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+        ])
+        charts[3].add_rows(df4)
+
+    st.session_state._pt_stream_painted = end
+
+_charts_stream()
 
 
     
