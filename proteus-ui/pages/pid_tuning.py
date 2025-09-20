@@ -62,6 +62,10 @@ st.session_state.setdefault("_pt_live_buffers", None)
 st.session_state.setdefault("_pt_live_painted", 0)
 st.session_state.setdefault("_pt_live_sub_topic", None)
 
+# Live data topic and window
+LIVE_TOPIC_PREFIX = "live-sensor-data"
+MAX_POINTS = 18000  # ~5 hours @ 1 Hz
+
 
 # -----------------------------
 # Helpers
@@ -517,9 +521,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-LIVE_TOPIC_PREFIX = "live-sensor-data"
-MAX_POINTS = 18000  # ~5 hours @ 1 Hz
 
 
 def _base_single_series_chart(color: str) -> alt.Chart:
