@@ -575,104 +575,127 @@ def _style_chart(c: alt.Chart) -> alt.Chart:
     )
 
 
-@st.fragment(run_every=1.0)
-def _charts_tick():
-    if not st.session_state.get("pt_selected_module"):
-        return
-    buf = st.session_state.get("pt_data", {})
-    if not buf or not buf.get("t"):
-        return
-    # Slice to reduce browser work; repaint last N points only
-    end = len(buf.get("t", []))
-    N = min(MAX_POINTS, 6000)
-    start = max(0, end - N)
-    sliced = {k: v[start:end] for k, v in buf.items()}
+def _ensure_stream_charts(recreate: bool = False):
+    charts = st.session_state.get("_pt_stream_charts")
+    if charts and not recreate:
+        return charts
 
-    df1, df2, df3, df4 = _build_long_df(sliced)
+    # Initial y bounds (grow-only later)
+    for key in ("p1_ymin", "p1_ymax", "p2_ymin", "p2_ymax", "p3_ymin", "p3_ymax", "p4_ymin", "p4_ymax"):
+        st.session_state.setdefault(key, 0.0 if key.endswith("ymin") else 1.0)
 
-    # Sticky Y domains to prevent bouncing
-    def _sticky_domain(state_key_min: str, state_key_max: str, values: list[float], default_min: float = 0.0, pad_ratio: float = 0.05):
-        try:
-            if not values:
-                return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min + 1.0))
-            vmin = float(min(values))
-            vmax = float(max(values))
-            if vmax == vmin:
-                vmax = vmin + 1.0
-            span = max(1e-6, vmax - vmin)
-            vmin_p = max(default_min, vmin - pad_ratio * span)
-            vmax_p = vmax + pad_ratio * span
-            old_min = st.session_state.get(state_key_min, vmin_p)
-            old_max = st.session_state.get(state_key_max, vmax_p)
-            new_min = min(old_min, vmin_p)
-            new_max = max(old_max, vmax_p)
-            st.session_state[state_key_min] = new_min
-            st.session_state[state_key_max] = new_max
-            return (new_min, new_max)
-        except Exception:
-            return (st.session_state.get(state_key_min, default_min), st.session_state.get(state_key_max, default_min + 1.0))
+    def _mk_chart(ymin_key: str, ymax_key: str):
+        ymin = float(st.session_state.get(ymin_key, 0.0))
+        ymax = float(st.session_state.get(ymax_key, 1.0))
+        base = alt.Chart(pd.DataFrame({"x": [], "series": [], "y": []})) \
+            .mark_line() \
+            .encode(
+                x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=[ymin, ymax], nice=False, clamp=True)),
+                color=alt.Color("series:N", legend=alt.Legend(title=None)),
+            )
+        return st.altair_chart(base, use_container_width=True)
 
     c1, c2 = st.columns([1, 1], gap="small")
     with c1:
-        with st.container(border=True):
-            st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            dom1 = _sticky_domain("y1_min", "y1_max", df1["y"].tolist(), default_min=0.0)
-            chart1 = (
-                alt.Chart(df1)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom1), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart1).properties(height=340), use_container_width=True)
+        st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
+        ch1 = _mk_chart("p1_ymin", "p1_ymax")
     with c2:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            dom2 = _sticky_domain("y2_min", "y2_max", df2["y"].tolist(), default_min=0.0)
-            chart2 = (
-                alt.Chart(df2)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom2), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart2).properties(height=340), use_container_width=True)
-
+        st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
+        ch2 = _mk_chart("p2_ymin", "p2_ymax")
     c3, c4 = st.columns([1, 1], gap="small")
     with c3:
-        with st.container(border=True):
-            st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            dom3 = _sticky_domain("y3_min", "y3_max", df3["y"].tolist(), default_min=0.0)
-            chart3 = (
-                alt.Chart(df3)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom3), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart3).properties(height=340), use_container_width=True)
+        st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
+        ch3 = _mk_chart("p3_ymin", "p3_ymax")
     with c4:
-        with st.container(border=True):
-            st.subheader("Desired Pressure vs Actual Pressure  Time")
-            dom4 = _sticky_domain("y4_min", "y4_max", df4["y"].tolist(), default_min=0.0)
-            chart4 = (
-                alt.Chart(df4)
-                .mark_line()
-                .encode(
-                    x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                    y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=list(dom4), clamp=True)),
-                    color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                )
-            )
-            st.altair_chart(_style_chart(chart4).properties(height=340), use_container_width=True)
+        st.subheader("Desired Pressure vs Actual Pressure Time")
+        ch4 = _mk_chart("p4_ymin", "p4_ymax")
 
-_charts_tick()
+    charts = [ch1, ch2, ch3, ch4]
+    st.session_state._pt_stream_charts = charts
+    return charts
+
+
+def _grow_y_bounds(values: list[float], prefix: str) -> bool:
+    changed = False
+    try:
+        if not values:
+            return False
+        vmin = float(min(values))
+        vmax = float(max(values))
+        eps = 0.02 * (abs(vmax) + 1e-6)
+        ymin = float(st.session_state.get(f"{prefix}_ymin", vmin))
+        ymax = float(st.session_state.get(f"{prefix}_ymax", vmax + eps))
+        if vmin < ymin:
+            ymin = vmin
+            changed = True
+        if vmax > ymax:
+            ymax = vmax + eps
+            changed = True
+        if changed:
+            st.session_state[f"{prefix}_ymin"] = ymin
+            st.session_state[f"{prefix}_ymax"] = ymax
+    except Exception:
+        pass
+    return changed
+
+
+@st.fragment(run_every=0.5)
+def _charts_stream():
+    if not st.session_state.get("pt_selected_module"):
+        return
+    charts = _ensure_stream_charts()
+    data = st.session_state.get("pt_data", {})
+    if not data or not data.get("t"):
+        return
+
+    start = int(st.session_state.get("_pt_stream_idx", 0))
+    end = len(data["t"])  # append-only; trimming handled at collector if used
+    if end <= start:
+        return
+
+    idx = range(start, end)
+    # Update y bounds grow-only
+    try:
+        changed = False
+        oxy_vals = [data["ox_desired"][i] for i in idx] + [data["ox_meas1"][i] for i in idx] + [data["ox_meas2"][i] for i in idx] + [data["ox_meas3"][i] for i in idx]
+        changed |= _grow_y_bounds(oxy_vals, "p1")
+        flow_vals = [data["flow_desired"][i] for i in idx] + [data["flow_actual"][i] for i in idx]
+        changed |= _grow_y_bounds(flow_vals, "p2")
+        pp_vals = [data["press_pump_desired"][i] for i in idx] + [data["press_pump_actual"][i] for i in idx]
+        changed |= _grow_y_bounds(pp_vals, "p3")
+        pr_vals = [data["pressure_desired"][i] for i in idx] + [data["pressure_actual"][i] for i in idx]
+        changed |= _grow_y_bounds(pr_vals, "p4")
+        if changed:
+            charts = _ensure_stream_charts(recreate=True)
+    except Exception:
+        pass
+
+    # Stream rows
+    for i in idx:
+        ts = pd.to_datetime(int(data["t"][i]), unit="s")
+        charts[0].add_rows(pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+            {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+            {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+            {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+        ]))
+        charts[1].add_rows(pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+        ]))
+        charts[2].add_rows(pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+        ]))
+        charts[3].add_rows(pd.DataFrame([
+            {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+            {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+        ]))
+
+    st.session_state._pt_stream_idx = end
+
+_charts_stream()
 
 
     
