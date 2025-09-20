@@ -583,30 +583,32 @@ def _charts_stream():
     if not data or not data.get("t"):
         return
 
-    # Initialize charts once
-    if "_pt_stream_charts" not in st.session_state or len(st.session_state.get("_pt_stream_charts") or []) != 4:
+    def _init_stream_charts():
         c1, c2 = st.columns([1, 1], gap="small")
-        charts = []
+        charts_local = []
         with c1:
             with st.container(border=True):
                 st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+                charts_local.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
         with c2:
             with st.container(border=True):
                 st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+                charts_local.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
 
         c3, c4 = st.columns([1, 1], gap="small")
         with c3:
             with st.container(border=True):
                 st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+                charts_local.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
         with c4:
             with st.container(border=True):
                 st.subheader("Desired Pressure vs Actual Pressure  Time")
-                charts.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
-        st.session_state._pt_stream_charts = charts
+                charts_local.append(st.altair_chart(_base_multi_series_chart(), use_container_width=True))
+        st.session_state._pt_stream_charts = charts_local
         st.session_state._pt_stream_painted = 0
+
+    if "_pt_stream_charts" not in st.session_state or len(st.session_state.get("_pt_stream_charts") or []) != 4:
+        _init_stream_charts()
 
     charts = st.session_state._pt_stream_charts
     start = int(st.session_state.get("_pt_stream_painted", 0))
@@ -614,37 +616,63 @@ def _charts_stream():
     if end <= start:
         return
 
-    for i in range(start, end):
-        ts = pd.to_datetime(int(data["t"][i]), unit="s")
-        # Chart 1: Oxygen desired + 3 measured
-        df1 = pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
-            {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
-            {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
-            {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
-        ])
-        charts[0].add_rows(df1)
+    try:
+        for i in range(start, end):
+            ts = pd.to_datetime(int(data["t"][i]), unit="s")
+            # Chart 1: Oxygen desired + 3 measured
+            df1 = pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+                {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+                {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+                {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+            ])
+            charts[0].add_rows(df1)
 
-        # Chart 2: Flow desired vs actual
-        df2 = pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-        ])
-        charts[1].add_rows(df2)
+            # Chart 2: Flow desired vs actual
+            df2 = pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+            ])
+            charts[1].add_rows(df2)
 
-        # Chart 3: Pressure pump desired vs actual
-        df3 = pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
-        ])
-        charts[2].add_rows(df3)
+            # Chart 3: Pressure pump desired vs actual
+            df3 = pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+            ])
+            charts[2].add_rows(df3)
 
-        # Chart 4: Pressure desired vs actual
-        df4 = pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
-        ])
-        charts[3].add_rows(df4)
+            # Chart 4: Pressure desired vs actual
+            df4 = pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+            ])
+            charts[3].add_rows(df4)
+    except Exception:
+        # Likely stale chart objects due to a rerun; reinitialize charts and fast-forward last window
+        _init_stream_charts()
+        charts = st.session_state._pt_stream_charts
+        tail = max(0, end - 300)
+        for i in range(tail, end):
+            ts = pd.to_datetime(int(data["t"][i]), unit="s")
+            charts[0].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+                {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+                {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+                {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+            ]))
+            charts[1].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+            ]))
+            charts[2].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+            ]))
+            charts[3].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+            ]))
 
     st.session_state._pt_stream_painted = end
 
