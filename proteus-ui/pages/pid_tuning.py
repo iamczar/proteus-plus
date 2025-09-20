@@ -291,19 +291,21 @@ def _pid_status_tick():
         t_flow = f"pid-flow-status/{mod}"
         t_press = f"pid-pressure-status/{mod}"
         t_am = f"alphacommsmanager-status/{mod}"
-        # Drain and keep only the latest
+        # Drain and keep only the latest; only update if values changed to avoid unnecessary reruns
         for _, payload in get_mqtt().drain(t_flow, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
-                    st.session_state.pt_flow_status = inner
+                    if inner != (st.session_state.get("pt_flow_status") or {}):
+                        st.session_state.pt_flow_status = inner
             except Exception:
                 pass
         for _, payload in get_mqtt().drain(t_press, max_items=100):
             try:
                 inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
                 if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
-                    st.session_state.pt_pressure_status = inner
+                    if inner != (st.session_state.get("pt_pressure_status") or {}):
+                        st.session_state.pt_pressure_status = inner
             except Exception:
                 pass
         # Alpha acks for PID
@@ -393,11 +395,13 @@ else:
                         ok = _publish_pid_command(mod, payload)
 
     with right:
-        with st.container(border=True):
-            c1, c2 = st.columns([1, 1], gap="small")
+        @st.fragment(run_every=1.0)
+        def _pid_right_panel():
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 1], gap="small")
 
-        # Flow PID column (left)
-        with c1:
+                # Flow PID column (left)
+                with c1:
             s = st.session_state.get("pt_flow_status") or {}
             flow_enabled = bool(s.get("pid_enabled", False))
             _status_chip(
@@ -410,7 +414,7 @@ else:
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
-            # Removed manual getter; status updates via periodic heartbeat
+                    # Removed manual getter; status updates via periodic heartbeat
             # Toggle button reflects live state and always sends the inverse
             toggle_label = "Disable PID" if flow_enabled else "Enable PID"
             with st.form("pt_flow_enable_form"):
@@ -425,22 +429,22 @@ else:
                         st.session_state.pt_flow_status = {**(st.session_state.get('pt_flow_status') or {}), "pid_enabled": target}
                         # Do not force rerun; rely on next heartbeat to refresh chip
 
-                # Live flow PID status panel
-            try:
-                s = st.session_state.get("pt_flow_status") or {}
-                with st.container(border=True):
-                    st.caption("Current Flow PID Status")
-                    st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
-                    st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
-                    st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
-                    st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
-                    st.markdown(f"Mode: {str(s.get('mode', '—'))}")
-                    st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
-            except Exception:
-                pass
+                    # Live flow PID status panel
+                    try:
+                        s = st.session_state.get("pt_flow_status") or {}
+                        with st.container(border=True):
+                            st.caption("Current Flow PID Status")
+                            st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
+                            st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
+                            st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
+                            st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
+                            st.markdown(f"Mode: {str(s.get('mode', '—'))}")
+                            st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
+                    except Exception:
+                        pass
 
-        # Pressure PID column (right)
-        with c2:
+                # Pressure PID column (right)
+                with c2:
             s2 = st.session_state.get("pt_pressure_status") or {}
             pressure_enabled = bool(s2.get("pid_enabled", False))
             _status_chip(
@@ -452,7 +456,7 @@ else:
                 mod = st.session_state.get("pt_selected_module")
                 if mod:
                     _refresh_pid_status_once(mod)
-            # Removed manual getter; status updates via periodic heartbeat
+                    # Removed manual getter; status updates via periodic heartbeat
             # Toggle button reflects live state and always sends the inverse
             toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
             with st.form("pt_pressure_enable_form"):
@@ -466,22 +470,24 @@ else:
                         st.session_state.pt_pressure_status = {**(st.session_state.get('pt_pressure_status') or {}), "pid_enabled": target}
                         # Do not force rerun; rely on next heartbeat
 
-                # Live pressure PID status panel
-            try:
-                with st.container(border=True):
-                    st.caption("Current Pressure PID Status")
-                    st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
-                    st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
-                    st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
-                    st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
-                    st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
-                    st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
-            except Exception:
-                pass
+                    # Live pressure PID status panel
+                    try:
+                        with st.container(border=True):
+                            st.caption("Current Pressure PID Status")
+                            st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
+                            st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
+                            st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
+                            st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
+                            st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
+                            st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
+                    except Exception:
+                        pass
 
-        # Terminal-style logs below the status panels
-        with st.container(border=True):
-            _logs_tick()
+            # Terminal-style logs below the status panels
+            with st.container(border=True):
+                _logs_tick()
+
+        _pid_right_panel()
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
 
