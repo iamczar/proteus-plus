@@ -209,6 +209,9 @@ def _pt_background_collector():
             continue
 
 
+# Start background collector
+_pt_background_collector()
+
 # -----------------------------
 # First block: Module selection + Toasts
 # -----------------------------
@@ -627,11 +630,11 @@ def _update_charts_stream():
         )
         charts[1].add_rows(df2)
 
-        # Chart 3: Pressure pump desired vs actual (multi-series)
+        # Chart 3: Desired Speed of Pressure Pump vs actual flow rate (multi-series)
         df3 = pd.DataFrame(
             [
                 {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
             ]
         )
         charts[2].add_rows(df3)
