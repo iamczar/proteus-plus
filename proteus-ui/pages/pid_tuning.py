@@ -82,7 +82,7 @@ def _status_chip(label: str, active: bool) -> None:
         unsafe_allow_html=True,
     )
 
-    
+
 
 
 def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
@@ -221,6 +221,19 @@ st.markdown(
 )
 
 
+@st.fragment(run_every=0.5)
+def _logs_tick():
+    header_cols = st.columns([8, 1], gap="small")
+    with header_cols[0]:
+        st.subheader("PID Tuning Logs")
+    with header_cols[1]:
+        with st.form("pt_clear_logs_form"):
+            if st.form_submit_button("Clear"):
+                st.session_state.pt_logs = []
+    log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
+    st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
+
+
 # PID status subscription and polling
 @st.fragment(run_every=1.0)
 def _pid_status_tick():
@@ -292,7 +305,7 @@ else:
     with left:
         gains_cols = st.columns([1, 1], gap="small")
 
-        # Flow Controller Gains window
+    # Flow Controller Gains window
         with gains_cols[0]:
             with st.container(border=True):
                 st.subheader("Flow Control Gains")
@@ -312,12 +325,8 @@ else:
                             "kd": float(st.session_state.pt_flow_kd),
                         }
                         ok = _publish_pid_command(mod, payload)
-                        try:
-                            st.session_state["_pt_last_edit_ts"] = time.time()
-                        except Exception:
-                            pass
 
-        # Pressure Controller Gains window
+    # Pressure Controller Gains window
         with gains_cols[1]:
             with st.container(border=True):
                 st.subheader("Pressure Controller Gains")
@@ -337,97 +346,85 @@ else:
                             "kd": float(st.session_state.pt_pressure_kd),
                         }
                         ok = _publish_pid_command(mod, payload)
-                        try:
-                            st.session_state["_pt_last_edit_ts"] = time.time()
-                        except Exception:
-                            pass
 
     with right:
         with st.container(border=True):
             c1, c2 = st.columns([1, 1], gap="small")
 
-            # Flow PID column (left)
-            with c1:
-                s = st.session_state.get("pt_flow_status") or {}
-                flow_enabled = bool(s.get("pid_enabled", False))
-                _status_chip(
-                    f"Flow PID {'Active' if flow_enabled else 'Inactive'}",
-                    flow_enabled,
-                )
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                # Removed manual getter; status updates via periodic heartbeat
-                # Toggle button reflects live state and always sends the inverse
-                toggle_label = "Disable PID" if flow_enabled else "Enable PID"
-                with st.form("pt_flow_enable_form"):
-                    submitted_toggle = st.form_submit_button(toggle_label)
-                    if submitted_toggle:
-                        mod = st.session_state.get("pt_selected_module")
-                        target = not flow_enabled
-                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+        # Flow PID column (left)
+        with c1:
+            s = st.session_state.get("pt_flow_status") or {}
+            flow_enabled = bool(s.get("pid_enabled", False))
+            _status_chip(
+                f"Flow PID {'Active' if flow_enabled else 'Inactive'}",
+                flow_enabled,
+            )
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # Removed manual getter; status updates via periodic heartbeat
+            # Toggle button reflects live state and always sends the inverse
+            toggle_label = "Disable PID" if flow_enabled else "Enable PID"
+            with st.form("pt_flow_enable_form"):
+                submitted_toggle = st.form_submit_button(toggle_label)
+                if submitted_toggle:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not flow_enabled
+                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                    if ok:
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
                         # Do not force rerun; rely on next heartbeat to refresh chip
 
                 # Live flow PID status panel
-                try:
-                    s = st.session_state.get("pt_flow_status") or {}
-                    with st.container(border=True):
-                        st.caption("Current Flow PID Status")
-                        st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
-                        st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
-                        st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
-                        st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
-                        st.markdown(f"Mode: {str(s.get('mode', '—'))}")
-                        st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
-                except Exception:
-                    pass
+            try:
+                s = st.session_state.get("pt_flow_status") or {}
+                with st.container(border=True):
+                    st.caption("Current Flow PID Status")
+                    st.markdown(f"Desired O2: {float(s.get('desired_oxygen', 0.0)):.2f}")
+                    st.markdown(f"Kp: {float(s.get('kp', 0.0)):.3f}")
+                    st.markdown(f"Ki: {float(s.get('ki', 0.0)):.3f}")
+                    st.markdown(f"Kd: {float(s.get('kd', 0.0)):.3f}")
+                    st.markdown(f"Mode: {str(s.get('mode', '—'))}")
+                    st.markdown(f"Enabled: {bool(s.get('pid_enabled', False))}")
+            except Exception:
+                pass
 
-            # Pressure PID column (right)
-            with c2:
-                s2 = st.session_state.get("pt_pressure_status") or {}
-                pressure_enabled = bool(s2.get("pid_enabled", False))
-                _status_chip(
-                    f"Pressure PID {'Active' if pressure_enabled else 'Inactive'}",
-                    pressure_enabled,
-                )
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                # Removed manual getter; status updates via periodic heartbeat
-                # Toggle button reflects live state and always sends the inverse
-                toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
-                with st.form("pt_pressure_enable_form"):
-                    submitted_toggle2 = st.form_submit_button(toggle_label2)
-                    if submitted_toggle2:
-                        mod = st.session_state.get("pt_selected_module")
-                        target = not pressure_enabled
-                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+        # Pressure PID column (right)
+        with c2:
+            s2 = st.session_state.get("pt_pressure_status") or {}
+            pressure_enabled = bool(s2.get("pid_enabled", False))
+            _status_chip(
+                f"Pressure PID {'Active' if pressure_enabled else 'Inactive'}",
+                pressure_enabled,
+            )
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # Removed manual getter; status updates via periodic heartbeat
+            # Toggle button reflects live state and always sends the inverse
+            toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
+            with st.form("pt_pressure_enable_form"):
+                submitted_toggle2 = st.form_submit_button(toggle_label2)
+                if submitted_toggle2:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not pressure_enabled
+                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                    if ok:
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
                         # Do not force rerun; rely on next heartbeat
 
                 # Live pressure PID status panel
-                try:
-                    with st.container(border=True):
-                        st.caption("Current Pressure PID Status")
-                        st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
-                        st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
-                        st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
-                        st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
-                        st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
-                        st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
-                except Exception:
-                    pass
+            try:
+                with st.container(border=True):
+                    st.caption("Current Pressure PID Status")
+                    st.markdown(f"Desired Pressure: {float(s2.get('desired_pressure', 0.0)):.2f}")
+                    st.markdown(f"Kp: {float(s2.get('kp', 0.0)):.3f}")
+                    st.markdown(f"Ki: {float(s2.get('ki', 0.0)):.3f}")
+                    st.markdown(f"Kd: {float(s2.get('kd', 0.0)):.3f}")
+                    st.markdown(f"Mode: {str(s2.get('mode', '—'))}")
+                    st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
+            except Exception:
+                pass
 
         # Terminal-style logs below the status panels
         with st.container(border=True):
-            st.subheader("PID Tuning Logs")
-            # Optional clear button aligned to the right
-            header_cols = st.columns([6, 1], gap="small")
-            with header_cols[1]:
-                with st.form("pt_clear_logs_form"):
-                    if st.form_submit_button("Clear"):
-                        st.session_state.pt_logs = []
-            log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
-            st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
+            _logs_tick()
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
 
@@ -535,21 +532,21 @@ def _charts_tick():
     with c1:
         with st.container(border=True):
             st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            st.altair_chart(_base_chart(df1), use_container_width=True)
+            st.altair_chart(_base_chart(df1).properties(height=260), use_container_width=True)
     with c2:
         with st.container(border=True):
             st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            st.altair_chart(_base_chart(df2), use_container_width=True)
+            st.altair_chart(_base_chart(df2).properties(height=260), use_container_width=True)
 
     c3, c4 = st.columns([1, 1], gap="small")
     with c3:
         with st.container(border=True):
             st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            st.altair_chart(_base_chart(df3), use_container_width=True)
+            st.altair_chart(_base_chart(df3).properties(height=260), use_container_width=True)
     with c4:
         with st.container(border=True):
             st.subheader("Desired Pressure vs Actual Pressure  Time")
-            st.altair_chart(_base_chart(df4), use_container_width=True)
+            st.altair_chart(_base_chart(df4).properties(height=260), use_container_width=True)
 
 _charts_tick()
 
