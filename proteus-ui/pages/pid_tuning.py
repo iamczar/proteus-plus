@@ -223,13 +223,13 @@ st.markdown(
 
 @st.fragment(run_every=0.5)
 def _logs_tick():
-    header_cols = st.columns([8, 1], gap="small")
+    header_cols = st.columns([1, 8], gap="small")
     with header_cols[0]:
-        st.subheader("PID Tuning Logs")
-    with header_cols[1]:
         with st.form("pt_clear_logs_form"):
             if st.form_submit_button("Clear"):
                 st.session_state.pt_logs = []
+    with header_cols[1]:
+        st.subheader("PID Tuning Logs")
     log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
     st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
