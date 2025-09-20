@@ -410,11 +410,6 @@ else:
                         flow_enabled,
                     )
                     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    # Manual refresh button
-                    if st.button("Get PID Values", key="pt_get_flow_status"):
-                        mod = st.session_state.get("pt_selected_module")
-                        if mod:
-                            _refresh_pid_status_once(mod)
                     # Toggle button reflects live state and always sends the inverse
                     toggle_label = "Disable PID" if flow_enabled else "Enable PID"
                     with st.form("pt_flow_enable_form"):
@@ -448,10 +443,6 @@ else:
                         pressure_enabled,
                     )
                     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    if st.button("Get PID Values", key="pt_get_pressure_status"):
-                        mod = st.session_state.get("pt_selected_module")
-                        if mod:
-                            _refresh_pid_status_once(mod)
                     # Toggle button reflects live state and always sends the inverse
                     toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
                     with st.form("pt_pressure_enable_form"):
@@ -594,21 +585,21 @@ def _charts_tick():
     with c1:
         with st.container(border=True):
             st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-            st.altair_chart(_base_chart(df1).properties(height=260), use_container_width=True)
+            st.altair_chart(_base_chart(df1).properties(height=340), use_container_width=True)
     with c2:
         with st.container(border=True):
             st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-            st.altair_chart(_base_chart(df2).properties(height=260), use_container_width=True)
+            st.altair_chart(_base_chart(df2).properties(height=340), use_container_width=True)
 
     c3, c4 = st.columns([1, 1], gap="small")
     with c3:
         with st.container(border=True):
             st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-            st.altair_chart(_base_chart(df3).properties(height=260), use_container_width=True)
+            st.altair_chart(_base_chart(df3).properties(height=340), use_container_width=True)
     with c4:
         with st.container(border=True):
             st.subheader("Desired Pressure vs Actual Pressure  Time")
-            st.altair_chart(_base_chart(df4).properties(height=260), use_container_width=True)
+            st.altair_chart(_base_chart(df4).properties(height=340), use_container_width=True)
 
 _charts_tick()
 
