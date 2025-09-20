@@ -1,4 +1,6 @@
 import time
+import os
+import json
 
 import streamlit as st
 import pandas as pd
@@ -116,10 +118,10 @@ def _append_live_point(payload: dict) -> None:
         data = payload.get("data") or {}
         if not isinstance(data, dict):
             return
-        # Timestamp
-        ts = payload.get("timestamp")
+        # Timestamp (robust)
+        ts = payload.get("timestamp") or payload.get("time") or payload.get("ts")
         try:
-            t_epoch = int(time.time()) if ts is None else int(pd.to_datetime(ts).timestamp())
+            t_epoch = int(time.time()) if ts is None else int(pd.to_datetime(ts, utc=True).timestamp())
         except Exception:
             t_epoch = int(time.time())
         buf = st.session_state.pt_data
@@ -140,6 +142,30 @@ def _append_live_point(payload: dict) -> None:
         for k in list(buf.keys()):
             if len(buf[k]) > N:
                 buf[k] = buf[k][-N:]
+
+        # Persist to JSONL for backfill
+        try:
+            mod = st.session_state.get("pt_selected_module")
+            if mod:
+                live_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pidlive")
+                os.makedirs(live_dir, exist_ok=True)
+                fpath = os.path.join(live_dir, f"{mod}.jsonl")
+                with open(fpath, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts": t_epoch,
+                        "ox_desired": buf["ox_desired"][-1],
+                        "ox_meas1": buf["ox_meas1"][-1],
+                        "ox_meas2": buf["ox_meas2"][-1],
+                        "ox_meas3": buf["ox_meas3"][-1],
+                        "flow_desired": buf["flow_desired"][-1],
+                        "flow_actual": buf["flow_actual"][-1],
+                        "press_pump_desired": buf["press_pump_desired"][-1],
+                        "press_pump_actual": buf["press_pump_actual"][-1],
+                        "pressure_desired": buf["pressure_desired"][-1],
+                        "pressure_actual": buf["pressure_actual"][-1],
+                    }) + "\n")
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -199,21 +225,42 @@ with st.container(border=True):
 
         if chosen != placeholder_label and chosen != previous_value:
             st.session_state.pt_selected_module = chosen
-            # Reset chart state and buffers on module change
-            # Reset only data buffers on module change; charts are stateless now
-            st.session_state.pt_data = {
-                "t": [],
-                "ox_desired": [],
-                "ox_meas1": [],
-                "ox_meas2": [],
-                "ox_meas3": [],
-                "flow_desired": [],
-                "flow_actual": [],
-                "press_pump_desired": [],
-                "press_pump_actual": [],
-                "pressure_desired": [],
-                "pressure_actual": [],
-            }
+            # Backfill from JSONL tail (last 5 hours)
+            try:
+                st.session_state.pt_data = {
+                    "t": [],
+                    "ox_desired": [],
+                    "ox_meas1": [],
+                    "ox_meas2": [],
+                    "ox_meas3": [],
+                    "flow_desired": [],
+                    "flow_actual": [],
+                    "press_pump_desired": [],
+                    "press_pump_actual": [],
+                    "pressure_desired": [],
+                    "pressure_actual": [],
+                }
+                live_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pidlive")
+                fpath = os.path.join(live_dir, f"{chosen}.jsonl")
+                if os.path.exists(fpath):
+                    now = int(time.time())
+                    cutoff = now - 18_000
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        lines = f.readlines()[-MAX_POINTS:]
+                    for line in lines:
+                        try:
+                            rec = json.loads(line)
+                            ts = int(rec.get("ts"))
+                            if ts < cutoff:
+                                continue
+                            st.session_state.pt_data["t"].append(ts)
+                            for k in ("ox_desired","ox_meas1","ox_meas2","ox_meas3","flow_desired","flow_actual","press_pump_desired","press_pump_actual","pressure_desired","pressure_actual"):
+                                st.session_state.pt_data[k].append(float(rec.get(k, 0.0)))
+                        except Exception:
+                            continue
+                st.session_state._pt_stream_idx = len(st.session_state.pt_data["t"]) or 0
+            except Exception:
+                pass
             _pt_append_log(f">> Selected module: {chosen}")
             # No explicit rerun; Streamlit triggers one automatically on select change
 
