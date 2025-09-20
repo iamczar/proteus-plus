@@ -1,6 +1,4 @@
-import json
 import time
-from pathlib import Path
 
 import streamlit as st
 import pandas as pd
@@ -12,7 +10,6 @@ from common.utils import render_toast_area
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 from datetime import datetime
-from collections import deque
 
 
 st.set_page_config(page_title="PID Tuning", layout="wide")
@@ -37,12 +34,8 @@ for k, v in defaults_flow.items():
 for k, v in defaults_pressure.items():
     st.session_state.setdefault(f"pt_pressure_{k}", v)
 
-st.session_state.setdefault("pt_pressure_enabled", False)
-st.session_state.setdefault("pt_flow_enabled", False)
-st.session_state.setdefault("pt_running", False)
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
-st.session_state.setdefault("_pt_pid_ack_seen", False)
 
 # Data buffers for demo charts (simple ring buffers)
 st.session_state.setdefault("pt_data", {
@@ -58,25 +51,16 @@ st.session_state.setdefault("pt_data", {
     "pressure_desired": [],
     "pressure_actual": [],
 })
-st.session_state.setdefault("_pt_live_buffers", None)
-st.session_state.setdefault("_pt_live_painted", 0)
 st.session_state.setdefault("_pt_live_sub_topic", None)
 
 # Live data topic and window
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 MAX_POINTS = 18000  # ~5 hours @ 1 Hz
-DEBOUNCE_SEC = 0.2
-st.session_state.setdefault("_pt_last_edit_ts", 0.0)
 
 
 # -----------------------------
 # Helpers
 # -----------------------------
-BASE_DIR = Path(__file__).resolve().parents[1]
-PID_CONFIG_DIR = BASE_DIR / "data" / "pid_configs"
-PID_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-
 def _status_chip(label: str, active: bool) -> None:
     bg = "#10B981" if active else "#F59E0B"
     txt = "white" if active else "#111827"
@@ -89,60 +73,7 @@ def _status_chip(label: str, active: bool) -> None:
         unsafe_allow_html=True,
     )
 
-
-def _mark_ui_edit():
-    try:
-        st.session_state["_pt_last_edit_ts"] = time.time()
-    except Exception:
-        pass
-
-def _save_config(kind: str) -> None:
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    if kind == "flow":
-        payload = {
-            "kind": "flow",
-            "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
-            "kp": float(st.session_state.pt_flow_kp),
-            "ki": float(st.session_state.pt_flow_ki),
-            "kd": float(st.session_state.pt_flow_kd),
-        }
-    else:
-        payload = {
-            "kind": "pressure",
-            "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
-            "kp": float(st.session_state.pt_pressure_kp),
-            "ki": float(st.session_state.pt_pressure_ki),
-            "kd": float(st.session_state.pt_pressure_kd),
-        }
-    fname = PID_CONFIG_DIR / f"{kind}_pid_{ts}.json"
-    fname.write_text(json.dumps(payload, indent=2))
-    show_toast(f"Saved {kind} PID config to {fname.name}", "success", source="PID Tuning")
-
-
-def _load_config(kind: str, filename: str | None) -> None:
-    if not filename:
-        show_toast("Select a config file to load.", "warning", source="PID Tuning")
-        return
-    path = PID_CONFIG_DIR / filename
-    try:
-        data = json.loads(path.read_text())
-    except Exception as exc:
-        show_toast(f"Failed to load: {exc}", "error", source="PID Tuning")
-        return
-    if kind == "flow" and data.get("kind") in (None, "flow"):
-        st.session_state.pt_flow_desired_oxygen = float(data.get("desired_oxygen", defaults_flow["desired_oxygen"]))
-        st.session_state.pt_flow_kp = float(data.get("kp", defaults_flow["kp"]))
-        st.session_state.pt_flow_ki = float(data.get("ki", defaults_flow["ki"]))
-        st.session_state.pt_flow_kd = float(data.get("kd", defaults_flow["kd"]))
-        show_toast("Flow PID config loaded.", "success", source="PID Tuning")
-    elif kind == "pressure" and data.get("kind") in (None, "pressure"):
-        st.session_state.pt_pressure_desired_pressure = float(data.get("desired_pressure", defaults_pressure["desired_pressure"]))
-        st.session_state.pt_pressure_kp = float(data.get("kp", defaults_pressure["kp"]))
-        st.session_state.pt_pressure_ki = float(data.get("ki", defaults_pressure["ki"]))
-        st.session_state.pt_pressure_kd = float(data.get("kd", defaults_pressure["kd"]))
-        show_toast("Pressure PID config loaded.", "success", source="PID Tuning")
-    else:
-        show_toast("Config kind does not match.", "error", source="PID Tuning")
+    
 
 
 def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
@@ -207,8 +138,6 @@ def _pt_background_collector():
             st.session_state._pt_live_sub_topic = topic
         except Exception:
             return
-        # Reset buffers and painted counter on module change
-        st.session_state._pt_live_painted = 0
 
     updates = MQTTService().drain(topic, max_items=500)
     if not updates:
@@ -241,42 +170,31 @@ with st.container(border=True):
                 pass
             previous_value = None
 
-        if previous_value is None:
-            chosen = st.selectbox(
-                label="Module Selection (local):",
-                options=[placeholder_label] + modules,
-                index=0,
-                key="_pt_module_select_first",
-            )
-        else:
-            chosen = st.selectbox(
-                label="Module Selection (local):",
-                options=modules,
-                index=(modules.index(previous_value) if previous_value in modules else 0),
-                key="_pt_module_select_final",
-            )
+        chosen = st.selectbox(
+            label="Module Selection (local):",
+            options=[placeholder_label] + modules if previous_value is None else modules,
+            index=0 if previous_value is None else (modules.index(previous_value) if previous_value in modules else 0),
+            key="_pt_module_select",
+        )
 
         if chosen != placeholder_label and chosen != previous_value:
             st.session_state.pt_selected_module = chosen
             # Reset chart state and buffers on module change
-            try:
-                st.session_state.pt_chart_elements = []
-                st.session_state.pt_painted_len = 0
-                st.session_state.pt_data = {
-                    "t": [],
-                    "ox_desired": [],
-                    "ox_meas1": [],
-                    "ox_meas2": [],
-                    "ox_meas3": [],
-                    "flow_desired": [],
-                    "flow_actual": [],
-                    "press_pump_desired": [],
-                    "press_pump_actual": [],
-                    "pressure_desired": [],
-                    "pressure_actual": [],
-                }
-            except Exception:
-                pass
+            st.session_state.pt_chart_elements = []
+            st.session_state.pt_painted_len = 0
+            st.session_state.pt_data = {
+                "t": [],
+                "ox_desired": [],
+                "ox_meas1": [],
+                "ox_meas2": [],
+                "ox_meas3": [],
+                "flow_desired": [],
+                "flow_actual": [],
+                "press_pump_desired": [],
+                "press_pump_actual": [],
+                "pressure_desired": [],
+                "pressure_actual": [],
+            }
             show_toast(f"Selected module: **{chosen}**", "success", source="Module Selection (local)")
             st.rerun()
 
@@ -334,34 +252,7 @@ def _pid_status_tick():
 
 _pid_status_tick()
 
-def _refresh_pid_status_once(module_id: str | int) -> None:
-    try:
-        t_flow = f"pid-flow-status/{module_id}"
-        t_press = f"pid-pressure-status/{module_id}"
-        MQTTService().subscribe(t_flow)
-        MQTTService().subscribe(t_press)
-        updated = False
-        for _, payload in MQTTService().drain(t_flow, max_items=100):
-            try:
-                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "flow":
-                    if inner != (st.session_state.get("pt_flow_status") or {}):
-                        st.session_state.pt_flow_status = inner
-                        updated = True
-            except Exception:
-                pass
-        for _, payload in MQTTService().drain(t_press, max_items=100):
-            try:
-                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-                if isinstance(inner, dict) and inner.get("event") == "pid_status" and inner.get("controller") == "pressure":
-                    if inner != (st.session_state.get("pt_pressure_status") or {}):
-                        st.session_state.pt_pressure_status = inner
-                        updated = True
-            except Exception:
-                pass
-        # No explicit rerun; Streamlit will rerun after button click automatically
-    except Exception:
-        pass
+    
 
 
 # -----------------------------
@@ -451,10 +342,7 @@ else:
                     flow_enabled,
                 )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("Get PID Values", key="pt_refresh_flow_status"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if mod:
-                        _refresh_pid_status_once(mod)
+                # Removed manual getter; status updates via periodic heartbeat
                 # Toggle button reflects live state and always sends the inverse
                 toggle_label = "Disable PID" if flow_enabled else "Enable PID"
                 if st.button(toggle_label, key="pt_toggle_flow_pid"):
@@ -492,10 +380,7 @@ else:
                     pressure_enabled,
                 )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("Get PID Values", key="pt_refresh_pressure_status"):
-                    mod = st.session_state.get("pt_selected_module")
-                    if mod:
-                        _refresh_pid_status_once(mod)
+                # Removed manual getter; status updates via periodic heartbeat
                 # Toggle button reflects live state and always sends the inverse
                 toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
                 if st.button(toggle_label2, key="pt_toggle_pressure_pid"):
@@ -544,19 +429,7 @@ st.markdown(
 
 
 
-def _base_single_series_chart(color: str) -> alt.Chart:
-    init_df = pd.DataFrame({"x": [], "y": []})
-    return (
-        alt.Chart(init_df)
-        .mark_line(color=color)
-        .encode(
-            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-            y=alt.Y("y:Q", title=None),
-        )
-        .transform_window(index="row_number()", sort=[alt.SortField("x")])
-        .transform_window(max_index="max(index)", frame=[None, None])
-        .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
-    )
+    
 
 
 def _base_multi_series_chart() -> alt.Chart:
