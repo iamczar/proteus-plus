@@ -566,6 +566,15 @@ def _base_chart(df: pd.DataFrame) -> alt.Chart:
     )
 
 
+def _style_chart(c: alt.Chart) -> alt.Chart:
+    # Pin consistent font sizes to avoid visual jitter across rerenders
+    return (
+        c.configure_axis(labelFontSize=12, titleFontSize=13)
+         .configure_legend(labelFontSize=12, titleFontSize=13)
+         .configure_title(fontSize=16)
+    )
+
+
 @st.fragment(run_every=1.0)
 def _charts_tick():
     if not st.session_state.get("pt_selected_module"):
@@ -619,7 +628,7 @@ def _charts_tick():
                     color=alt.Color("series:N", legend=alt.Legend(title=None)),
                 )
             )
-            st.altair_chart(chart1.properties(height=340), use_container_width=True)
+            st.altair_chart(_style_chart(chart1).properties(height=340), use_container_width=True)
     with c2:
         with st.container(border=True):
             st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
@@ -633,7 +642,7 @@ def _charts_tick():
                     color=alt.Color("series:N", legend=alt.Legend(title=None)),
                 )
             )
-            st.altair_chart(chart2.properties(height=340), use_container_width=True)
+            st.altair_chart(_style_chart(chart2).properties(height=340), use_container_width=True)
 
     c3, c4 = st.columns([1, 1], gap="small")
     with c3:
@@ -649,7 +658,7 @@ def _charts_tick():
                     color=alt.Color("series:N", legend=alt.Legend(title=None)),
                 )
             )
-            st.altair_chart(chart3.properties(height=340), use_container_width=True)
+            st.altair_chart(_style_chart(chart3).properties(height=340), use_container_width=True)
     with c4:
         with st.container(border=True):
             st.subheader("Desired Pressure vs Actual Pressure  Time")
@@ -663,7 +672,7 @@ def _charts_tick():
                     color=alt.Color("series:N", legend=alt.Legend(title=None)),
                 )
             )
-            st.altair_chart(chart4.properties(height=340), use_container_width=True)
+            st.altair_chart(_style_chart(chart4).properties(height=340), use_container_width=True)
 
 _charts_tick()
 
