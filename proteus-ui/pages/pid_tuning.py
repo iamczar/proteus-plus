@@ -402,33 +402,28 @@ else:
 
                 # Flow PID column (left)
                 with c1:
-            s = st.session_state.get("pt_flow_status") or {}
-            flow_enabled = bool(s.get("pid_enabled", False))
-            _status_chip(
-                f"Flow PID {'Active' if flow_enabled else 'Inactive'}",
-                flow_enabled,
-            )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            # Manual refresh button
-            if st.button("Get PID Values", key="pt_get_flow_status"):
-                mod = st.session_state.get("pt_selected_module")
-                if mod:
-                    _refresh_pid_status_once(mod)
-                    # Removed manual getter; status updates via periodic heartbeat
-            # Toggle button reflects live state and always sends the inverse
-            toggle_label = "Disable PID" if flow_enabled else "Enable PID"
-            with st.form("pt_flow_enable_form"):
-                submitted_toggle = st.form_submit_button(toggle_label)
-                if submitted_toggle:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not flow_enabled
-                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
-                        # Optimistically update label; heartbeat will confirm
-                        st.session_state.pt_flow_status = {**(st.session_state.get('pt_flow_status') or {}), "pid_enabled": target}
-                        # Do not force rerun; rely on next heartbeat to refresh chip
-
+                    s = st.session_state.get("pt_flow_status") or {}
+                    flow_enabled = bool(s.get("pid_enabled", False))
+                    _status_chip(
+                        f"Flow PID {'Active' if flow_enabled else 'Inactive'}",
+                        flow_enabled,
+                    )
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    # Manual refresh button
+                    if st.button("Get PID Values", key="pt_get_flow_status"):
+                        mod = st.session_state.get("pt_selected_module")
+                        if mod:
+                            _refresh_pid_status_once(mod)
+                    # Toggle button reflects live state and always sends the inverse
+                    toggle_label = "Disable PID" if flow_enabled else "Enable PID"
+                    with st.form("pt_flow_enable_form"):
+                        submitted_toggle = st.form_submit_button(toggle_label)
+                        if submitted_toggle:
+                            mod = st.session_state.get("pt_selected_module")
+                            target = not flow_enabled
+                            ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                            if ok:
+                                _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
                     # Live flow PID status panel
                     try:
                         s = st.session_state.get("pt_flow_status") or {}
@@ -445,31 +440,27 @@ else:
 
                 # Pressure PID column (right)
                 with c2:
-            s2 = st.session_state.get("pt_pressure_status") or {}
-            pressure_enabled = bool(s2.get("pid_enabled", False))
-            _status_chip(
-                f"Pressure PID {'Active' if pressure_enabled else 'Inactive'}",
-                pressure_enabled,
-            )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            if st.button("Get PID Values", key="pt_get_pressure_status"):
-                mod = st.session_state.get("pt_selected_module")
-                if mod:
-                    _refresh_pid_status_once(mod)
-                    # Removed manual getter; status updates via periodic heartbeat
-            # Toggle button reflects live state and always sends the inverse
-            toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
-            with st.form("pt_pressure_enable_form"):
-                submitted_toggle2 = st.form_submit_button(toggle_label2)
-                if submitted_toggle2:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not pressure_enabled
-                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
-                        st.session_state.pt_pressure_status = {**(st.session_state.get('pt_pressure_status') or {}), "pid_enabled": target}
-                        # Do not force rerun; rely on next heartbeat
-
+                    s2 = st.session_state.get("pt_pressure_status") or {}
+                    pressure_enabled = bool(s2.get("pid_enabled", False))
+                    _status_chip(
+                        f"Pressure PID {'Active' if pressure_enabled else 'Inactive'}",
+                        pressure_enabled,
+                    )
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    if st.button("Get PID Values", key="pt_get_pressure_status"):
+                        mod = st.session_state.get("pt_selected_module")
+                        if mod:
+                            _refresh_pid_status_once(mod)
+                    # Toggle button reflects live state and always sends the inverse
+                    toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
+                    with st.form("pt_pressure_enable_form"):
+                        submitted_toggle2 = st.form_submit_button(toggle_label2)
+                        if submitted_toggle2:
+                            mod = st.session_state.get("pt_selected_module")
+                            target = not pressure_enabled
+                            ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                            if ok:
+                                _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
                     # Live pressure PID status panel
                     try:
                         with st.container(border=True):
