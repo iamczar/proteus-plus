@@ -386,51 +386,55 @@ else:
         with gains_cols[0]:
             with st.container(border=True):
                 st.subheader("Flow Control Gains")
-                st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen", on_change=_mark_ui_edit)
-                st.number_input("Proportional Gain", key="pt_flow_kp", on_change=_mark_ui_edit)
-                st.number_input("Integral Gain", key="pt_flow_ki", on_change=_mark_ui_edit)
-                st.number_input("Derivative Gain", key="pt_flow_kd", on_change=_mark_ui_edit)
-                if st.button("Send", key="pt_flow_send"):
-                    mod = st.session_state.get("pt_selected_module")
-                    payload = {
-                        "type": "flow_pid",
-                        "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
-                        "kp": float(st.session_state.pt_flow_kp),
-                        "ki": float(st.session_state.pt_flow_ki),
-                        "kd": float(st.session_state.pt_flow_kd),
-                    }
-                    ok = _publish_pid_command(mod, payload)
-                    if ok:
-                        show_toast(
-                            f"Flow PID sent to {mod}",
-                            "success",
-                            source="Flow Control Gains",
-                        )
+                with st.form("flow_gains_form"):
+                    st.number_input("Desired Oxygen : micromole/liter", key="pt_flow_desired_oxygen")
+                    st.number_input("Proportional Gain", key="pt_flow_kp")
+                    st.number_input("Integral Gain", key="pt_flow_ki")
+                    st.number_input("Derivative Gain", key="pt_flow_kd")
+                    submitted = st.form_submit_button("Send")
+                    if submitted:
+                        mod = st.session_state.get("pt_selected_module")
+                        payload = {
+                            "type": "flow_pid",
+                            "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
+                            "kp": float(st.session_state.pt_flow_kp),
+                            "ki": float(st.session_state.pt_flow_ki),
+                            "kd": float(st.session_state.pt_flow_kd),
+                        }
+                        ok = _publish_pid_command(mod, payload)
+                        if ok:
+                            show_toast(
+                                f"Flow PID sent to {mod}",
+                                "success",
+                                source="Flow Control Gains",
+                            )
 
         # Pressure Controller Gains window
         with gains_cols[1]:
             with st.container(border=True):
                 st.subheader("Pressure Controller Gains")
-                st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure", on_change=_mark_ui_edit)
-                st.number_input("Proportional Gain", key="pt_pressure_kp", on_change=_mark_ui_edit)
-                st.number_input("Integral Gain", key="pt_pressure_ki", on_change=_mark_ui_edit)
-                st.number_input("Derivative Gain", key="pt_pressure_kd", on_change=_mark_ui_edit)
-                if st.button("Send", key="pt_pressure_send"):
-                    mod = st.session_state.get("pt_selected_module")
-                    payload = {
-                        "type": "pressure_pid",
-                        "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
-                        "kp": float(st.session_state.pt_pressure_kp),
-                        "ki": float(st.session_state.pt_pressure_ki),
-                        "kd": float(st.session_state.pt_pressure_kd),
-                    }
-                    ok = _publish_pid_command(mod, payload)
-                    if ok:
-                        show_toast(
-                            f"Pressure PID sent to {mod}",
-                            "success",
-                            source="Pressure Controller Gains",
-                        )
+                with st.form("pressure_gains_form"):
+                    st.number_input("Desired Pressure : psi", key="pt_pressure_desired_pressure")
+                    st.number_input("Proportional Gain", key="pt_pressure_kp")
+                    st.number_input("Integral Gain", key="pt_pressure_ki")
+                    st.number_input("Derivative Gain", key="pt_pressure_kd")
+                    submitted2 = st.form_submit_button("Send")
+                    if submitted2:
+                        mod = st.session_state.get("pt_selected_module")
+                        payload = {
+                            "type": "pressure_pid",
+                            "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
+                            "kp": float(st.session_state.pt_pressure_kp),
+                            "ki": float(st.session_state.pt_pressure_ki),
+                            "kd": float(st.session_state.pt_pressure_kd),
+                        }
+                        ok = _publish_pid_command(mod, payload)
+                        if ok:
+                            show_toast(
+                                f"Pressure PID sent to {mod}",
+                                "success",
+                                source="Pressure Controller Gains",
+                            )
 
     with right:
         with st.container(border=True):
