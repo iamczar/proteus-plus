@@ -93,8 +93,18 @@ def _publish_pid_command(module_id: str | int, payload: dict) -> bool:
             "timestamp": datetime.now().isoformat(),
             "message": payload,
         }
-        MQTTService().publish(topic, envelope)
+        # Publish via singleton client
+        get_mqtt().publish(topic, envelope)
         _pt_append_log(f">> SEND {payload}")
+        # Track last enable/disable to update UI immediately on ack
+        try:
+            t = str(payload.get("type", ""))
+            if t == "flow_pid_enable":
+                st.session_state["_pt_last_toggle"] = {"controller": "flow", "enabled": bool(payload.get("enabled", False))}
+            elif t == "pressure_pid_enable":
+                st.session_state["_pt_last_toggle"] = {"controller": "pressure", "enabled": bool(payload.get("enabled", False))}
+        except Exception:
+            pass
         return True
     except Exception as exc:
         _pt_append_log(f"!! Publish failed: {exc}")
@@ -304,6 +314,20 @@ def _pid_status_tick():
                 status = str(inner.get("status", "")).lower() if isinstance(inner, dict) else ""
                 if cmd == "pid_cmd" and status in ("ack", "acknowledged", "received"):
                     _pt_append_log("<< ACK pid_cmd from Alpha")
+                    # If this ack corresponds to a recent toggle, flip the UI immediately
+                    toggle = st.session_state.get("_pt_last_toggle")
+                    if isinstance(toggle, dict):
+                        controller = toggle.get("controller")
+                        enabled = bool(toggle.get("enabled"))
+                        if controller == "flow":
+                            st.session_state.pt_flow_status = {**(st.session_state.get("pt_flow_status") or {}), "pid_enabled": enabled}
+                        elif controller == "pressure":
+                            st.session_state.pt_pressure_status = {**(st.session_state.get("pt_pressure_status") or {}), "pid_enabled": enabled}
+                        # Clear the pending toggle so we don't repeat
+                        try:
+                            del st.session_state["_pt_last_toggle"]
+                        except Exception:
+                            pass
             except Exception:
                 pass
     except Exception:
