@@ -592,7 +592,8 @@ def _charts_tick():
             if vmax == vmin:
                 vmax = vmin + 1.0
             span = max(1e-6, vmax - vmin)
-            vmin_p = min(default_min, vmin - pad_ratio * span)
+            # Never go below default_min (e.g., keep 0 as the floor so the x-axis stays at the bottom)
+            vmin_p = max(default_min, vmin - pad_ratio * span)
             vmax_p = vmax + pad_ratio * span
             old_min = st.session_state.get(state_key_min, vmin_p)
             old_max = st.session_state.get(state_key_max, vmax_p)
