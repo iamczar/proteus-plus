@@ -186,8 +186,7 @@ with st.container(border=True):
         if chosen != placeholder_label and chosen != previous_value:
             st.session_state.pt_selected_module = chosen
             # Reset chart state and buffers on module change
-            st.session_state.pt_chart_elements = []
-            st.session_state.pt_painted_len = 0
+            # Reset only data buffers on module change; charts are stateless now
             st.session_state.pt_data = {
                 "t": [],
                 "ox_desired": [],
@@ -448,106 +447,89 @@ def _base_multi_series_chart() -> alt.Chart:
     )
 
 
-# Initialize chart containers once and keep updating (Altair)
-def _init_pid_charts_altair() -> None:
-    # Create stable placeholders once
-    if "pt_chart_placeholders" not in st.session_state or len(st.session_state.get("pt_chart_placeholders") or []) != 4:
-        p_holders = []
-        c1, c2 = st.columns([1, 1], gap="small")
-        with c1:
-            with st.container(border=True):
-                st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
-                p_holders.append(st.empty())
-        with c2:
-            with st.container(border=True):
-                st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
-                p_holders.append(st.empty())
+def _build_long_df(buf: dict):
+    try:
+        t = pd.to_datetime(pd.Series(buf.get("t", []), dtype="int64"), unit="s")
+    except Exception:
+        t = pd.to_datetime(pd.Series([], dtype="int64"), unit="s")
 
-        c3, c4 = st.columns([1, 1], gap="small")
-        with c3:
-            with st.container(border=True):
-                st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
-                p_holders.append(st.empty())
-        with c4:
-            with st.container(border=True):
-                st.subheader("Desired Pressure vs Actual Pressure  Time")
-                p_holders.append(st.empty())
+    # Chart 1: Desired O2 + 3 measured
+    df1 = pd.concat([
+        pd.DataFrame({"x": t, "series": "Desired", "y": pd.Series(buf.get("ox_desired", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Measured A", "y": pd.Series(buf.get("ox_meas1", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Measured B", "y": pd.Series(buf.get("ox_meas2", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Measured C", "y": pd.Series(buf.get("ox_meas3", []), dtype="float64")}),
+    ], ignore_index=True)
 
-        st.session_state.pt_chart_placeholders = p_holders
+    # Chart 2: Flow desired vs actual
+    df2 = pd.concat([
+        pd.DataFrame({"x": t, "series": "Desired", "y": pd.Series(buf.get("flow_desired", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Actual",  "y": pd.Series(buf.get("flow_actual", []), dtype="float64")}),
+    ], ignore_index=True)
 
-    # Render fresh charts into placeholders every run so they remain mounted
-    elements: list = []
-    base_chart = _base_multi_series_chart()
-    for ph in st.session_state.pt_chart_placeholders:
-        elements.append(ph.altair_chart(base_chart, use_container_width=True))
+    # Chart 3: Pressure pump desired vs actual (use press_pump_actual)
+    df3 = pd.concat([
+        pd.DataFrame({"x": t, "series": "Desired", "y": pd.Series(buf.get("press_pump_desired", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Actual",  "y": pd.Series(buf.get("press_pump_actual", []), dtype="float64")}),
+    ], ignore_index=True)
 
-    st.session_state.pt_chart_elements = elements
-    if "pt_painted_len" not in st.session_state:
-        st.session_state.pt_painted_len = 0
+    # Chart 4: Pressure desired vs actual
+    df4 = pd.concat([
+        pd.DataFrame({"x": t, "series": "Desired", "y": pd.Series(buf.get("pressure_desired", []), dtype="float64")}),
+        pd.DataFrame({"x": t, "series": "Actual",  "y": pd.Series(buf.get("pressure_actual", []), dtype="float64")}),
+    ], ignore_index=True)
+
+    return df1, df2, df3, df4
 
 
-if st.session_state.get("pt_selected_module"):
-    _init_pid_charts_altair()
+def _base_chart(df: pd.DataFrame) -> alt.Chart:
+    return (
+        alt.Chart(df)
+        .mark_line()
+        .encode(
+            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+            y=alt.Y("y:Q", title=None),
+            color=alt.Color("series:N", legend=alt.Legend(title=None)),
+        )
+        .transform_window(index="row_number()", sort=[alt.SortField("x")])
+        .transform_window(max_index="max(index)", frame=[None, None])
+        .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
+    )
 
 
 @st.fragment(run_every=1.0)
-def _update_charts_stream():
-    # Only render when a module is selected
+def _charts_tick():
     if not st.session_state.get("pt_selected_module"):
         return
-    # Just paint whatever is accumulated by the background collector
-    data = st.session_state.pt_data
-    charts = st.session_state.get("pt_chart_elements", [])
-    if len(charts) != 4:
+    buf = st.session_state.get("pt_data", {})
+    if not buf or not buf.get("t"):
         return
 
-    start = int(st.session_state.get("pt_painted_len", 0))
-    end = len(data.get("t", []))
-    if end <= start:
-        return
-    for i in range(start, end):
-        ts = pd.to_datetime(int(data["t"][i]), unit="s")
-        # Chart 1: Oxygen desired + 3 measured (long format)
-        df1 = pd.DataFrame(
-            [
-                {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
-                {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
-                {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
-                {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
-            ]
-        )
-        charts[0].add_rows(df1)
+    df1, df2, df3, df4 = _build_long_df(buf)
 
-        # Chart 2: Flow pump desired vs actual (multi-series)
-        df2 = pd.DataFrame(
-            [
-                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-            ]
-        )
-        charts[1].add_rows(df2)
+    c1, c2 = st.columns([1, 1], gap="small")
+    with c1:
+        with st.container(border=True):
+            st.subheader("Desired Oxygen + 3 Measured Oxygen vs Time")
+            st.altair_chart(_base_chart(df1), use_container_width=True)
+    with c2:
+        with st.container(border=True):
+            st.subheader("Desired Speed of Flow Pump vs actual flow rate vs Time")
+            st.altair_chart(_base_chart(df2), use_container_width=True)
 
-        # Chart 3: Desired Speed of Pressure Pump vs actual flow rate (multi-series)
-        df3 = pd.DataFrame(
-            [
-                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-            ]
-        )
-        charts[2].add_rows(df3)
+    c3, c4 = st.columns([1, 1], gap="small")
+    with c3:
+        with st.container(border=True):
+            st.subheader("Desired Speed of Pressure Pump vs actual speed flow rate vs Time")
+            st.altair_chart(_base_chart(df3), use_container_width=True)
+    with c4:
+        with st.container(border=True):
+            st.subheader("Desired Pressure vs Actual Pressure  Time")
+            st.altair_chart(_base_chart(df4), use_container_width=True)
 
-        # Chart 4: Pressure desired vs actual (multi-series)
-        df4 = pd.DataFrame(
-            [
-                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
-            ]
-        )
-        charts[3].add_rows(df4)
-
-    st.session_state.pt_painted_len = end
+_charts_tick()
 
 
-_update_charts_stream()
+    
 
 
