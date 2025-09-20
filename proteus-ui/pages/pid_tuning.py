@@ -391,7 +391,7 @@ else:
                     st.number_input("Proportional Gain", key="pt_flow_kp")
                     st.number_input("Integral Gain", key="pt_flow_ki")
                     st.number_input("Derivative Gain", key="pt_flow_kd")
-                    submitted = st.form_submit_button("Send", key="pt_flow_submit")
+                    submitted = st.form_submit_button("Send")
                     if submitted:
                         mod = st.session_state.get("pt_selected_module")
                         payload = {
@@ -408,6 +408,10 @@ else:
                                 "success",
                                 source="Flow Control Gains",
                             )
+                        try:
+                            st.session_state["_pt_last_edit_ts"] = time.time()
+                        except Exception:
+                            pass
 
         # Pressure Controller Gains window
         with gains_cols[1]:
@@ -418,7 +422,7 @@ else:
                     st.number_input("Proportional Gain", key="pt_pressure_kp")
                     st.number_input("Integral Gain", key="pt_pressure_ki")
                     st.number_input("Derivative Gain", key="pt_pressure_kd")
-                    submitted2 = st.form_submit_button("Send", key="pt_pressure_submit")
+                    submitted2 = st.form_submit_button("Send")
                     if submitted2:
                         mod = st.session_state.get("pt_selected_module")
                         payload = {
@@ -435,6 +439,10 @@ else:
                                 "success",
                                 source="Pressure Controller Gains",
                             )
+                        try:
+                            st.session_state["_pt_last_edit_ts"] = time.time()
+                        except Exception:
+                            pass
 
     with right:
         with st.container(border=True):
