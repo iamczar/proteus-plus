@@ -351,10 +351,7 @@ def _refresh_pid_status_once(module_id: str | int) -> None:
                         updated = True
             except Exception:
                 pass
-        if updated:
-            # Only refresh the page when values changed to avoid flicker
-            import streamlit as _st
-            _st.rerun()
+        # No explicit rerun; Streamlit will rerun after button click automatically
     except Exception:
         pass
 
@@ -381,13 +378,14 @@ else:
                 st.number_input("Derivative Gain", key="pt_flow_kd")
                 if st.button("Send", key="pt_flow_send"):
                     mod = st.session_state.get("pt_selected_module")
-                    ok = _publish_pid_command(mod, {
+                    payload = {
                         "type": "flow_pid",
                         "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
                         "kp": float(st.session_state.pt_flow_kp),
                         "ki": float(st.session_state.pt_flow_ki),
                         "kd": float(st.session_state.pt_flow_kd),
-                    })
+                    }
+                    ok = _publish_pid_command(mod, payload)
                     if ok:
                         show_toast(
                             f"Flow PID sent to {mod}",
@@ -405,13 +403,14 @@ else:
                 st.number_input("Derivative Gain", key="pt_pressure_kd")
                 if st.button("Send", key="pt_pressure_send"):
                     mod = st.session_state.get("pt_selected_module")
-                    ok = _publish_pid_command(mod, {
+                    payload = {
                         "type": "pressure_pid",
                         "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
                         "kp": float(st.session_state.pt_pressure_kp),
                         "ki": float(st.session_state.pt_pressure_ki),
                         "kd": float(st.session_state.pt_pressure_kd),
-                    })
+                    }
+                    ok = _publish_pid_command(mod, payload)
                     if ok:
                         show_toast(
                             f"Pressure PID sent to {mod}",
@@ -448,6 +447,7 @@ else:
                             ("success" if target else "warning"),
                             source="PID Tuning",
                         )
+                        # Do not force rerun; rely on next heartbeat to refresh chip
 
                 # Live flow PID status panel
                 try:
@@ -488,6 +488,7 @@ else:
                             ("success" if target else "warning"),
                             source="PID Tuning",
                         )
+                        # Do not force rerun; rely on next heartbeat
 
                 # Live pressure PID status panel
                 try:
