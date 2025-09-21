@@ -42,6 +42,7 @@ for k, v in defaults_pressure.items():
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
 st.session_state.setdefault("pt_logs", [])
+st.session_state.setdefault("pt_diag_disable_charts", False)
  
 
  
@@ -302,6 +303,9 @@ st.markdown(
 
 
  
+# Diagnostics controls (charts toggle)
+with st.expander("Diagnostics", expanded=False):
+    st.checkbox("Disable charts/graphs", key="pt_diag_disable_charts")
 
  
 
@@ -583,7 +587,8 @@ else:
             log_content2 = "\n".join(st.session_state.get("pt_logs", [])[-400:])
             st.markdown(f"<div class='pt-log-box'>{log_content2}</div>", unsafe_allow_html=True)
 
-        def _ensure_pt_chart_handles(force: bool = False):
+        if not st.session_state.get("pt_diag_disable_charts"):
+            def _ensure_pt_chart_handles(force: bool = False):
             try:
                 mod = st.session_state.get("pt_selected_module") or ""
                 init_key = ("pt_charts", mod)
@@ -659,10 +664,12 @@ else:
             except Exception:
                 pass
 
-        _ensure_pt_chart_handles()
+        if not st.session_state.get("pt_diag_disable_charts"):
+            _ensure_pt_chart_handles()
 
-        @st.fragment(run_every=0.5)
-        def _pt_charts_tick():
+        if not st.session_state.get("pt_diag_disable_charts"):
+            @st.fragment(run_every=0.5)
+            def _pt_charts_tick():
             try:
                 charts = st.session_state.get("pt_chart_elements") or {}
                 data = st.session_state.get("pt_data") or {}
@@ -739,10 +746,11 @@ else:
             except Exception:
                 pass
 
-        _pt_charts_tick()
+            _pt_charts_tick()
 
-        @st.fragment(run_every=0.5)
-        def _pt_live_collector():
+        if not st.session_state.get("pt_diag_disable_charts"):
+            @st.fragment(run_every=0.5)
+            def _pt_live_collector():
             mod = st.session_state.get("pt_selected_module")
             if not mod:
                 return
@@ -768,7 +776,7 @@ else:
             except Exception:
                 pass
 
-        _pt_live_collector()
+            _pt_live_collector()
 
 
  
