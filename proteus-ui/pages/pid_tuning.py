@@ -301,15 +301,7 @@ st.markdown(
 )
 
 
-@st.fragment(run_every=0.5)
-def _logs_tick():
-    st.subheader("PID Tuning Logs")
-    form_key = "pt_clear_logs_form_main"
-    with st.form(form_key):
-        if st.form_submit_button("Clear"):
-            st.session_state.pt_logs = []
-    log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
-    st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
+ 
 
 # Diagnostics controls (optional)
 with st.expander("Diagnostics", expanded=False):
@@ -479,13 +471,39 @@ else:
                         ok = _publish_pid_command(mod, payload)
 
     with right:
+        # Render toggle controls outside of auto-refreshing fragments
+        with st.container(border=True):
+            s = st.session_state.get("pt_flow_status") or {}
+            flow_enabled = bool(s.get("pid_enabled", False))
+            toggle_label = "Disable Flow PID" if flow_enabled else "Enable Flow PID"
+            with st.form("pt_flow_enable_form"):
+                submitted_toggle = st.form_submit_button(toggle_label)
+                if submitted_toggle:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not flow_enabled
+                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                    if ok:
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+
+        with st.container(border=True):
+            s2 = st.session_state.get("pt_pressure_status") or {}
+            pressure_enabled = bool(s2.get("pid_enabled", False))
+            toggle_label2 = "Disable Pressure PID" if pressure_enabled else "Enable Pressure PID"
+            with st.form("pt_pressure_enable_form"):
+                submitted_toggle2 = st.form_submit_button(toggle_label2)
+                if submitted_toggle2:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not pressure_enabled
+                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                    if ok:
+                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+
         @st.fragment(run_every=1.0)
-        def _pid_right_panel():
+        def _pid_right_status():
             try:
                 with st.container(border=True):
                     c1, c2 = st.columns([1, 1], gap="small")
 
-                    # Flow PID column (left)
                     with c1:
                         s = st.session_state.get("pt_flow_status") or {}
                         flow_enabled = bool(s.get("pid_enabled", False))
@@ -494,17 +512,6 @@ else:
                             flow_enabled,
                         )
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                        # Toggle button reflects live state and always sends the inverse
-                        toggle_label = "Disable PID" if flow_enabled else "Enable PID"
-                        with st.form("pt_flow_enable_form"):
-                            submitted_toggle = st.form_submit_button(toggle_label)
-                            if submitted_toggle:
-                                mod = st.session_state.get("pt_selected_module")
-                                target = not flow_enabled
-                                ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                                if ok:
-                                    _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
-                        # Live flow PID status panel
                         try:
                             s = st.session_state.get("pt_flow_status") or {}
                             with st.container(border=True):
@@ -518,7 +525,6 @@ else:
                         except Exception:
                             pass
 
-                    # Pressure PID column (right)
                     with c2:
                         s2 = st.session_state.get("pt_pressure_status") or {}
                         pressure_enabled = bool(s2.get("pid_enabled", False))
@@ -527,17 +533,6 @@ else:
                             pressure_enabled,
                         )
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                        # Toggle button reflects live state and always sends the inverse
-                        toggle_label2 = "Disable PID" if pressure_enabled else "Enable PID"
-                        with st.form("pt_pressure_enable_form"):
-                            submitted_toggle2 = st.form_submit_button(toggle_label2)
-                            if submitted_toggle2:
-                                mod = st.session_state.get("pt_selected_module")
-                                target = not pressure_enabled
-                                ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                                if ok:
-                                    _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
-                        # Live pressure PID status panel
                         try:
                             with st.container(border=True):
                                 st.caption("Current Pressure PID Status")
@@ -549,14 +544,12 @@ else:
                                 st.markdown(f"Enabled: {bool(s2.get('pid_enabled', False))}")
                         except Exception:
                             pass
-
-                # (logs panel removed from right; shown in left column above charts)
             except Exception as e:
                 if _dbg_rate_ok("right/error", 2.0):
                     _pt_append_log(f"dbg: right_panel error: {e}")
 
         if not st.session_state.get("pt_diag_disable_right"):
-            _pid_right_panel()
+            _pid_right_status()
         else:
             if _dbg_rate_ok("right/disabled", 5.0):
                 _pt_append_log("dbg: right panel disabled by diagnostics toggle")
