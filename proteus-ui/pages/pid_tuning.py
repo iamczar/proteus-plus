@@ -230,69 +230,54 @@ def _append_live_point(payload: dict) -> None:
  
 
 # -----------------------------
-# First block: Module selection + Toasts
+# First block: Module selection (shared with Live View) + Toasts
 # -----------------------------
-modules = ModuleManager().get_available_modules() or []
-with st.container(border=True):
-    if not modules:
-        st.info("No modules detected.")
-    else:
-        placeholder_label = "— Select a module —"
-        previous_value = st.session_state.get("pt_selected_module")
-        if previous_value is not None and previous_value not in modules:
-            try:
-                del st.session_state["pt_selected_module"]
-            except Exception:
-                pass
-            previous_value = None
+# Reuse the shared selector so the chosen module stays consistent across pages.
+ModuleManager().select_module()
 
-        chosen = st.selectbox(
-            label="Module Selection (local):",
-            options=[placeholder_label] + modules if previous_value is None else modules,
-            index=0 if previous_value is None else (modules.index(previous_value) if previous_value in modules else 0),
-            key="_pt_module_select",
-        )
-
-        if chosen != placeholder_label and chosen != previous_value:
-            st.session_state.pt_selected_module = chosen
+# Sync PID Tuning's local state to the global selection and backfill when it changes
+global_selected = st.session_state.get("selected_module")
+prev_local = st.session_state.get("pt_selected_module")
+if global_selected != prev_local:
+    st.session_state.pt_selected_module = global_selected
+    if global_selected:
+        try:
             # Backfill from JSONL tail (last 5 hours)
-            try:
-                st.session_state.pt_data = {
-                    "t": [],
-                    "ox_desired": [],
-                    "ox_meas1": [],
-                    "ox_meas2": [],
-                    "ox_meas3": [],
-                    "flow_desired": [],
-                    "flow_actual": [],
-                    "press_pump_desired": [],
-                    "press_pump_actual": [],
-                    "pressure_desired": [],
-                    "pressure_actual": [],
-                }
-                live_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pidlive")
-                fpath = os.path.join(live_dir, f"{chosen}.jsonl")
-                if os.path.exists(fpath):
-                    now = int(time.time())
-                    cutoff = now - 18_000
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        lines = f.readlines()[-MAX_POINTS:]
-                    for line in lines:
-                        try:
-                            rec = json.loads(line)
-                            ts = int(rec.get("ts"))
-                            if ts < cutoff:
-                                continue
-                            st.session_state.pt_data["t"].append(ts)
-                            for k in ("ox_desired","ox_meas1","ox_meas2","ox_meas3","flow_desired","flow_actual","press_pump_desired","press_pump_actual","pressure_desired","pressure_actual"):
-                                st.session_state.pt_data[k].append(float(rec.get(k, 0.0)))
-                        except Exception:
+            st.session_state.pt_data = {
+                "t": [],
+                "ox_desired": [],
+                "ox_meas1": [],
+                "ox_meas2": [],
+                "ox_meas3": [],
+                "flow_desired": [],
+                "flow_actual": [],
+                "press_pump_desired": [],
+                "press_pump_actual": [],
+                "pressure_desired": [],
+                "pressure_actual": [],
+            }
+            live_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pidlive")
+            fpath = os.path.join(live_dir, f"{global_selected}.jsonl")
+            if os.path.exists(fpath):
+                now = int(time.time())
+                cutoff = now - 18_000
+                with open(fpath, "r", encoding="utf-8") as f:
+                    lines = f.readlines()[-MAX_POINTS:]
+                for line in lines:
+                    try:
+                        rec = json.loads(line)
+                        ts = int(rec.get("ts"))
+                        if ts < cutoff:
                             continue
-                st.session_state._pt_stream_idx = len(st.session_state.pt_data["t"]) or 0
-            except Exception:
-                pass
-            _pt_append_log(f">> Selected module: {chosen}")
-            # No explicit rerun; Streamlit triggers one automatically on select change
+                        st.session_state.pt_data["t"].append(ts)
+                        for k in ("ox_desired","ox_meas1","ox_meas2","ox_meas3","flow_desired","flow_actual","press_pump_desired","press_pump_actual","pressure_desired","pressure_actual"):
+                            st.session_state.pt_data[k].append(float(rec.get(k, 0.0)))
+                    except Exception:
+                        continue
+            st.session_state._pt_stream_idx = len(st.session_state.pt_data["t"]) or 0
+        except Exception:
+            pass
+        _pt_append_log(f">> Selected module: {global_selected}")
 
 # Terminal-style log panel CSS
 st.markdown(
