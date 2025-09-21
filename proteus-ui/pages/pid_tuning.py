@@ -641,7 +641,9 @@ def _ensure_stream_charts(recreate: bool = False):
                 y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=[ymin, ymax], nice=False, clamp=True)),
                 color=alt.Color("series:N", legend=alt.Legend(title=None)),
             )
-        return st.altair_chart(base, use_container_width=True)
+        ch = st.altair_chart(base, use_container_width=True)
+        _dbg(f"mk_chart {ymin_key}/{ymax_key} domain=[{ymin},{ymax}]")
+        return ch
 
     c1, c2 = st.columns([1, 1], gap="small")
     with c1:
