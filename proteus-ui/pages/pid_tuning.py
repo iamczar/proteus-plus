@@ -98,6 +98,15 @@ def _pt_append_log(message: str) -> None:
             get_mqtt().publish("debug/pid", payload)
         except Exception:
             pass
+        # Mirror user-facing log lines into the on-page PID Tuning Logs
+        try:
+            if isinstance(message, str) and message.strip().startswith((">>", "<<")):
+                logs = st.session_state.get("pt_logs", [])
+                logs.append(message)
+                # Cap to last 1000 entries to bound memory
+                st.session_state.pt_logs = logs[-1000:]
+        except Exception:
+            pass
     except Exception:
         pass
 
