@@ -42,7 +42,7 @@ for k, v in defaults_pressure.items():
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
 st.session_state.setdefault("pt_logs", [])
-st.session_state.setdefault("pt_diag_disable_right", False)
+ 
 
  
 
@@ -390,20 +390,12 @@ def _pid_status_tick():
                 status = str(inner.get("status", "")).lower() if isinstance(inner, dict) else ""
                 if cmd == "pid_cmd" and status in ("ack", "acknowledged", "received"):
                     _pt_append_log("<< ACK pid_cmd from Alpha")
-                    # If this ack corresponds to a recent toggle, flip the UI immediately
-                    toggle = st.session_state.get("_pt_last_toggle")
-                    if isinstance(toggle, dict):
-                        controller = toggle.get("controller")
-                        enabled = bool(toggle.get("enabled"))
-                        if controller == "flow":
-                            st.session_state.pt_flow_status = {**(st.session_state.get("pt_flow_status") or {}), "pid_enabled": enabled}
-                        elif controller == "pressure":
-                            st.session_state.pt_pressure_status = {**(st.session_state.get("pt_pressure_status") or {}), "pid_enabled": enabled}
-                        # Clear the pending toggle so we don't repeat
-                        try:
+                    # Avoid mutating UI state inside ack path; rely on status topics to update
+                    try:
+                        if "_pt_last_toggle" in st.session_state:
                             del st.session_state["_pt_last_toggle"]
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
             except Exception:
                 pass
     except Exception:
@@ -487,43 +479,6 @@ else:
                             _pt_append_log(f"!! error publishing pressure gains: {e}")
 
     with right:
-        # Render toggle controls outside of auto-refreshing fragments
-        with st.container(border=True):
-            s = st.session_state.get("pt_flow_status") or {}
-            flow_enabled = bool(s.get("pid_enabled", False))
-            toggle_label = "Disable Flow PID" if flow_enabled else "Enable Flow PID"
-            with st.form("pt_flow_enable_form"):
-                submitted_toggle = st.form_submit_button(toggle_label)
-                if submitted_toggle:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not flow_enabled
-                    _pt_append_log(f">> CLICK Toggle Flow PID (mod={mod}) target={target}")
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                        _pt_append_log(f"dbg: publish flow toggle ok={ok}")
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing flow toggle: {e}")
-
-        with st.container(border=True):
-            s2 = st.session_state.get("pt_pressure_status") or {}
-            pressure_enabled = bool(s2.get("pid_enabled", False))
-            toggle_label2 = "Disable Pressure PID" if pressure_enabled else "Enable Pressure PID"
-            with st.form("pt_pressure_enable_form"):
-                submitted_toggle2 = st.form_submit_button(toggle_label2)
-                if submitted_toggle2:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not pressure_enabled
-                    _pt_append_log(f">> CLICK Toggle Pressure PID (mod={mod}) target={target}")
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                        _pt_append_log(f"dbg: publish pressure toggle ok={ok}")
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing pressure toggle: {e}")
-
         @st.fragment(run_every=1.0)
         def _pid_right_status():
             try:
@@ -574,11 +529,45 @@ else:
                 if _dbg_rate_ok("right/error", 2.0):
                     _pt_append_log(f"dbg: right_panel error: {e}")
 
-        if not st.session_state.get("pt_diag_disable_right"):
-            _pid_right_status()
-        else:
-            if _dbg_rate_ok("right/disabled", 5.0):
-                _pt_append_log("dbg: right panel disabled by diagnostics toggle")
+        _pid_right_status()
+
+        # Place buttons directly under their respective status panels
+        c1_btns, c2_btns = st.columns([1, 1], gap="small")
+        with c1_btns:
+            s = st.session_state.get("pt_flow_status") or {}
+            flow_enabled = bool(s.get("pid_enabled", False))
+            toggle_label = "Disable Flow PID" if flow_enabled else "Enable Flow PID"
+            with st.form("pt_flow_enable_form"):
+                submitted_toggle = st.form_submit_button(toggle_label)
+                if submitted_toggle:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not flow_enabled
+                    _pt_append_log(f">> CLICK Toggle Flow PID (mod={mod}) target={target}")
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                        _pt_append_log(f"dbg: publish flow toggle ok={ok}")
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing flow toggle: {e}")
+
+        with c2_btns:
+            s2 = st.session_state.get("pt_pressure_status") or {}
+            pressure_enabled = bool(s2.get("pid_enabled", False))
+            toggle_label2 = "Disable Pressure PID" if pressure_enabled else "Enable Pressure PID"
+            with st.form("pt_pressure_enable_form"):
+                submitted_toggle2 = st.form_submit_button(toggle_label2)
+                if submitted_toggle2:
+                    mod = st.session_state.get("pt_selected_module")
+                    target = not pressure_enabled
+                    _pt_append_log(f">> CLICK Toggle Pressure PID (mod={mod}) target={target}")
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                        _pt_append_log(f"dbg: publish pressure toggle ok={ok}")
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing pressure toggle: {e}")
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
 
