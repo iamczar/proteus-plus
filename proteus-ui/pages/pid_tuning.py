@@ -27,6 +27,9 @@ inject_button_theme(height="32px", min_width="110px", font_size="14px", padding_
 if "pt_selected_module" not in st.session_state:
     st.session_state.pt_selected_module = None
 
+# Live data window and chart settings
+MAX_POINTS = 1800  # show only the last 1800 samples
+
 # Flow PID values
 defaults_flow = {"desired_oxygen": 2000.0, "kp": 0.1, "ki": 1.0, "kd": 3.0}
 defaults_pressure = {"desired_pressure": 2.0, "kp": 0.1, "ki": 1.0, "kd": 3.0}
@@ -563,6 +566,160 @@ else:
                 _pt_append_log("dbg: right panel disabled by diagnostics toggle")
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
+
+    # --- Charts (left side, below gains) ---
+    with left:
+        def _ensure_pt_chart_handles(force: bool = False):
+            try:
+                mod = st.session_state.get("pt_selected_module") or ""
+                init_key = ("pt_charts", mod)
+                need_init = force or (st.session_state.get("_pt_charts_key") != init_key)
+                need_init = need_init or ("pt_chart_elements" not in st.session_state)
+                if not need_init:
+                    return
+                # Build three overlay charts: Oxygen, Flow, Pressure
+                chart_elems = {}
+                # Oxygen
+                st.subheader("Oxygen (desired vs measured)")
+                df0 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base0 = (
+                    alt.Chart(df0)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                    )
+                )
+                chart_elems["oxygen"] = st.altair_chart(base0, use_container_width=True)
+
+                # Flow
+                st.subheader("Flow (desired vs actual)")
+                df1 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base1 = (
+                    alt.Chart(df1)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                    )
+                )
+                chart_elems["flow"] = st.altair_chart(base1, use_container_width=True)
+
+                # Pressure
+                st.subheader("Pressure (desired vs actual)")
+                df2 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base2 = (
+                    alt.Chart(df2)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                    )
+                )
+                chart_elems["pressure"] = st.altair_chart(base2, use_container_width=True)
+
+                st.session_state.pt_chart_elements = chart_elems
+                # Set painted length so the updater can stream only new points
+                painted_len = len(st.session_state.get("pt_data", {}).get("t", []))
+                st.session_state._pt_painted_len = painted_len
+                st.session_state._pt_charts_key = init_key
+            except Exception:
+                pass
+
+        _ensure_pt_chart_handles()
+
+        @st.fragment(run_every=0.5)
+        def _pt_charts_tick():
+            try:
+                charts = st.session_state.get("pt_chart_elements") or {}
+                data = st.session_state.get("pt_data") or {}
+                t = data.get("t") or []
+                if not charts or not t:
+                    return
+                start = int(st.session_state.get("_pt_painted_len") or 0)
+                end = len(t)
+                if end <= start:
+                    return
+                # Build incremental rows for each chart
+                rows_oxygen = {"x": [], "y": [], "series": []}
+                rows_flow = {"x": [], "y": [], "series": []}
+                rows_pressure = {"x": [], "y": [], "series": []}
+                for i in range(start, end):
+                    x_ts = pd.to_datetime(int(t[i]), unit="s")
+                    # Oxygen: desired and measured (sensor 1)
+                    rows_oxygen["x"].extend([x_ts, x_ts])
+                    rows_oxygen["y"].extend([
+                        float(data.get("ox_desired", [0.0])[i] if len(data.get("ox_desired", [])) > i else 0.0),
+                        float(data.get("ox_meas1", [0.0])[i] if len(data.get("ox_meas1", [])) > i else 0.0),
+                    ])
+                    rows_oxygen["series"].extend(["Desired", "Measured"])
+                    # Flow
+                    rows_flow["x"].extend([x_ts, x_ts])
+                    rows_flow["y"].extend([
+                        float(data.get("flow_desired", [0.0])[i] if len(data.get("flow_desired", [])) > i else 0.0),
+                        float(data.get("flow_actual", [0.0])[i] if len(data.get("flow_actual", [])) > i else 0.0),
+                    ])
+                    rows_flow["series"].extend(["Desired", "Actual"])
+                    # Pressure
+                    rows_pressure["x"].extend([x_ts, x_ts])
+                    rows_pressure["y"].extend([
+                        float(data.get("pressure_desired", [0.0])[i] if len(data.get("pressure_desired", [])) > i else 0.0),
+                        float(data.get("pressure_actual", [0.0])[i] if len(data.get("pressure_actual", [])) > i else 0.0),
+                    ])
+                    rows_pressure["series"].extend(["Desired", "Actual"])
+
+                try:
+                    if charts.get("oxygen"):
+                        charts["oxygen"].add_rows(pd.DataFrame(rows_oxygen))
+                except Exception:
+                    pass
+                try:
+                    if charts.get("flow"):
+                        charts["flow"].add_rows(pd.DataFrame(rows_flow))
+                except Exception:
+                    pass
+                try:
+                    if charts.get("pressure"):
+                        charts["pressure"].add_rows(pd.DataFrame(rows_pressure))
+                except Exception:
+                    pass
+                st.session_state._pt_painted_len = end
+            except Exception:
+                pass
+
+        _pt_charts_tick()
+
+        @st.fragment(run_every=0.5)
+        def _pt_live_collector():
+            mod = st.session_state.get("pt_selected_module")
+            if not mod:
+                return
+            try:
+                topic = f"live-sensor-data/{mod}"
+                sub_key = ("_pt_live_topic", topic)
+                if st.session_state.get("_pt_live_topic") != topic:
+                    try:
+                        get_mqtt().subscribe(topic)
+                        st.session_state._pt_live_topic = topic
+                    except Exception:
+                        pass
+                updates = get_mqtt().drain(topic, max_items=500)
+                for _, payload in updates:
+                    try:
+                        if not isinstance(payload, dict):
+                            continue
+                        if payload.get("message_source") != "data_logger":
+                            continue
+                        _append_live_point(payload)
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        _pt_live_collector()
 
 
  
