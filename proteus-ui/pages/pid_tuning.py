@@ -836,7 +836,7 @@ def _grow_y_bounds(values: list[float], prefix: str) -> bool:
     return changed
 
 
-@st.fragment(run_every=0.5)
+@st.fragment(run_every=1.0)
 def _charts_stream():
     try:
         if st.session_state.get("pt_diag_disable_charts"):
