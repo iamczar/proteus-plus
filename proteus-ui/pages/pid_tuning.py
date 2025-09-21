@@ -68,8 +68,17 @@ def get_mqtt() -> MQTTService:
     return st.session_state._pt_mqtt
 def _pt_append_log(message: str) -> None:
     try:
-        st.session_state.pt_logs.append(message)
-        st.session_state.pt_logs = st.session_state.pt_logs[-400:]
+        # Also publish to MQTT debug topic
+        try:
+            payload = {
+                "message_source": "proteus-ui",
+                "timestamp": datetime.now().isoformat(),
+                "module": st.session_state.get("pt_selected_module"),
+                "message": message,
+            }
+            get_mqtt().publish("debug/pid", payload)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -77,8 +86,18 @@ def _pt_append_log(message: str) -> None:
 def _dbg(message: str) -> None:
     try:
         stamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        st.session_state.pt_logs.append(f"DBG {stamp} | {message}")
-        st.session_state.pt_logs = st.session_state.pt_logs[-400:]
+        line = f"DBG {stamp} | {message}"
+        # MQTT debug
+        try:
+            payload = {
+                "message_source": "proteus-ui",
+                "timestamp": datetime.now().isoformat(),
+                "module": st.session_state.get("pt_selected_module"),
+                "message": line,
+            }
+            get_mqtt().publish("debug/pid", payload)
+        except Exception:
+            pass
     except Exception:
         # Avoid crashing if session_state not ready
         pass
