@@ -587,9 +587,17 @@ else:
             log_content2 = "\n".join(st.session_state.get("pt_logs", [])[-400:])
             st.markdown(f"<div class='pt-log-box'>{log_content2}</div>", unsafe_allow_html=True)
 
-        if not st.session_state.get("pt_diag_disable_charts"):
-            def _ensure_pt_chart_handles(force: bool = False):
+        def _ensure_pt_chart_handles(force: bool = False):
             try:
+                # If charts disabled, clear chart state and return
+                if st.session_state.get("pt_diag_disable_charts"):
+                    try:
+                        if "pt_chart_elements" in st.session_state:
+                            del st.session_state["pt_chart_elements"]
+                        st.session_state["_pt_charts_key"] = ("pt_charts", st.session_state.get("pt_selected_module") or "")
+                    except Exception:
+                        pass
+                    return
                 mod = st.session_state.get("pt_selected_module") or ""
                 init_key = ("pt_charts", mod)
                 need_init = force or (st.session_state.get("_pt_charts_key") != init_key)
@@ -664,13 +672,13 @@ else:
             except Exception:
                 pass
 
-        if not st.session_state.get("pt_diag_disable_charts"):
-            _ensure_pt_chart_handles()
+        _ensure_pt_chart_handles()
 
-        if not st.session_state.get("pt_diag_disable_charts"):
-            @st.fragment(run_every=0.5)
-            def _pt_charts_tick():
+        @st.fragment(run_every=0.5)
+        def _pt_charts_tick():
             try:
+                if st.session_state.get("pt_diag_disable_charts"):
+                    return
                 charts = st.session_state.get("pt_chart_elements") or {}
                 data = st.session_state.get("pt_data") or {}
                 t = data.get("t") or []
@@ -746,13 +754,12 @@ else:
             except Exception:
                 pass
 
-            _pt_charts_tick()
+        _pt_charts_tick()
 
-        if not st.session_state.get("pt_diag_disable_charts"):
-            @st.fragment(run_every=0.5)
-            def _pt_live_collector():
+        @st.fragment(run_every=0.5)
+        def _pt_live_collector():
             mod = st.session_state.get("pt_selected_module")
-            if not mod:
+            if not mod or st.session_state.get("pt_diag_disable_charts"):
                 return
             try:
                 topic = f"live-sensor-data/{mod}"
@@ -776,7 +783,7 @@ else:
             except Exception:
                 pass
 
-            _pt_live_collector()
+        _pt_live_collector()
 
 
  
