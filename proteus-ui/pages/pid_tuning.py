@@ -699,8 +699,31 @@ def _grow_y_bounds(values: list[float], prefix: str) -> bool:
     try:
         if not values:
             return False
-        vmin = float(min(values))
-        vmax = float(max(values))
+        # Filter non-finite and cast
+        vals = []
+        for v in values:
+            try:
+                x = float(v)
+                if pd.notna(x) and abs(x) != float("inf"):
+                    vals.append(x)
+            except Exception:
+                continue
+        if not vals:
+            return False
+        vals.sort()
+        n = len(vals)
+        # Robust min/max (trim extremes) to avoid huge outliers
+        if n >= 10:
+            i1 = max(0, int(0.02 * n) - 1)
+            i2 = min(n - 1, int(0.98 * n))
+            vmin = vals[i1]
+            vmax = vals[i2]
+        else:
+            vmin = vals[0]
+            vmax = vals[-1]
+        # Ensure non-degenerate range
+        if abs(vmax - vmin) < 1e-6:
+            vmax = vmin + 1.0
         eps = 0.02 * (abs(vmax) + 1e-6)
         ymin = float(st.session_state.get(f"{prefix}_ymin", vmin))
         ymax = float(st.session_state.get(f"{prefix}_ymax", vmax + eps))
@@ -744,8 +767,13 @@ def _charts_stream():
         changed |= _grow_y_bounds(pp_vals, "p3")
         pr_vals = [data["pressure_desired"][i] for i in idx] + [data["pressure_actual"][i] for i in idx]
         changed |= _grow_y_bounds(pr_vals, "p4")
+        # Throttle chart recreation (at most once per second)
         if changed:
-            charts = _ensure_stream_charts(recreate=True)
+            last_rc = float(st.session_state.get("_pt_last_recreate_ts", 0))
+            now = time.time()
+            if now - last_rc >= 1.0:
+                charts = _ensure_stream_charts(recreate=True)
+                st.session_state["_pt_last_recreate_ts"] = now
     except Exception:
         pass
 
