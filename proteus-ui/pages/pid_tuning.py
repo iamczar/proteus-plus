@@ -737,14 +737,17 @@ def _ensure_stream_charts(recreate: bool = False):
     def _mk_chart(ymin_key: str, ymax_key: str):
         ymin = float(st.session_state.get(ymin_key, 0.0))
         ymax = float(st.session_state.get(ymax_key, 1.0))
-        base = alt.Chart(pd.DataFrame({"x": [], "series": [], "y": []})) \
-            .mark_line() \
+        base = (
+            alt.Chart(pd.DataFrame({"x": [], "series": [], "y": []}))
+            .mark_line()
             .encode(
                 x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
                 y=alt.Y("y:Q", title=None, scale=alt.Scale(domain=[ymin, ymax], nice=False, clamp=True)),
                 color=alt.Color("series:N", legend=alt.Legend(title=None)),
             )
-        ch = st.altair_chart(base, use_container_width=True)
+            .properties(width=620, height=260)
+        )
+        ch = st.altair_chart(base, use_container_width=False)
         _dbg(f"mk_chart {ymin_key}/{ymax_key} domain=[{ymin},{ymax}]")
         return ch
 
