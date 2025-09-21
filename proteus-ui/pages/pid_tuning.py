@@ -550,16 +550,7 @@ else:
                         except Exception:
                             pass
 
-                # Terminal-style logs below the status panels
-                with st.container(border=True):
-                    # Use a unique key for the nested logs form to avoid duplicate form keys
-                    st.subheader("PID Tuning Logs")
-                    nested_form_key = "pt_clear_logs_form_right"
-                    with st.form(nested_form_key):
-                        if st.form_submit_button("Clear"):
-                            st.session_state.pt_logs = []
-                    log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
-                    st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
+                # (logs panel removed from right; shown in left column above charts)
             except Exception as e:
                 if _dbg_rate_ok("right/error", 2.0):
                     _pt_append_log(f"dbg: right_panel error: {e}")
@@ -574,6 +565,16 @@ else:
 
     # --- Charts (left side, below gains) ---
     with left:
+        # Move the logs panel here so it spans the same width as the charts
+        with st.container(border=True):
+            st.subheader("PID Tuning Logs")
+            form_key2 = "pt_clear_logs_form_left"
+            with st.form(form_key2):
+                if st.form_submit_button("Clear"):
+                    st.session_state.pt_logs = []
+            log_content2 = "\n".join(st.session_state.get("pt_logs", [])[-400:])
+            st.markdown(f"<div class='pt-log-box'>{log_content2}</div>", unsafe_allow_html=True)
+
         def _ensure_pt_chart_handles(force: bool = False):
             try:
                 mod = st.session_state.get("pt_selected_module") or ""
@@ -582,67 +583,65 @@ else:
                 need_init = need_init or ("pt_chart_elements" not in st.session_state)
                 if not need_init:
                     return
-                # Build four overlay charts in a 2x2 grid:
+                # Build four overlay charts stacked vertically (1x4):
                 # 1) Oxygen (desired + 3 measured), 2) Flow, 3) Pressure Pump Speed, 4) Pressure
                 chart_elems = {}
 
-                row1_col1, row1_col2 = st.columns(2)
-                with row1_col1:
-                    st.subheader("Oxygen (desired vs measured x3)")
-                    df0 = pd.DataFrame({"x": [], "y": [], "series": []})
-                    base0 = (
-                        alt.Chart(df0)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
-                        )
+                # Oxygen
+                st.subheader("Oxygen (desired vs measured x3)")
+                df0 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base0 = (
+                    alt.Chart(df0)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
                     )
-                    chart_elems["oxygen"] = st.altair_chart(base0, use_container_width=True)
+                )
+                chart_elems["oxygen"] = st.altair_chart(base0, use_container_width=True)
 
-                with row1_col2:
-                    st.subheader("Flow (desired speed vs actual flow)")
-                    df1 = pd.DataFrame({"x": [], "y": [], "series": []})
-                    base1 = (
-                        alt.Chart(df1)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
-                        )
+                # Flow
+                st.subheader("Flow (desired speed vs actual flow)")
+                df1 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base1 = (
+                    alt.Chart(df1)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
                     )
-                    chart_elems["flow"] = st.altair_chart(base1, use_container_width=True)
+                )
+                chart_elems["flow"] = st.altair_chart(base1, use_container_width=True)
 
-                row2_col1, row2_col2 = st.columns(2)
-                with row2_col1:
-                    st.subheader("Pressure Pump Speed (desired vs actual)")
-                    df2 = pd.DataFrame({"x": [], "y": [], "series": []})
-                    base2 = (
-                        alt.Chart(df2)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
-                        )
+                # Pressure Pump Speed
+                st.subheader("Pressure Pump Speed (desired vs actual)")
+                df2 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base2 = (
+                    alt.Chart(df2)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
                     )
-                    chart_elems["pressure_pump"] = st.altair_chart(base2, use_container_width=True)
+                )
+                chart_elems["pressure_pump"] = st.altair_chart(base2, use_container_width=True)
 
-                with row2_col2:
-                    st.subheader("Pressure (desired vs actual)")
-                    df3 = pd.DataFrame({"x": [], "y": [], "series": []})
-                    base3 = (
-                        alt.Chart(df3)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
-                        )
+                # Pressure
+                st.subheader("Pressure (desired vs actual)")
+                df3 = pd.DataFrame({"x": [], "y": [], "series": []})
+                base3 = (
+                    alt.Chart(df3)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
                     )
-                    chart_elems["pressure"] = st.altair_chart(base3, use_container_width=True)
+                )
+                chart_elems["pressure"] = st.altair_chart(base3, use_container_width=True)
 
                 st.session_state.pt_chart_elements = chart_elems
                 # Set painted length so the updater can stream only new points
