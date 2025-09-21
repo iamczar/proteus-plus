@@ -303,9 +303,7 @@ st.markdown(
 
  
 
-# Diagnostics controls (optional)
-with st.expander("Diagnostics", expanded=False):
-    st.checkbox("Disable right-side PID panel", key="pt_diag_disable_right")
+ 
 
 
 def _refresh_pid_status_once(module_id: str | int) -> None:
@@ -440,6 +438,11 @@ else:
                     submitted = st.form_submit_button("Send")
                     if submitted:
                         mod = st.session_state.get("pt_selected_module")
+                        _pt_append_log(
+                            f">> CLICK Send Flow Gains (mod={mod}) values: "
+                            f"O2={st.session_state.pt_flow_desired_oxygen}, "
+                            f"Kp={st.session_state.pt_flow_kp}, Ki={st.session_state.pt_flow_ki}, Kd={st.session_state.pt_flow_kd}"
+                        )
                         payload = {
                             "type": "flow_pid",
                             "desired_oxygen": float(st.session_state.pt_flow_desired_oxygen),
@@ -447,7 +450,11 @@ else:
                             "ki": float(st.session_state.pt_flow_ki),
                             "kd": float(st.session_state.pt_flow_kd),
                         }
-                        ok = _publish_pid_command(mod, payload)
+                        try:
+                            ok = _publish_pid_command(mod, payload)
+                            _pt_append_log(f"dbg: publish flow gains ok={ok}")
+                        except Exception as e:
+                            _pt_append_log(f"!! error publishing flow gains: {e}")
 
     # Pressure Controller Gains window
         with gains_cols[1]:
@@ -461,6 +468,11 @@ else:
                     submitted2 = st.form_submit_button("Send")
                     if submitted2:
                         mod = st.session_state.get("pt_selected_module")
+                        _pt_append_log(
+                            f">> CLICK Send Pressure Gains (mod={mod}) values: "
+                            f"P_set={st.session_state.pt_pressure_desired_pressure}, "
+                            f"Kp={st.session_state.pt_pressure_kp}, Ki={st.session_state.pt_pressure_ki}, Kd={st.session_state.pt_pressure_kd}"
+                        )
                         payload = {
                             "type": "pressure_pid",
                             "desired_pressure": float(st.session_state.pt_pressure_desired_pressure),
@@ -468,7 +480,11 @@ else:
                             "ki": float(st.session_state.pt_pressure_ki),
                             "kd": float(st.session_state.pt_pressure_kd),
                         }
-                        ok = _publish_pid_command(mod, payload)
+                        try:
+                            ok = _publish_pid_command(mod, payload)
+                            _pt_append_log(f"dbg: publish pressure gains ok={ok}")
+                        except Exception as e:
+                            _pt_append_log(f"!! error publishing pressure gains: {e}")
 
     with right:
         # Render toggle controls outside of auto-refreshing fragments
@@ -481,9 +497,14 @@ else:
                 if submitted_toggle:
                     mod = st.session_state.get("pt_selected_module")
                     target = not flow_enabled
-                    ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                    _pt_append_log(f">> CLICK Toggle Flow PID (mod={mod}) target={target}")
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                        _pt_append_log(f"dbg: publish flow toggle ok={ok}")
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing flow toggle: {e}")
 
         with st.container(border=True):
             s2 = st.session_state.get("pt_pressure_status") or {}
@@ -494,9 +515,14 @@ else:
                 if submitted_toggle2:
                     mod = st.session_state.get("pt_selected_module")
                     target = not pressure_enabled
-                    ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                    if ok:
-                        _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                    _pt_append_log(f">> CLICK Toggle Pressure PID (mod={mod}) target={target}")
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                        _pt_append_log(f"dbg: publish pressure toggle ok={ok}")
+                        if ok:
+                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing pressure toggle: {e}")
 
         @st.fragment(run_every=1.0)
         def _pid_right_status():
