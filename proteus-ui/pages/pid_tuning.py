@@ -840,58 +840,65 @@ def _charts_stream():
             if _dbg_rate_ok("yexpand/error", 2.0):
                 _pt_append_log(f"dbg: y-bounds error: {e}")
 
-        # Stream rows
-        for i in idx:
-            ts = pd.to_datetime(int(data["t"][i]), unit="s")
-            # Validate values to avoid NaN/inf blowing up Vega
-            def _is_num(x):
-                try:
-                    y = float(x)
-                    return pd.notna(y) and y != float("inf") and y != float("-inf")
-                except Exception:
-                    return False
-            try:
-                charts[0].add_rows(pd.DataFrame([
-                    {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
-                    {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
-                    {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
-                    {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
-                ]))
-                if _dbg_rate_ok("add_rows_ok/ch1", 2.0):
-                    _pt_append_log("dbg: add_rows ok chart1")
-            except Exception as e:
-                if _dbg_rate_ok("add_rows/ch1", 2.0):
-                    _pt_append_log(f"dbg: add_rows failed on chart1: {e}")
-            try:
-                charts[1].add_rows(pd.DataFrame([
-                    {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
-                    {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-                ]))
-                if _dbg_rate_ok("add_rows_ok/ch2", 2.0):
-                    _pt_append_log("dbg: add_rows ok chart2")
-            except Exception as e:
-                if _dbg_rate_ok("add_rows/ch2", 2.0):
-                    _pt_append_log(f"dbg: add_rows failed on chart2: {e}")
-            try:
-                charts[2].add_rows(pd.DataFrame([
-                    {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-                    {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
-                ]))
-                if _dbg_rate_ok("add_rows_ok/ch3", 2.0):
-                    _pt_append_log("dbg: add_rows ok chart3")
-            except Exception as e:
-                if _dbg_rate_ok("add_rows/ch3", 2.0):
-                    _pt_append_log(f"dbg: add_rows failed on chart3: {e}")
-            try:
-                charts[3].add_rows(pd.DataFrame([
-                    {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
-                    {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
-                ]))
-                if _dbg_rate_ok("add_rows_ok/ch4", 2.0):
-                    _pt_append_log("dbg: add_rows ok chart4")
-            except Exception as e:
-                if _dbg_rate_ok("add_rows/ch4", 2.0):
-                    _pt_append_log(f"dbg: add_rows failed on chart4: {e}")
+        # Stream rows (batched per chart)
+        try:
+            times = pd.to_datetime(pd.Series([int(data["t"][i]) for i in idx], dtype="int64"), unit="s")
+        except Exception:
+            times = pd.to_datetime(pd.Series([], dtype="int64"), unit="s")
+
+        # Chart 1 batch
+        try:
+            df1 = pd.concat([
+                pd.DataFrame({"x": times, "series": "Desired",    "y": [data["ox_desired"][i] for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Measured A", "y": [data["ox_meas1"][i]   for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Measured B", "y": [data["ox_meas2"][i]   for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Measured C", "y": [data["ox_meas3"][i]   for i in idx]}),
+            ], ignore_index=True)
+            charts[0].add_rows(df1)
+            if _dbg_rate_ok("add_rows_ok/ch1", 2.0):
+                _pt_append_log(f"dbg: add_rows ok chart1 (batch={len(df1)})")
+        except Exception as e:
+            if _dbg_rate_ok("add_rows/ch1", 2.0):
+                _pt_append_log(f"dbg: add_rows failed on chart1: {e}")
+
+        # Chart 2 batch
+        try:
+            df2 = pd.concat([
+                pd.DataFrame({"x": times, "series": "Desired", "y": [data["flow_desired"][i] for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Actual",  "y": [data["flow_actual"][i]  for i in idx]}),
+            ], ignore_index=True)
+            charts[1].add_rows(df2)
+            if _dbg_rate_ok("add_rows_ok/ch2", 2.0):
+                _pt_append_log(f"dbg: add_rows ok chart2 (batch={len(df2)})")
+        except Exception as e:
+            if _dbg_rate_ok("add_rows/ch2", 2.0):
+                _pt_append_log(f"dbg: add_rows failed on chart2: {e}")
+
+        # Chart 3 batch
+        try:
+            df3 = pd.concat([
+                pd.DataFrame({"x": times, "series": "Desired", "y": [data["press_pump_desired"][i] for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Actual",  "y": [data["press_pump_actual"][i]  for i in idx]}),
+            ], ignore_index=True)
+            charts[2].add_rows(df3)
+            if _dbg_rate_ok("add_rows_ok/ch3", 2.0):
+                _pt_append_log(f"dbg: add_rows ok chart3 (batch={len(df3)})")
+        except Exception as e:
+            if _dbg_rate_ok("add_rows/ch3", 2.0):
+                _pt_append_log(f"dbg: add_rows failed on chart3: {e}")
+
+        # Chart 4 batch
+        try:
+            df4 = pd.concat([
+                pd.DataFrame({"x": times, "series": "Desired", "y": [data["pressure_desired"][i] for i in idx]}),
+                pd.DataFrame({"x": times, "series": "Actual",  "y": [data["pressure_actual"][i]  for i in idx]}),
+            ], ignore_index=True)
+            charts[3].add_rows(df4)
+            if _dbg_rate_ok("add_rows_ok/ch4", 2.0):
+                _pt_append_log(f"dbg: add_rows ok chart4 (batch={len(df4)})")
+        except Exception as e:
+            if _dbg_rate_ok("add_rows/ch4", 2.0):
+                _pt_append_log(f"dbg: add_rows failed on chart4: {e}")
 
         st.session_state._pt_stream_idx = end
         if _dbg_rate_ok("stream/done", 1.0):
