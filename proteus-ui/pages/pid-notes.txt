@@ -1,8 +1,11 @@
-Desired Oxygen + 3 Measured Oxygen vs Time
+Desired Oxygen + 3 Measured Oxygen
 oxygen_setpoint, oxygen_measured_1, oxygen_measured_2, oxygen_measured_3
-Desired Speed of Flow Pump vs actual flow rate vs Time
+
+Flow Pump Desired Speed, Actual Flow rate
 circ_flow_speed_desired, flow_measured
-Desired Speed of Pressure Pump vs actual speed vs Time
+
+Pressure Pump Desired Speed, ctual speed
 pressure_flow_speed_desired, pressure_pump_speed
-Desired Pressure vs Actual Pressure vs Time
+
+Desired Pressure vs Actual Pressure
 pressure_setpoint, pressure_measured

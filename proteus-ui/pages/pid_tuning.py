@@ -202,6 +202,11 @@ def _append_live_point(payload: dict) -> None:
         for k in list(buf.keys()):
             if len(buf[k]) > N:
                 buf[k] = buf[k][-N:]
+        # Monotonic stream counter (for chart increment logic under capped buffers)
+        try:
+            st.session_state._pt_stream_idx = int(st.session_state.get("_pt_stream_idx") or 0) + 1
+        except Exception:
+            pass
 
         # Persist to JSONL for backfill
         try:
@@ -577,49 +582,67 @@ else:
                 need_init = need_init or ("pt_chart_elements" not in st.session_state)
                 if not need_init:
                     return
-                # Build three overlay charts: Oxygen, Flow, Pressure
+                # Build four overlay charts in a 2x2 grid:
+                # 1) Oxygen (desired + 3 measured), 2) Flow, 3) Pressure Pump Speed, 4) Pressure
                 chart_elems = {}
-                # Oxygen
-                st.subheader("Oxygen (desired vs measured)")
-                df0 = pd.DataFrame({"x": [], "y": [], "series": []})
-                base0 = (
-                    alt.Chart(df0)
-                    .mark_line()
-                    .encode(
-                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                        y=alt.Y("y:Q", title=None),
-                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
-                    )
-                )
-                chart_elems["oxygen"] = st.altair_chart(base0, use_container_width=True)
 
-                # Flow
-                st.subheader("Flow (desired vs actual)")
-                df1 = pd.DataFrame({"x": [], "y": [], "series": []})
-                base1 = (
-                    alt.Chart(df1)
-                    .mark_line()
-                    .encode(
-                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                        y=alt.Y("y:Q", title=None),
-                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                row1_col1, row1_col2 = st.columns(2)
+                with row1_col1:
+                    st.subheader("Oxygen (desired vs measured x3)")
+                    df0 = pd.DataFrame({"x": [], "y": [], "series": []})
+                    base0 = (
+                        alt.Chart(df0)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                        )
                     )
-                )
-                chart_elems["flow"] = st.altair_chart(base1, use_container_width=True)
+                    chart_elems["oxygen"] = st.altair_chart(base0, use_container_width=True)
 
-                # Pressure
-                st.subheader("Pressure (desired vs actual)")
-                df2 = pd.DataFrame({"x": [], "y": [], "series": []})
-                base2 = (
-                    alt.Chart(df2)
-                    .mark_line()
-                    .encode(
-                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
-                        y=alt.Y("y:Q", title=None),
-                        color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                with row1_col2:
+                    st.subheader("Flow (desired speed vs actual flow)")
+                    df1 = pd.DataFrame({"x": [], "y": [], "series": []})
+                    base1 = (
+                        alt.Chart(df1)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                        )
                     )
-                )
-                chart_elems["pressure"] = st.altair_chart(base2, use_container_width=True)
+                    chart_elems["flow"] = st.altair_chart(base1, use_container_width=True)
+
+                row2_col1, row2_col2 = st.columns(2)
+                with row2_col1:
+                    st.subheader("Pressure Pump Speed (desired vs actual)")
+                    df2 = pd.DataFrame({"x": [], "y": [], "series": []})
+                    base2 = (
+                        alt.Chart(df2)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                        )
+                    )
+                    chart_elems["pressure_pump"] = st.altair_chart(base2, use_container_width=True)
+
+                with row2_col2:
+                    st.subheader("Pressure (desired vs actual)")
+                    df3 = pd.DataFrame({"x": [], "y": [], "series": []})
+                    base3 = (
+                        alt.Chart(df3)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(orient="top")),
+                        )
+                    )
+                    chart_elems["pressure"] = st.altair_chart(base3, use_container_width=True)
 
                 st.session_state.pt_chart_elements = chart_elems
                 # Set painted length so the updater can stream only new points
@@ -643,19 +666,26 @@ else:
                 end = len(t)
                 if end <= start:
                     return
+                # If buffer has wrapped/truncated and painted index is ahead, reinitialize charts
+                if start > end:
+                    _ensure_pt_chart_handles(force=True)
+                    start = 0
                 # Build incremental rows for each chart
                 rows_oxygen = {"x": [], "y": [], "series": []}
                 rows_flow = {"x": [], "y": [], "series": []}
+                rows_pressure_pump = {"x": [], "y": [], "series": []}
                 rows_pressure = {"x": [], "y": [], "series": []}
                 for i in range(start, end):
                     x_ts = pd.to_datetime(int(t[i]), unit="s")
-                    # Oxygen: desired and measured (sensor 1)
-                    rows_oxygen["x"].extend([x_ts, x_ts])
+                    # Oxygen: desired and measured (3 sensors)
+                    rows_oxygen["x"].extend([x_ts, x_ts, x_ts, x_ts])
                     rows_oxygen["y"].extend([
                         float(data.get("ox_desired", [0.0])[i] if len(data.get("ox_desired", [])) > i else 0.0),
                         float(data.get("ox_meas1", [0.0])[i] if len(data.get("ox_meas1", [])) > i else 0.0),
+                        float(data.get("ox_meas2", [0.0])[i] if len(data.get("ox_meas2", [])) > i else 0.0),
+                        float(data.get("ox_meas3", [0.0])[i] if len(data.get("ox_meas3", [])) > i else 0.0),
                     ])
-                    rows_oxygen["series"].extend(["Desired", "Measured"])
+                    rows_oxygen["series"].extend(["Desired", "Measured 1", "Measured 2", "Measured 3"])
                     # Flow
                     rows_flow["x"].extend([x_ts, x_ts])
                     rows_flow["y"].extend([
@@ -663,6 +693,13 @@ else:
                         float(data.get("flow_actual", [0.0])[i] if len(data.get("flow_actual", [])) > i else 0.0),
                     ])
                     rows_flow["series"].extend(["Desired", "Actual"])
+                    # Pressure Pump Speed
+                    rows_pressure_pump["x"].extend([x_ts, x_ts])
+                    rows_pressure_pump["y"].extend([
+                        float(data.get("press_pump_desired", [0.0])[i] if len(data.get("press_pump_desired", [])) > i else 0.0),
+                        float(data.get("press_pump_actual", [0.0])[i] if len(data.get("press_pump_actual", [])) > i else 0.0),
+                    ])
+                    rows_pressure_pump["series"].extend(["Desired", "Actual"])
                     # Pressure
                     rows_pressure["x"].extend([x_ts, x_ts])
                     rows_pressure["y"].extend([
@@ -679,6 +716,11 @@ else:
                 try:
                     if charts.get("flow"):
                         charts["flow"].add_rows(pd.DataFrame(rows_flow))
+                except Exception:
+                    pass
+                try:
+                    if charts.get("pressure_pump"):
+                        charts["pressure_pump"].add_rows(pd.DataFrame(rows_pressure_pump))
                 except Exception:
                     pass
                 try:
