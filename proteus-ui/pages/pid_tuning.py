@@ -57,6 +57,23 @@ st.session_state.setdefault("_pt_live_sub_topic", None)
 # Live data topic and window
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 MAX_POINTS = 18000  # ~5 hours @ 1 Hz
+# Chart stability controls
+Y_HYST_REL = 0.02   # 2% of current range
+Y_HYST_ABS = 0.5    # minimum absolute margin
+RECREATE_MIN_SECS = 3.0  # coalesced recreate throttle across all charts
+
+# Debug rate limiter
+st.session_state.setdefault("_pt_dbg_gate", {})
+def _dbg_rate_ok(key: str, min_secs: float) -> bool:
+    try:
+        now = time.time()
+        nxt = float(st.session_state._pt_dbg_gate.get(key, 0))
+        if now >= nxt:
+            st.session_state._pt_dbg_gate[key] = now + float(min_secs)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 # -----------------------------
@@ -211,17 +228,27 @@ def _pt_background_collector():
         try:
             get_mqtt().subscribe(topic)
             st.session_state._pt_live_sub_topic = topic
+            _pt_append_log(f"dbg: subscribed {topic}")
         except Exception:
             return
 
     updates = get_mqtt().drain(topic, max_items=500)
     if not updates:
         return
+    if _dbg_rate_ok("collector/drained", 1.0):
+        _pt_append_log(f"dbg: collector drained {len(updates)} msgs")
     for _, payload in updates:
         try:
             if isinstance(payload, dict) and payload.get("alpha_command") == "sensor_data":
                 _append_live_point(payload)
+            else:
+                # Note: keep behavior unchanged; just log first time we see unknown shapes
+                if _dbg_rate_ok("collector/unknown", 5.0):
+                    shape = list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+                    _pt_append_log(f"dbg: unknown live payload shape: {shape}")
         except Exception:
+            if _dbg_rate_ok("collector/error", 2.0):
+                _pt_append_log("dbg: collector error while processing payload")
             continue
 
 
@@ -721,19 +748,35 @@ def _grow_y_bounds(values: list[float], prefix: str) -> bool:
         else:
             vmin = vals[0]
             vmax = vals[-1]
+        # Apply per-panel soft floor(s)
+        if prefix == "p4":
+            # Pressure cannot be negative in our UI; floor to 0
+            vmin = max(vmin, 0.0)
         # Ensure non-degenerate range
         if abs(vmax - vmin) < 1e-6:
             vmax = vmin + 1.0
-        eps = 0.02 * (abs(vmax) + 1e-6)
-        ymin = float(st.session_state.get(f"{prefix}_ymin", vmin))
-        ymax = float(st.session_state.get(f"{prefix}_ymax", vmax + eps))
-        if vmin < ymin:
+        eps = 0.02 * max(vmax - vmin, 1.0)
+        prev_ymin = float(st.session_state.get(f"{prefix}_ymin", vmin))
+        prev_ymax = float(st.session_state.get(f"{prefix}_ymax", vmax + eps))
+        # Hysteresis: only expand if beyond rel/abs margin
+        current_range = max(prev_ymax - prev_ymin, 1.0)
+        margin = max(Y_HYST_REL * current_range, Y_HYST_ABS)
+        ymin = prev_ymin
+        ymax = prev_ymax
+        # Floor pressure y-min to 0 consistently
+        if prefix == "p4":
+            ymin = max(ymin, 0.0)
+        if vmin < prev_ymin - margin:
             ymin = vmin
             changed = True
-        if vmax > ymax:
+        if vmax > prev_ymax + margin:
             ymax = vmax + eps
             changed = True
         if changed:
+            if _dbg_rate_ok(f"yexpand/{prefix}", 2.0):
+                _pt_append_log(
+                    f"dbg: y-expand {prefix} -> ymin={ymin:.3f}, ymax={ymax:.3f} (margin={margin:.3f})"
+                )
             st.session_state[f"{prefix}_ymin"] = ymin
             st.session_state[f"{prefix}_ymax"] = ymax
     except Exception:
@@ -756,6 +799,8 @@ def _charts_stream():
         return
 
     idx = range(start, end)
+    if _dbg_rate_ok("stream/batch", 1.0):
+        _pt_append_log(f"dbg: stream rows start={start} end={end} count={end-start}")
     # Update y bounds grow-only
     try:
         changed = False
@@ -767,37 +812,58 @@ def _charts_stream():
         changed |= _grow_y_bounds(pp_vals, "p3")
         pr_vals = [data["pressure_desired"][i] for i in idx] + [data["pressure_actual"][i] for i in idx]
         changed |= _grow_y_bounds(pr_vals, "p4")
-        # Throttle chart recreation (at most once per second)
+        # Throttle chart recreation (coalesced; at most once per RECREATE_MIN_SECS)
         if changed:
             last_rc = float(st.session_state.get("_pt_last_recreate_ts", 0))
             now = time.time()
-            if now - last_rc >= 1.0:
+            if now - last_rc >= RECREATE_MIN_SECS:
                 charts = _ensure_stream_charts(recreate=True)
                 st.session_state["_pt_last_recreate_ts"] = now
+                _pt_append_log("dbg: charts recreated due to y-bounds expansion")
+            else:
+                if _dbg_rate_ok("recreate/suppressed", 2.0):
+                    remain = RECREATE_MIN_SECS - (now - last_rc)
+                    _pt_append_log(f"dbg: recreate suppressed ({remain:.1f}s left)")
     except Exception:
         pass
 
     # Stream rows
     for i in idx:
         ts = pd.to_datetime(int(data["t"][i]), unit="s")
-        charts[0].add_rows(pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
-            {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
-            {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
-            {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
-        ]))
-        charts[1].add_rows(pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-        ]))
-        charts[2].add_rows(pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
-        ]))
-        charts[3].add_rows(pd.DataFrame([
-            {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
-            {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
-        ]))
+        try:
+            charts[0].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+                {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+                {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+                {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+            ]))
+        except Exception:
+            if _dbg_rate_ok("add_rows/ch1", 2.0):
+                _pt_append_log("dbg: add_rows failed on chart1")
+        try:
+            charts[1].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+            ]))
+        except Exception:
+            if _dbg_rate_ok("add_rows/ch2", 2.0):
+                _pt_append_log("dbg: add_rows failed on chart2")
+        try:
+            charts[2].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+            ]))
+        except Exception:
+            if _dbg_rate_ok("add_rows/ch3", 2.0):
+                _pt_append_log("dbg: add_rows failed on chart3")
+        try:
+            charts[3].add_rows(pd.DataFrame([
+                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+            ]))
+        except Exception:
+            if _dbg_rate_ok("add_rows/ch4", 2.0):
+                _pt_append_log("dbg: add_rows failed on chart4")
 
     st.session_state._pt_stream_idx = end
 
