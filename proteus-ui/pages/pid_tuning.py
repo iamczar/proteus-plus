@@ -72,6 +72,16 @@ def _pt_append_log(message: str) -> None:
         st.session_state.pt_logs = st.session_state.pt_logs[-400:]
     except Exception:
         pass
+
+# Lightweight debug logger (shows in PID Tuning Logs panel)
+def _dbg(message: str) -> None:
+    try:
+        stamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        st.session_state.pt_logs.append(f"DBG {stamp} | {message}")
+        st.session_state.pt_logs = st.session_state.pt_logs[-400:]
+    except Exception:
+        # Avoid crashing if session_state not ready
+        pass
 def _status_chip(label: str, active: bool) -> None:
     bg = "#10B981" if active else "#F59E0B"
     txt = "white" if active else "#111827"
