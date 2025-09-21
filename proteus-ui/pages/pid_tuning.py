@@ -718,6 +718,8 @@ def _ensure_stream_charts(recreate: bool = False):
 
     charts = [ch1, ch2, ch3, ch4]
     st.session_state._pt_stream_charts = charts
+    # Mark that charts were created/recreated in this run
+    st.session_state["_pt_charts_new"] = True
     return charts
 
 
@@ -786,86 +788,101 @@ def _grow_y_bounds(values: list[float], prefix: str) -> bool:
 
 @st.fragment(run_every=0.5)
 def _charts_stream():
-    if not st.session_state.get("pt_selected_module"):
-        return
-    charts = _ensure_stream_charts()
-    data = st.session_state.get("pt_data", {})
-    if not data or not data.get("t"):
-        return
-
-    start = int(st.session_state.get("_pt_stream_idx", 0))
-    end = len(data["t"])  # append-only; trimming handled at collector if used
-    if end <= start:
-        return
-
-    idx = range(start, end)
-    if _dbg_rate_ok("stream/batch", 1.0):
-        _pt_append_log(f"dbg: stream rows start={start} end={end} count={end-start}")
-    # Update y bounds grow-only
     try:
-        changed = False
-        oxy_vals = [data["ox_desired"][i] for i in idx] + [data["ox_meas1"][i] for i in idx] + [data["ox_meas2"][i] for i in idx] + [data["ox_meas3"][i] for i in idx]
-        changed |= _grow_y_bounds(oxy_vals, "p1")
-        flow_vals = [data["flow_desired"][i] for i in idx] + [data["flow_actual"][i] for i in idx]
-        changed |= _grow_y_bounds(flow_vals, "p2")
-        pp_vals = [data["press_pump_desired"][i] for i in idx] + [data["press_pump_actual"][i] for i in idx]
-        changed |= _grow_y_bounds(pp_vals, "p3")
-        pr_vals = [data["pressure_desired"][i] for i in idx] + [data["pressure_actual"][i] for i in idx]
-        changed |= _grow_y_bounds(pr_vals, "p4")
-        # Throttle chart recreation (coalesced; at most once per RECREATE_MIN_SECS)
-        if changed:
-            last_rc = float(st.session_state.get("_pt_last_recreate_ts", 0))
-            now = time.time()
-            if now - last_rc >= RECREATE_MIN_SECS:
-                charts = _ensure_stream_charts(recreate=True)
-                st.session_state["_pt_last_recreate_ts"] = now
-                _pt_append_log("dbg: charts recreated due to y-bounds expansion")
-            else:
-                if _dbg_rate_ok("recreate/suppressed", 2.0):
-                    remain = RECREATE_MIN_SECS - (now - last_rc)
-                    _pt_append_log(f"dbg: recreate suppressed ({remain:.1f}s left)")
-    except Exception:
-        pass
+        if not st.session_state.get("pt_selected_module"):
+            return
+        charts = _ensure_stream_charts()
+        if not charts or len(charts) < 4:
+            if _dbg_rate_ok("stream/nocharts", 2.0):
+                _pt_append_log("dbg: charts not ready (ensure_stream_charts returned None or len<4)")
+            return
+        # If charts were just created/recreated this run, skip streaming this tick to avoid add_rows-before-render
+        if st.session_state.pop("_pt_charts_new", False):
+            if _dbg_rate_ok("stream/skip_fresh", 2.0):
+                _pt_append_log("dbg: skip streaming this tick (charts just created)")
+            return
+        data = st.session_state.get("pt_data", {})
+        if not data or not data.get("t"):
+            return
 
-    # Stream rows
-    for i in idx:
-        ts = pd.to_datetime(int(data["t"][i]), unit="s")
-        try:
-            charts[0].add_rows(pd.DataFrame([
-                {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
-                {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
-                {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
-                {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
-            ]))
-        except Exception:
-            if _dbg_rate_ok("add_rows/ch1", 2.0):
-                _pt_append_log("dbg: add_rows failed on chart1")
-        try:
-            charts[1].add_rows(pd.DataFrame([
-                {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
-            ]))
-        except Exception:
-            if _dbg_rate_ok("add_rows/ch2", 2.0):
-                _pt_append_log("dbg: add_rows failed on chart2")
-        try:
-            charts[2].add_rows(pd.DataFrame([
-                {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
-            ]))
-        except Exception:
-            if _dbg_rate_ok("add_rows/ch3", 2.0):
-                _pt_append_log("dbg: add_rows failed on chart3")
-        try:
-            charts[3].add_rows(pd.DataFrame([
-                {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
-                {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
-            ]))
-        except Exception:
-            if _dbg_rate_ok("add_rows/ch4", 2.0):
-                _pt_append_log("dbg: add_rows failed on chart4")
+        start = int(st.session_state.get("_pt_stream_idx", 0))
+        end = len(data["t"])  # append-only; trimming handled at collector if used
+        if end <= start:
+            return
 
-    st.session_state._pt_stream_idx = end
+        idx = range(start, end)
+        if _dbg_rate_ok("stream/batch", 1.0):
+            _pt_append_log(f"dbg: stream rows start={start} end={end} count={end-start}")
+        # Update y bounds grow-only
+        try:
+            changed = False
+            oxy_vals = [data["ox_desired"][i] for i in idx] + [data["ox_meas1"][i] for i in idx] + [data["ox_meas2"][i] for i in idx] + [data["ox_meas3"][i] for i in idx]
+            changed |= _grow_y_bounds(oxy_vals, "p1")
+            flow_vals = [data["flow_desired"][i] for i in idx] + [data["flow_actual"][i] for i in idx]
+            changed |= _grow_y_bounds(flow_vals, "p2")
+            pp_vals = [data["press_pump_desired"][i] for i in idx] + [data["press_pump_actual"][i] for i in idx]
+            changed |= _grow_y_bounds(pp_vals, "p3")
+            pr_vals = [data["pressure_desired"][i] for i in idx] + [data["pressure_actual"][i] for i in idx]
+            changed |= _grow_y_bounds(pr_vals, "p4")
+            # Throttle chart recreation (coalesced; at most once per RECREATE_MIN_SECS)
+            if changed:
+                last_rc = float(st.session_state.get("_pt_last_recreate_ts", 0))
+                now = time.time()
+                if now - last_rc >= RECREATE_MIN_SECS:
+                    charts = _ensure_stream_charts(recreate=True)
+                    st.session_state["_pt_last_recreate_ts"] = now
+                    _pt_append_log("dbg: charts recreated due to y-bounds expansion")
+                else:
+                    if _dbg_rate_ok("recreate/suppressed", 2.0):
+                        remain = RECREATE_MIN_SECS - (now - last_rc)
+                        _pt_append_log(f"dbg: recreate suppressed ({remain:.1f}s left)")
+        except Exception as e:
+            if _dbg_rate_ok("yexpand/error", 2.0):
+                _pt_append_log(f"dbg: y-bounds error: {e}")
+
+        # Stream rows
+        for i in idx:
+            ts = pd.to_datetime(int(data["t"][i]), unit="s")
+            try:
+                charts[0].add_rows(pd.DataFrame([
+                    {"x": ts, "series": "Desired", "y": data["ox_desired"][i]},
+                    {"x": ts, "series": "Measured A", "y": data["ox_meas1"][i]},
+                    {"x": ts, "series": "Measured B", "y": data["ox_meas2"][i]},
+                    {"x": ts, "series": "Measured C", "y": data["ox_meas3"][i]},
+                ]))
+            except Exception as e:
+                if _dbg_rate_ok("add_rows/ch1", 2.0):
+                    _pt_append_log(f"dbg: add_rows failed on chart1: {e}")
+            try:
+                charts[1].add_rows(pd.DataFrame([
+                    {"x": ts, "series": "Desired", "y": data["flow_desired"][i]},
+                    {"x": ts, "series": "Actual", "y": data["flow_actual"][i]},
+                ]))
+            except Exception as e:
+                if _dbg_rate_ok("add_rows/ch2", 2.0):
+                    _pt_append_log(f"dbg: add_rows failed on chart2: {e}")
+            try:
+                charts[2].add_rows(pd.DataFrame([
+                    {"x": ts, "series": "Desired", "y": data["press_pump_desired"][i]},
+                    {"x": ts, "series": "Actual", "y": data["press_pump_actual"][i]},
+                ]))
+            except Exception as e:
+                if _dbg_rate_ok("add_rows/ch3", 2.0):
+                    _pt_append_log(f"dbg: add_rows failed on chart3: {e}")
+            try:
+                charts[3].add_rows(pd.DataFrame([
+                    {"x": ts, "series": "Desired", "y": data["pressure_desired"][i]},
+                    {"x": ts, "series": "Actual", "y": data["pressure_actual"][i]},
+                ]))
+            except Exception as e:
+                if _dbg_rate_ok("add_rows/ch4", 2.0):
+                    _pt_append_log(f"dbg: add_rows failed on chart4: {e}")
+
+        st.session_state._pt_stream_idx = end
+    except Exception as e:
+        if _dbg_rate_ok("stream/error", 2.0):
+            _pt_append_log(f"dbg: charts_stream error: {e.__class__.__name__}: {e}")
+        return
 
 _charts_stream()
 
