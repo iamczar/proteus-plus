@@ -22,7 +22,7 @@ MAX_POINTS = 1800
 if "pt_selected_module" not in st.session_state:
     st.session_state.pt_selected_module = None
 
-st.session_state.setdefault("pt_logs", [])
+ 
 
 
 def get_mqtt() -> MQTTService:
@@ -33,23 +33,13 @@ def get_mqtt() -> MQTTService:
 
 def _pt_append_log(message: str) -> None:
     try:
-        try:
-            payload = {
-                "message_source": "proteus-ui",
-                "timestamp": datetime.now().isoformat(),
-                "module": st.session_state.get("pt_selected_module"),
-                "message": message,
-            }
-            get_mqtt().publish("debug/pid", payload)
-        except Exception:
-            pass
-        try:
-            if isinstance(message, str) and message.strip().startswith((">>", "<<")):
-                logs = st.session_state.get("pt_logs", [])
-                logs.append(message)
-                st.session_state.pt_logs = logs[-1000:]
-        except Exception:
-            pass
+        payload = {
+            "message_source": "proteus-ui",
+            "timestamp": datetime.now().isoformat(),
+            "module": st.session_state.get("pt_selected_module"),
+            "message": message,
+        }
+        get_mqtt().publish("debug/pid", payload)
     except Exception:
         pass
 
@@ -62,27 +52,7 @@ if global_selected != prev_local:
     _pt_append_log(f">> Selected module: {global_selected}")
 
 
-st.markdown(
-    """
-    <style>
-    .pt-log-box { background-color: #111316; color: #D1FAE5; padding: 10px; border-radius: 8px;
-                  height: 180px; overflow-y: auto; font-family: monospace; font-size: 13px;
-                  border: 1px solid #28323a; white-space: pre-wrap; }
-    .pt-log-title { font-weight: 700; margin: 0 0 6px 0; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-with st.container(border=True):
-    st.subheader("PID Tuning Logs")
-    form_key2 = "pt_clear_logs_form_charts"
-    with st.form(form_key2):
-        if st.form_submit_button("Clear"):
-            st.session_state.pt_logs = []
-    log_content2 = "\n".join(st.session_state.get("pt_logs", [])[-400:])
-    st.markdown(f"<div class='pt-log-box'>{log_content2}</div>", unsafe_allow_html=True)
+ 
 
 
 def _append_live_point(payload: dict) -> None:
