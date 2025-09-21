@@ -39,6 +39,8 @@ for k, v in defaults_pressure.items():
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
 st.session_state.setdefault("pt_logs", [])
+st.session_state.setdefault("pt_diag_disable_right", False)
+st.session_state.setdefault("pt_diag_disable_charts", False)
 
 # Data buffers for demo charts (simple ring buffers)
 st.session_state.setdefault("pt_data", {
@@ -367,6 +369,11 @@ def _logs_tick():
     log_content = "\n".join(st.session_state.get("pt_logs", [])[-400:])
     st.markdown(f"<div class='pt-log-box'>{log_content}</div>", unsafe_allow_html=True)
 
+# Diagnostics controls (optional, to isolate white-screen source)
+with st.expander("Diagnostics", expanded=False):
+    st.checkbox("Disable right-side PID panel", key="pt_diag_disable_right")
+    st.checkbox("Disable charts", key="pt_diag_disable_charts")
+
 
 def _refresh_pid_status_once(module_id: str | int) -> None:
     try:
@@ -616,7 +623,11 @@ else:
                 if _dbg_rate_ok("right/error", 2.0):
                     _pt_append_log(f"dbg: right_panel error: {e}")
 
-        _pid_right_panel()
+        if not st.session_state.get("pt_diag_disable_right"):
+            _pid_right_panel()
+        else:
+            if _dbg_rate_ok("right/disabled", 5.0):
+                _pt_append_log("dbg: right panel disabled by diagnostics toggle")
 
         # Removed Run/Stop and Save/Load UI for streamlined PID control
 
@@ -825,6 +836,10 @@ def _grow_y_bounds(values: list[float], prefix: str) -> bool:
 @st.fragment(run_every=0.5)
 def _charts_stream():
     try:
+        if st.session_state.get("pt_diag_disable_charts"):
+            if _dbg_rate_ok("charts/disabled", 5.0):
+                _pt_append_log("dbg: charts disabled by diagnostics toggle")
+            return
         if not st.session_state.get("pt_selected_module"):
             return
         charts = _ensure_stream_charts()
