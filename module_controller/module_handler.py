@@ -8,6 +8,7 @@ from datetime import datetime
 import serial
 import paho.mqtt.client as mqtt
 from common.logger import Logger
+from pathlib import Path
 
 
 class ModuleHandler:
@@ -48,6 +49,13 @@ class ModuleHandler:
         self._data_csv_path: Optional[str] = None
         self._data_csv_file = None
         self._data_csv_writer = None
+
+        # JSONL persistence (UI-independent): live and pid histories
+        self._live_x_counter: int = 0
+        try:
+            self._ensure_jsonl_dirs()
+        except Exception:
+            pass
 
     def start(self):
         if self._running:
@@ -92,6 +100,80 @@ class ModuleHandler:
         except Exception:
             pass
         self.logger.info(f"{self.module_name}: stopped")
+
+    # ------------------- JSONL persistence helpers -------------------
+    def _repo_root(self) -> Path:
+        # .../proteus-plus/module_controller/module_handler.py -> repo root at parents[1]
+        here = Path(__file__).resolve()
+        return here.parents[1]
+
+    def _live_jsonl_dir(self) -> Path:
+        d = self._repo_root() / "proteus-ui" / "data" / "live"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _pid_jsonl_dir(self) -> Path:
+        d = self._repo_root() / "proteus-ui" / "data" / "pidlive"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _ensure_jsonl_dirs(self) -> None:
+        try:
+            _ = self._live_jsonl_dir()
+            _ = self._pid_jsonl_dir()
+        except Exception:
+            pass
+
+    def _append_live_jsonl(self, data: Dict[str, Any]) -> None:
+        try:
+            fp = self._live_jsonl_dir() / f"module_{self.module_id}.jsonl"
+            record = {
+                "x": int(self._live_x_counter),
+                "ts": int(time.time() * 1000),  # ms epoch
+                "data": data or {},
+            }
+            with fp.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+            self._live_x_counter += 1
+        except Exception:
+            # Best effort; never crash read loop on file errors
+            pass
+
+    def _append_pid_jsonl(self, payload_data: Dict[str, Any], ts_value: Optional[str | float | int]) -> None:
+        try:
+            # Convert timestamp to epoch seconds if possible
+            ts_seconds: int
+            try:
+                if isinstance(ts_value, (int, float)):
+                    # If already numeric, assume seconds if small or ms if very large
+                    v = float(ts_value)
+                    ts_seconds = int(v if v < 3_000_000_000 else v / 1000.0)
+                elif isinstance(ts_value, str) and ts_value:
+                    ts_seconds = int(pd.to_datetime(ts_value, utc=True).timestamp())
+                else:
+                    ts_seconds = int(time.time())
+            except Exception:
+                ts_seconds = int(time.time())
+
+            d = payload_data or {}
+            pid_row = {
+                "ts": ts_seconds,
+                "ox_desired": float(d.get("oxygen_setpoint", 0.0)),
+                "ox_meas1": float(d.get("oxygen_measured_1", 0.0)),
+                "ox_meas2": float(d.get("oxygen_measured_2", 0.0)),
+                "ox_meas3": float(d.get("oxygen_measured_3", 0.0)),
+                "flow_desired": float(d.get("circ_flow_speed_desired", 0.0)),
+                "flow_actual": float(d.get("flow_measured", 0.0)),
+                "press_pump_desired": float(d.get("pressure_flow_speed_desired", 0.0)),
+                "press_pump_actual": float(d.get("pressure_pump_speed", 0.0)),
+                "pressure_desired": float(d.get("pressure_setpoint", 0.0)),
+                "pressure_actual": float(d.get("pressure_measured", 0.0)),
+            }
+            fp = self._pid_jsonl_dir() / f"{self.module_id}.jsonl"
+            with fp.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(pid_row) + "\n")
+        except Exception:
+            pass
 
     def restart(self):
         self.stop()
@@ -383,6 +465,20 @@ class ModuleHandler:
                 routed_topic = self._select_outbound_topic(obj)
                 if routed_topic:
                     self.mqtt_client.publish(routed_topic, json.dumps(obj))
+                # Persist live/pid JSONL continuously for data_logger sensor payloads
+                try:
+                    src_for_persist = str(obj.get("message_source", "")).lower()
+                    inner_msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+                    alpha_cmd = obj.get("alpha_command")
+                    if src_for_persist == "data_logger" and (alpha_cmd == "sensor_data" or isinstance(inner_msg, dict)):
+                        data_dict = obj.get("data") if isinstance(obj.get("data"), dict) else {}
+                        # Live JSONL
+                        self._append_live_jsonl(data_dict)
+                        # PID JSONL (mapped fields)
+                        ts_val = obj.get("timestamp") or obj.get("ts")
+                        self._append_pid_jsonl(data_dict, ts_val)
+                except Exception:
+                    pass
                 # Track Alpha data_logger logging state via system message
                 try:
                     src_local = str(obj.get("message_source", "")).lower()

@@ -209,29 +209,7 @@ def _append_live_point(payload: dict) -> None:
         except Exception:
             pass
 
-        # Persist to JSONL for backfill
-        try:
-            mod = st.session_state.get("pt_selected_module")
-            if mod:
-                live_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pidlive")
-                os.makedirs(live_dir, exist_ok=True)
-                fpath = os.path.join(live_dir, f"{mod}.jsonl")
-                with open(fpath, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({
-                        "ts": t_epoch,
-                        "ox_desired": buf["ox_desired"][-1],
-                        "ox_meas1": buf["ox_meas1"][-1],
-                        "ox_meas2": buf["ox_meas2"][-1],
-                        "ox_meas3": buf["ox_meas3"][-1],
-                        "flow_desired": buf["flow_desired"][-1],
-                        "flow_actual": buf["flow_actual"][-1],
-                        "press_pump_desired": buf["press_pump_desired"][-1],
-                        "press_pump_actual": buf["press_pump_actual"][-1],
-                        "pressure_desired": buf["pressure_desired"][-1],
-                        "pressure_actual": buf["pressure_actual"][-1],
-                    }) + "\n")
-        except Exception:
-            pass
+        # No UI file persistence; ModuleHandler handles JSONL writes
     except Exception:
         pass
 

@@ -301,6 +301,7 @@ def _experiment_folder_dialog() -> None:
 
 # -------- Persistence helpers (file-backed history per module) --------
 def _live_data_dir() -> Path:
+    # Deprecated: UI no longer persists live JSONL; ModuleHandler owns persistence.
     this_file = Path(__file__).resolve()
     repo_root = this_file.parents[2]
     d = repo_root / "proteus-ui" / "data" / "live"
@@ -313,12 +314,8 @@ def _live_file_path(module_id: str) -> Path:
 
 
 def _append_live_record(module_id: str, x_value: int, data: dict) -> None:
-    try:
-        fp = _live_file_path(module_id)
-        with fp.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"x": x_value, "ts": int(time.time()*1000), "data": data}) + "\n")
-    except Exception:
-        pass
+    # Deprecated: UI no longer writes JSONL; keep function as no-op for compatibility.
+    return
 
 
 def _load_live_records(module_id: str, max_points: int) -> list[dict]:
@@ -920,8 +917,7 @@ def background_collector():
                             new_y = float(last_values[idx])
                         buffers[idx].append((row_x, new_y))
                         last_values[idx] = new_y
-                    # Persist to disk with timestamp for recovery after refresh
-                    _append_live_record(mod, x_counter, data)
+                    # UI no longer persists JSONL; ModuleHandler writes the live history
                     x_counter += 1
                 except Exception:
                     continue
