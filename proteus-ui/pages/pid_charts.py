@@ -73,7 +73,14 @@ def _append_live_point(payload: dict) -> None:
             return
         ts = payload.get("timestamp") or payload.get("time") or payload.get("ts")
         try:
-            t_epoch = int(time.time()) if ts is None else int(pd.to_datetime(ts, utc=True).timestamp())
+            if ts is None:
+                t_epoch = int(time.time())
+            elif isinstance(ts, (int, float)):
+                v = float(ts)
+                t_epoch = int(v if v < 3_000_000_000 else v / 1000.0)
+            else:
+                # Treat incoming naive timestamps as local time (no UTC coercion)
+                t_epoch = int(datetime.fromisoformat(str(ts)).timestamp())
         except Exception:
             t_epoch = int(time.time())
         buf = st.session_state.pt_data
