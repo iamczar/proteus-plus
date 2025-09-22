@@ -10,7 +10,18 @@ from common.utils import inject_button_theme
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 from datetime import datetime
+from pathlib import Path
 
+def _pidlive_dir() -> Path:
+    this_file = Path(__file__).resolve()
+    repo_root = this_file.parents[2]
+    d = repo_root / "proteus-ui" / "data" / "pidlive"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _pid_file_path(module_id: str) -> Path:
+    return _pidlive_dir() / f"{module_id}.jsonl"
 
 st.set_page_config(page_title="PID Charts", layout="wide")
 st.title("PID Charts")
@@ -104,6 +115,55 @@ def _ensure_buffers():
 
 _ensure_buffers()
 
+
+def _backfill_pid_from_file(module_id: str) -> None:
+    try:
+        _ensure_buffers()
+        fp = _pid_file_path(str(module_id))
+        if not fp.exists():
+            return
+        with fp.open("r", encoding="utf-8") as f:
+            lines = f.readlines()[-MAX_POINTS:]
+        # Reset buffers before loading
+        st.session_state.pt_data = {
+            "t": [],
+            "ox_desired": [],
+            "ox_meas1": [],
+            "ox_meas2": [],
+            "ox_meas3": [],
+            "flow_desired": [],
+            "flow_actual": [],
+            "press_pump_desired": [],
+            "press_pump_actual": [],
+            "pressure_desired": [],
+            "pressure_actual": [],
+        }
+        for ln in lines:
+            try:
+                obj = json.loads(ln.strip())
+                if not isinstance(obj, dict):
+                    continue
+                ts = int(float(obj.get("ts", time.time())))
+                st.session_state.pt_data["t"].append(ts)
+                st.session_state.pt_data["ox_desired"].append(float(obj.get("ox_desired", 0.0)))
+                st.session_state.pt_data["ox_meas1"].append(float(obj.get("ox_meas1", 0.0)))
+                st.session_state.pt_data["ox_meas2"].append(float(obj.get("ox_meas2", 0.0)))
+                st.session_state.pt_data["ox_meas3"].append(float(obj.get("ox_meas3", 0.0)))
+                st.session_state.pt_data["flow_desired"].append(float(obj.get("flow_desired", 0.0)))
+                st.session_state.pt_data["flow_actual"].append(float(obj.get("flow_actual", 0.0)))
+                st.session_state.pt_data["press_pump_desired"].append(float(obj.get("press_pump_desired", 0.0)))
+                st.session_state.pt_data["press_pump_actual"].append(float(obj.get("press_pump_actual", 0.0)))
+                st.session_state.pt_data["pressure_desired"].append(float(obj.get("pressure_desired", 0.0)))
+                st.session_state.pt_data["pressure_actual"].append(float(obj.get("pressure_actual", 0.0)))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+mod_init = st.session_state.get("pt_selected_module")
+if mod_init:
+    _backfill_pid_from_file(str(mod_init))
 
 def _render_charts():
     st.subheader("Oxygen (desired vs measured x3)")
