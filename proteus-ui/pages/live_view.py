@@ -495,11 +495,11 @@ def experiment_controls():
                                         st.session_state._seq_toast_flags = {}
                                     st.session_state._seq_toast_flags[mod] = {"transfer": False, "completed": False}
                                     msg = f"Sent start_sequence to `{topic}` file `{Path(file_path).name}`"
-                                    show_toast(msg, "success", source="Start Experiment")
+                                    show_toast(msg, "success", source="Start Sequence")
                                     _append_system_log(f"Toast [success]: {msg}", level="INFO")
                                 except Exception as exc:
                                     msg = f"Failed to publish MQTT: {exc}"
-                                    show_toast(msg, "error", source="Start Experiment")
+                                    show_toast(msg, "error", source="Start Sequence")
                                     _append_system_log(f"Toast [error]: {msg}", level="ERROR")
                     elif label == "Stop Sequence":
                         if st.button(label, key=f"btn_{label}"):
