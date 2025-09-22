@@ -139,7 +139,7 @@ class ModuleHandler:
             # Best effort; never crash read loop on file errors
             pass
 
-    def _append_pid_jsonl(self, payload_data: Dict[str, Any], ts_value: Optional[str | float | int]) -> None:
+    def _append_pid_jsonl(self, payload_data: Dict[str, Any], ts_value: Optional["str" | float | int]) -> None:
         try:
             # Convert timestamp to epoch seconds if possible
             ts_seconds: int
@@ -149,7 +149,10 @@ class ModuleHandler:
                     v = float(ts_value)
                     ts_seconds = int(v if v < 3_000_000_000 else v / 1000.0)
                 elif isinstance(ts_value, str) and ts_value:
-                    ts_seconds = int(pd.to_datetime(ts_value, utc=True).timestamp())
+                    try:
+                        ts_seconds = int(datetime.fromisoformat(ts_value).timestamp())
+                    except Exception:
+                        ts_seconds = int(time.time())
                 else:
                     ts_seconds = int(time.time())
             except Exception:
@@ -468,10 +471,10 @@ class ModuleHandler:
                 # Persist live/pid JSONL continuously for data_logger sensor payloads
                 try:
                     src_for_persist = str(obj.get("message_source", "")).lower()
-                    inner_msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
                     alpha_cmd = obj.get("alpha_command")
-                    if src_for_persist == "data_logger" and (alpha_cmd == "sensor_data" or isinstance(inner_msg, dict)):
-                        data_dict = obj.get("data") if isinstance(obj.get("data"), dict) else {}
+                    data_dict = obj.get("data") if isinstance(obj.get("data"), dict) else None
+                    # Persist ONLY for true sensor_data payloads with a data dict
+                    if src_for_persist == "data_logger" and alpha_cmd == "sensor_data" and isinstance(data_dict, dict):
                         # Live JSONL
                         self._append_live_jsonl(data_dict)
                         # PID JSONL (mapped fields)
