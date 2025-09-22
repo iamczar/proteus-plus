@@ -226,7 +226,7 @@ def _render_charts():
         rows_pressure_pump = {"x": [], "y": [], "series": []}
         rows_pressure = {"x": [], "y": [], "series": []}
         for i in range(len(t)):
-                    x_ts = datetime.fromtimestamp(int(t[i]))
+            x_ts = datetime.fromtimestamp(int(t[i]))
             rows_oxygen["x"].extend([x_ts, x_ts, x_ts, x_ts])
             rows_oxygen["y"].extend([
                 float(data.get("ox_desired", [0.0])[i] if len(data.get("ox_desired", [])) > i else 0.0),
@@ -302,8 +302,7 @@ def _render_tick():
     if not t or not charts:
         return
     def build_rows(x_idx: int):
-        x_ts = pd.to_datetime(int(t[x_idx]), unit="s")
-        return x_ts
+        return datetime.fromtimestamp(int(t[x_idx]))
     start = int(st.session_state.get("_pidc_painted", 0))
     end = len(t)
     if end <= start:
