@@ -135,12 +135,16 @@ def _backfill_pid_from_file(module_id: str) -> None:
             "pressure_desired": [],
             "pressure_actual": [],
         }
-        for ln in lines:
+        now_sec = int(time.time())
+        total = len(lines)
+        for idx, ln in enumerate(lines):
             try:
                 obj = json.loads(ln.strip())
                 if not isinstance(obj, dict):
                     continue
-                ts = int(float(obj.get("ts", time.time())))
+                # Align history to current local time to avoid cross-host clock skew:
+                # synthesize timestamps spaced by 1s ending at now
+                ts = now_sec - (total - 1 - idx)
                 st.session_state.pt_data["t"].append(ts)
                 st.session_state.pt_data["ox_desired"].append(float(obj.get("ox_desired", 0.0)))
                 st.session_state.pt_data["ox_meas1"].append(float(obj.get("ox_meas1", 0.0)))
