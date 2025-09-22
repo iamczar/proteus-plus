@@ -71,18 +71,8 @@ def _append_live_point(payload: dict) -> None:
         data = payload.get("data") or {}
         if not isinstance(data, dict):
             return
-        ts = payload.get("timestamp") or payload.get("time") or payload.get("ts")
-        try:
-            if ts is None:
-                t_epoch = int(time.time())
-            elif isinstance(ts, (int, float)):
-                v = float(ts)
-                t_epoch = int(v if v < 3_000_000_000 else v / 1000.0)
-            else:
-                # Treat incoming naive timestamps as local time (no UTC coercion)
-                t_epoch = int(datetime.fromisoformat(str(ts)).timestamp())
-        except Exception:
-            t_epoch = int(time.time())
+        # Use local receipt time for x-axis to match Live View
+        t_epoch = int(time.time())
         buf = st.session_state.pt_data
         buf["t"].append(t_epoch)
         buf["ox_desired"].append(float(data.get("oxygen_setpoint", 0.0)))
@@ -236,7 +226,7 @@ def _render_charts():
         rows_pressure_pump = {"x": [], "y": [], "series": []}
         rows_pressure = {"x": [], "y": [], "series": []}
         for i in range(len(t)):
-            x_ts = pd.to_datetime(int(t[i]), unit="s")
+                    x_ts = datetime.fromtimestamp(int(t[i]))
             rows_oxygen["x"].extend([x_ts, x_ts, x_ts, x_ts])
             rows_oxygen["y"].extend([
                 float(data.get("ox_desired", [0.0])[i] if len(data.get("ox_desired", [])) > i else 0.0),
