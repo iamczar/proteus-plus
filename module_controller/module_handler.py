@@ -3,7 +3,7 @@ import os
 import time
 import json
 import csv
-from typing import Optional, Callable, Any, Dict, List
+from typing import Optional, Callable, Any, Dict, List, Union
 from datetime import datetime
 import serial
 import paho.mqtt.client as mqtt
@@ -139,7 +139,7 @@ class ModuleHandler:
             # Best effort; never crash read loop on file errors
             pass
 
-    def _append_pid_jsonl(self, payload_data: Dict[str, Any], ts_value: Optional["str" | float | int]) -> None:
+    def _append_pid_jsonl(self, payload_data: Dict[str, Any], ts_value: Optional[Union[str, float, int]]) -> None:
         try:
             # Convert timestamp to epoch seconds if possible
             ts_seconds: int
