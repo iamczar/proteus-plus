@@ -42,11 +42,11 @@ def _append_lem_log(message: str) -> None:
 
 
 def _publish_sequence_command(module_id: str | int, message: dict) -> None:
-    """Publish a generic sequence command envelope to sequence-commands/<module>.
+    """Publish a generic sequence command envelope to lem-commands/<module>.
 
     ModuleHandler forwards any dict with a "command" field to Alpha.
     """
-    topic = f"sequence-commands/{module_id}"
+    topic = f"lem-commands/{module_id}"
     envelope = {
         "message_source": "proteus-ui",
         "timestamp": datetime.now().isoformat(),
@@ -149,20 +149,42 @@ if all(v is None for v in assignments) and mods:
         assignments[i] = mods[i]
     st.session_state.lem_assignments = assignments
 cols = st.columns(4, gap="small")
+# Progress bars (disabled)
+# Placeholders for per-column progress bars so we can refresh them periodically
+# _lem_progress_placeholders = []
 for idx, col in enumerate(cols):
     with col:
         with st.container(border=True):
             # Module selector above column buttons
-            options = ["— none —"] + (mods or [])
-            current = assignments[idx] if assignments[idx] in (mods or []) else "— none —"
-            sel = st.selectbox(
-                f"Position {idx+1}",
-                options=options,
-                index=(options.index(current) if current in options else 0),
-                key=f"_lem_select_{idx}",
-                label_visibility="collapsed",
-            )
-            st.session_state.lem_assignments[idx] = None if sel == "— none —" else sel
+            available = mods or []
+            prev = st.session_state.lem_assignments[idx]
+            if prev is not None and prev not in available:
+                prev = None
+                st.session_state.lem_assignments[idx] = None
+            placeholder = "— Select a module —"
+            if prev is None:
+                initial_options = [placeholder] + available if available else [placeholder]
+                sel = st.selectbox(
+                    f"Position {idx+1}",
+                    options=initial_options,
+                    index=0,
+                    key=f"_lem_select_first_{idx}",
+                    label_visibility="collapsed",
+                )
+            else:
+                final_options = available
+                default_index = final_options.index(prev) if prev in available else (0 if final_options else 0)
+                sel = st.selectbox(
+                    f"Position {idx+1}",
+                    options=final_options,
+                    index=default_index,
+                    key=f"_lem_select_final_{idx}",
+                    label_visibility="collapsed",
+                )
+            if sel not in (None, placeholder) and sel != prev:
+                st.session_state.lem_assignments[idx] = sel
+                _append_lem_log(f"Selected module for column {idx+1}: {sel}")
+                st.rerun()
             mod = st.session_state.lem_assignments[idx]
             # Media buttons
             for media in MEDIA_LIST:
@@ -172,32 +194,43 @@ for idx, col in enumerate(cols):
                         _append_lem_log("WARN: Assign a module to this column first before dispensing")
                     else:
                         lem_dispense(media, str(mod), vol)
-            # Local progress indicator (animated client-side)
-            prog = st.session_state.lem_progress.get(str(mod)) if mod else None
-            if prog:
-                now = time.time()
-                start_ts = float(prog.get("start_ts", now))
-                end_ts = float(prog.get("end_ts", now))
-                if end_ts <= now:
-                    # Done – clear
-                    try:
-                        del st.session_state.lem_progress[str(mod)]
-                    except Exception:
-                        pass
-                    st.progress(0)
-                else:
-                    pct = int(max(0, min(100, ((now - start_ts) / max(0.001, (end_ts - start_ts))) * 100)))
-                    st.progress(pct)
+            # Local progress indicator (animated via periodic fragment)
+            # ph = st.empty()
+            # _lem_progress_placeholders.append(ph)
 
 
-@st.fragment(run_every=0.25)
-def _tick_progress():
-    # Re-render the progress bars in the current layout by triggering a small placeholder update
-    # (Bars are already part of the static layout; this fragment ensures periodic reruns.)
-    pass
-
-
-_tick_progress()
+# Progress bars (disabled)
+# def _render_progress_once():
+#     # Render progress bars for each column into their placeholders
+#     try:
+#         for i, ph in enumerate(_lem_progress_placeholders):
+#             mod = st.session_state.lem_assignments[i] if i < len(st.session_state.lem_assignments) else None
+#             prog = st.session_state.lem_progress.get(str(mod)) if mod else None
+#             with ph.container():
+#                 if not prog:
+#                     st.progress(0)
+#                 else:
+#                     now = time.time()
+#                     start_ts = float(prog.get("start_ts", now))
+#                     end_ts = float(prog.get("end_ts", now))
+#                     if end_ts <= now:
+#                         try:
+#                             del st.session_state.lem_progress[str(mod)]
+#                         except Exception:
+#                             pass
+#                         st.progress(0)
+#                     else:
+#                         pct = int(max(0, min(100, ((now - start_ts) / max(0.001, (end_ts - start_ts))) * 100)))
+#                         st.progress(pct)
+#     except Exception:
+#         pass
+#
+# @st.fragment(run_every=0.25)
+# def _refresh_progress():
+#     _render_progress_once()
+#
+# _render_progress_once()
+# _refresh_progress()
 
 with st.container(border=True):
     st.subheader("LEM Logs")
