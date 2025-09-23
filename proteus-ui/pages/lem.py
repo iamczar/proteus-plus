@@ -55,19 +55,6 @@ def _publish_sequence_command(module_id: str | int, message: dict) -> None:
     MQTTService().publish(topic, envelope)
 
 
-def lem_start(modules: List[str]) -> None:
-    for mod in modules:
-        if not mod:
-            continue
-        try:
-            _publish_sequence_command(mod, {"command": "start_lem"})
-            _append_lem_log(f"START LEM -> {mod}")
-        except Exception as exc:
-            _append_lem_log(f"ERROR: Failed to start LEM for {mod}: {exc}")
-    if modules:
-        _append_lem_log("START LEM sent")
-
-
 def lem_stop(modules: List[str]) -> None:
     for mod in modules:
         if not mod:
@@ -127,15 +114,9 @@ with st.container(border=True):
         value=0.0,
         key="lem_volume_ml",
     )
-    col_a, col_b = st.columns(2, gap="small")
-    with col_a:
-        if st.button("START LEM", use_container_width=True, key="lem_start_btn"):
-            assigned = [a for a in st.session_state.lem_assignments if a]
-            lem_start(assigned)
-    with col_b:
-        if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
-            assigned = [a for a in st.session_state.lem_assignments if a]
-            lem_stop(assigned)
+    if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
+        assigned = [a for a in st.session_state.lem_assignments if a]
+        lem_stop(assigned)
 
 
 # -----------------------------
