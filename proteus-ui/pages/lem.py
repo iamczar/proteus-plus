@@ -4,7 +4,7 @@ from typing import List, Optional
 
 import streamlit as st
 
-from common.utils import inject_button_theme, render_toast_area, show_toast
+from common.utils import inject_button_theme
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 
@@ -29,6 +29,16 @@ if "lem_assignments" not in st.session_state:
 if "lem_progress" not in st.session_state:
     # module_id (str) -> {start_ts: float, end_ts: float}
     st.session_state.lem_progress = {}
+if "lem_logs" not in st.session_state:
+    st.session_state.lem_logs = []
+
+
+def _append_lem_log(message: str) -> None:
+    try:
+        st.session_state.lem_logs.append(message)
+        st.session_state.lem_logs = st.session_state.lem_logs[-300:]
+    except Exception:
+        pass
 
 
 def _publish_sequence_command(module_id: str | int, message: dict) -> None:
@@ -51,10 +61,11 @@ def lem_start(modules: List[str]) -> None:
             continue
         try:
             _publish_sequence_command(mod, {"command": "start_lem"})
+            _append_lem_log(f"START LEM -> {mod}")
         except Exception as exc:
-            show_toast(f"Failed to start LEM for {mod}: {exc}", "error", source="LEM")
+            _append_lem_log(f"ERROR: Failed to start LEM for {mod}: {exc}")
     if modules:
-        show_toast("START LEM sent", "success", source="LEM")
+        _append_lem_log("START LEM sent")
 
 
 def lem_stop(modules: List[str]) -> None:
@@ -63,10 +74,11 @@ def lem_stop(modules: List[str]) -> None:
             continue
         try:
             _publish_sequence_command(mod, {"command": "stop_lem"})
+            _append_lem_log(f"STOP LEM -> {mod}")
         except Exception as exc:
-            show_toast(f"Failed to stop LEM for {mod}: {exc}", "error", source="LEM")
+            _append_lem_log(f"ERROR: Failed to stop LEM for {mod}: {exc}")
     if modules:
-        show_toast("STOP LEM sent", "warning", source="LEM")
+        _append_lem_log("STOP LEM sent")
 
 
 def lem_dispense(media: str, module_id: str, volume_ml: float) -> None:
@@ -75,7 +87,7 @@ def lem_dispense(media: str, module_id: str, volume_ml: float) -> None:
     except Exception:
         vol = 0.0
     if not module_id:
-        show_toast("No module assigned.", "warning", source="LEM")
+        _append_lem_log("WARN: No module assigned for dispense request")
         return
     try:
         payload = {
@@ -84,18 +96,16 @@ def lem_dispense(media: str, module_id: str, volume_ml: float) -> None:
             "volume_ml": float(vol),
         }
         _publish_sequence_command(module_id, payload)
-        show_toast(f"{media} dispense sent to {module_id} ({vol:.2f} mL)", "success", source="LEM")
+        _append_lem_log(f"DISPENSE {media} {vol:.2f} mL -> {module_id}")
         # Animate a local progress bar for quick feedback (1–10s based on volume)
         dur = max(1.0, min(10.0, (vol / 200.0) if vol > 0 else 1.0))
         now = time.time()
         st.session_state.lem_progress[str(module_id)] = {"start_ts": now, "end_ts": now + dur}
     except Exception as exc:
-        show_toast(f"Failed to send dispense: {exc}", "error", source="LEM")
+        _append_lem_log(f"ERROR: Failed to send dispense: {exc}")
 
 
-# Toast area
-toast_placeholder = st.empty()
-render_toast_area(container=toast_placeholder.container())
+# (Toasts removed for LEM page; we use the log area instead.)
 
 
 def _available_modules() -> List[str]:
@@ -159,7 +169,7 @@ for idx, col in enumerate(cols):
                 if st.button(media, use_container_width=True, key=f"lem_btn_{idx}_{media}"):
                     vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
                     if not mod:
-                        show_toast("Assign a module to this column first.", "warning", source="LEM")
+                        _append_lem_log("WARN: Assign a module to this column first before dispensing")
                     else:
                         lem_dispense(media, str(mod), vol)
             # Local progress indicator (animated client-side)
@@ -188,5 +198,40 @@ def _tick_progress():
 
 
 _tick_progress()
+
+with st.container(border=True):
+    st.subheader("LEM Logs")
+    # Reuse log styling consistent with other pages
+    log_box_css = """
+    <style>
+    .log-box { background-color: #252525; color: #00FF7D; padding: 1em; border-radius: 8px;
+               height: 360px; overflow-y: scroll; font-family: monospace; font-size: 14px;
+               white-space: pre-wrap; border: 1px solid #333; margin-bottom: 8px; }
+    .log-title { font-weight: 700; margin: 0 0 6px 0; }
+    </style>
+    """
+    st.markdown(log_box_css, unsafe_allow_html=True)
+
+    top_row = st.columns([8, 1], gap="small")
+    with top_row[0]:
+        st.markdown("<div class='log-title'>Recent events</div>", unsafe_allow_html=True)
+    with top_row[1]:
+        if st.button("Clear", key="lem_clear_logs", use_container_width=True):
+            st.session_state.lem_logs = []
+
+    # Render area
+    _lem_log_area = st.empty()
+
+    def _render_lem_logs():
+        lines = st.session_state.get("lem_logs", [])[-300:]
+        content = "\n".join(lines)
+        _lem_log_area.markdown(f"<div class='log-box'>{content}</div>", unsafe_allow_html=True)
+
+    @st.fragment(run_every=0.5)
+    def _refresh_lem_logs():
+        _render_lem_logs()
+
+    _render_lem_logs()
+    _refresh_lem_logs()
 
 
