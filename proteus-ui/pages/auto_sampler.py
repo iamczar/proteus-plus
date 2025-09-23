@@ -5,8 +5,6 @@ from pathlib import Path
 import streamlit as st
 
 from common.utils import inject_button_theme
-from common.utils import show_toast
-from common.utils import render_toast_area
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 
@@ -114,21 +112,8 @@ with st.container(border=True):
         # Update selection only when a real module is chosen
         if chosen != placeholder_label and chosen != previous_value:
             st.session_state.as_selected_module = chosen
-            show_toast(f"Selected module: **{chosen}**", "success", source="Module Selection (local)")
             _append_log(f">> Local module selected: {chosen}")
             st.rerun()
-
-
-# Toast area between module selection and sampler UI
-toast_placeholder = st.empty()
-# Initial paint
-render_toast_area(container=toast_placeholder.container())
-
-@st.fragment(run_every=0.4)
-def _update_toasts():
-    render_toast_area(container=toast_placeholder.container())
-
-_update_toasts()
 
 
 # -----------------------------
@@ -297,11 +282,10 @@ def _render_controls(sid: int) -> None:
                         },
                     }
                     MQTTService().publish(topic, envelope)
-                    show_toast(f"RUN sent to sampler {sid}", "success", source="Auto Sampler")
                     # Do not start local countdown; rely on firmware holding updates
                     st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
-                    show_toast(f"Failed to send RUN: {exc}", "error", source="Auto Sampler")
+                    st.error(f"Failed to send RUN: {exc}")
 
         reset_clicked = st.button("RESET", key=f"{key_prefix}reset")
         if reset_clicked:
@@ -320,10 +304,9 @@ def _render_controls(sid: int) -> None:
                         },
                     }
                     MQTTService().publish(topic, envelope)
-                    show_toast(f"RESET sent to sampler {sid}", "info", source="Auto Sampler")
                     st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
-                    show_toast(f"Failed to send RESET: {exc}", "error", source="Auto Sampler")
+                    st.error(f"Failed to send RESET: {exc}")
 
         stop_clicked = st.button("STOP", key=f"{key_prefix}stop")
         if stop_clicked:
@@ -342,10 +325,9 @@ def _render_controls(sid: int) -> None:
                         },
                     }
                     MQTTService().publish(topic, envelope)
-                    show_toast(f"STOP sent to sampler {sid}", "warning", source="Auto Sampler")
                     st.session_state[f"{key_prefix}hold_end_ts"] = None
                 except Exception as exc:
-                    show_toast(f"Failed to send STOP: {exc}", "error", source="Auto Sampler")
+                    st.error(f"Failed to send STOP: {exc}")
 
         # Guidance: if sampler requires RESET, show hint below controls
         try:
@@ -414,10 +396,6 @@ with right_area:
             with btn_col:
                 if st.button("Clear", key=f"as_clear_logs_{idx}"):
                     st.session_state[f"as_logs_{idx}"] = []
-                    try:
-                        show_toast(f"Cleared logs for sampler {idx}", "info", source="Auto Sampler")
-                    except Exception:
-                        pass
 
         # Pair each header with its own log placeholder directly below
         log_areas = {}
@@ -490,7 +468,6 @@ with right_area:
                                 pass
                         # Optional toast for ack
                         if inner.get("command") == "auto_sampler_cmd_ack":
-                            show_toast("Auto sampler command acknowledged", "success", source="Auto Sampler")
                             try:
                                 key = f"as_logs_{int(inner.get('sampler_id', 0) or 0)}"
                                 if key in st.session_state:
