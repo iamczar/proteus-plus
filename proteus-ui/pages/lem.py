@@ -41,12 +41,9 @@ def _append_lem_log(message: str) -> None:
         pass
 
 
-def _publish_sequence_command(module_id: str | int, message: dict) -> None:
-    """Publish a generic sequence command envelope to lem-commands/<module>.
-
-    ModuleHandler forwards any dict with a "command" field to Alpha.
-    """
-    topic = f"lem-commands/{module_id}"
+def _publish_lem_command(message: dict) -> None:
+    """Publish a generic LEM command envelope without module scoping."""
+    topic = "lem-commands"
     envelope = {
         "message_source": "proteus-ui",
         "timestamp": datetime.now().isoformat(),
@@ -55,39 +52,32 @@ def _publish_sequence_command(module_id: str | int, message: dict) -> None:
     MQTTService().publish(topic, envelope)
 
 
-def lem_stop(modules: List[str]) -> None:
-    for mod in modules:
-        if not mod:
-            continue
-        try:
-            _publish_sequence_command(mod, {"command": "stop_lem"})
-            _append_lem_log(f"STOP LEM -> {mod}")
-        except Exception as exc:
-            _append_lem_log(f"ERROR: Failed to stop LEM for {mod}: {exc}")
-    if modules:
+def lem_stop() -> None:
+    try:
+        _publish_lem_command({"command": "stop_lem"})
         _append_lem_log("STOP LEM sent")
+    except Exception as exc:
+        _append_lem_log(f"ERROR: Failed to stop LEM: {exc}")
 
 
-def lem_dispense(media: str, module_id: str, volume_ml: float) -> None:
+def lem_dispense(media: str, valve_index: int, volume_ml: float) -> None:
     try:
         vol = max(0.0, float(volume_ml or 0.0))
     except Exception:
         vol = 0.0
-    if not module_id:
-        _append_lem_log("WARN: No module assigned for dispense request")
-        return
     try:
         payload = {
             "command": "lem_dispense",
             "media": str(media),
+            "valve_index": int(valve_index),
             "volume_ml": float(vol),
         }
-        _publish_sequence_command(module_id, payload)
-        _append_lem_log(f"DISPENSE {media} {vol:.2f} mL -> {module_id}")
+        _publish_lem_command(payload)
+        _append_lem_log(f"DISPENSE {media} {vol:.2f} mL -> valve {int(valve_index)}")
         # Animate a local progress bar for quick feedback (1–10s based on volume)
         dur = max(1.0, min(10.0, (vol / 200.0) if vol > 0 else 1.0))
         now = time.time()
-        st.session_state.lem_progress[str(module_id)] = {"start_ts": now, "end_ts": now + dur}
+        st.session_state.lem_progress[f"valve_{int(valve_index)}"] = {"start_ts": now, "end_ts": now + dur}
     except Exception as exc:
         _append_lem_log(f"ERROR: Failed to send dispense: {exc}")
 
@@ -115,8 +105,7 @@ with st.container(border=True):
         key="lem_volume_ml",
     )
     if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
-        assigned = [a for a in st.session_state.lem_assignments if a]
-        lem_stop(assigned)
+        lem_stop()
 
 
 # -----------------------------
@@ -166,15 +155,12 @@ for idx, col in enumerate(cols):
                 st.session_state.lem_assignments[idx] = sel
                 _append_lem_log(f"Selected module for column {idx+1}: {sel}")
                 st.rerun()
-            mod = st.session_state.lem_assignments[idx]
-            # Media buttons
-            for media in MEDIA_LIST:
-                if st.button(media, use_container_width=True, key=f"lem_btn_{idx}_{media}"):
+            # Media buttons mapped to valve indices (1..16) by column and button position
+            for btn_idx, media in enumerate(MEDIA_LIST):
+                if st.button(media, use_container_width=True, key=f"lem_btn_{idx}_{btn_idx}"):
                     vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
-                    if not mod:
-                        _append_lem_log("WARN: Assign a module to this column first before dispensing")
-                    else:
-                        lem_dispense(media, str(mod), vol)
+                    valve_index = (idx * 4) + btn_idx + 1
+                    lem_dispense(media, valve_index, vol)
             # Local progress indicator (animated via periodic fragment)
             # ph = st.empty()
             # _lem_progress_placeholders.append(ph)
