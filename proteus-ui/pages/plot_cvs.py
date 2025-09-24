@@ -94,28 +94,27 @@ if file_bytes is not None:
         else 3
     )
 
-    # Widgets
-    selected_cols = st.sidebar.multiselect(
+    # Initialize widget state from URL params (only once)
+    if "plot_cols" not in st.session_state:
+        st.session_state["plot_cols"] = default_cols
+    if "plot_ds" not in st.session_state:
+        st.session_state["plot_ds"] = downsample_options[downsample_index]
+
+    # Widgets (stable keys ensure first-click updates are reflected immediately)
+    st.sidebar.multiselect(
         "Select columns to plot",
         options=list(numeric_cols),
-        default=default_cols,
+        key="plot_cols",
     )
 
-    downsample = st.sidebar.selectbox(
+    st.sidebar.selectbox(
         "Downsample (every nth row)",
         downsample_options,
-        index=downsample_index,
+        key="plot_ds",
     )
 
-    # Sync widget state to the URL so reloads restore the same view
-    new_params = {
-        "cols": ",".join(selected_cols) if selected_cols else "",
-        "ds": str(downsample),
-    }
-    current_params = {k: str(v) for k, v in dict(st.query_params).items()}
-    if current_params != new_params:
-        st.query_params.clear()
-        st.query_params.update(new_params)
+    selected_cols = st.session_state.get("plot_cols", [])
+    downsample = st.session_state.get("plot_ds", downsample_options[downsample_index])
 
     # Data sampling (no time filtering)
     filtered = df.iloc[::downsample]
@@ -131,5 +130,15 @@ if file_bytes is not None:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Please select at least one column to visualize.")
+
+    # Sync widget state to the URL so reloads restore the same view
+    new_params = {
+        "cols": ",".join(selected_cols) if selected_cols else "",
+        "ds": str(downsample),
+    }
+    current_params = {k: str(v) for k, v in dict(st.query_params).items()}
+    if current_params != new_params:
+        st.query_params.clear()
+        st.query_params.update(new_params)
 else:
     st.info("👆 Upload a CSV file above to get started.")
