@@ -7,6 +7,9 @@ st.set_page_config(page_title="Analyse Historical Data", layout="wide")
 st.title("Analyse Historical Data")
 st.session_state["_current_page_key"] = "proteus_ui_plot_cvs"
 
+# Key for persisting state across pages in this session
+PERSIST_KEY = "plot_cvs_persist_params"
+
 # Your actual headers
 HEADERS = [
     "TIME", "NULLEADER", "MODUID", "COMMAND", "STATEID",
@@ -76,6 +79,7 @@ if file_bytes is not None:
 
     numeric_cols = df.columns.drop(["TIME"])
     default_cols = [c for c in ["OXYMEASURED", "PRESSUREMEASURED"] if c in list(numeric_cols)]
+    cols_from_params = []
     if raw_cols:
         cols_from_params = [c for c in str(raw_cols).split(",") if c in list(numeric_cols)]
         if cols_from_params:
@@ -94,11 +98,20 @@ if file_bytes is not None:
         else 3
     )
 
-    # Initialize widget state from URL params (only once)
+    # Derive initial values with precedence: URL params > persisted session > defaults
+    persisted = st.session_state.get(PERSIST_KEY, {}) if isinstance(st.session_state.get(PERSIST_KEY, {}), dict) else {}
+    init_cols = cols_from_params or [c for c in persisted.get("cols", []) if c in list(numeric_cols)] or default_cols
+    init_ds = (
+        downsample_from_params
+        if downsample_from_params in downsample_options
+        else (persisted.get("ds") if persisted.get("ds") in downsample_options else downsample_options[downsample_index])
+    )
+
+    # Initialize widget state from resolved initial values (only once per session)
     if "plot_cols" not in st.session_state:
-        st.session_state["plot_cols"] = default_cols
+        st.session_state["plot_cols"] = init_cols
     if "plot_ds" not in st.session_state:
-        st.session_state["plot_ds"] = downsample_options[downsample_index]
+        st.session_state["plot_ds"] = init_ds
 
     # Widgets (stable keys ensure first-click updates are reflected immediately)
     st.sidebar.multiselect(
@@ -130,6 +143,12 @@ if file_bytes is not None:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Please select at least one column to visualize.")
+
+    # Persist current selection across pages within this session
+    st.session_state[PERSIST_KEY] = {
+        "cols": list(selected_cols),
+        "ds": int(downsample) if isinstance(downsample, (int, float, str)) else downsample,
+    }
 
     # Sync widget state to the URL so reloads restore the same view
     new_params = {
