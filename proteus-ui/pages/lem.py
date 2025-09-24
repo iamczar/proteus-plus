@@ -1,4 +1,5 @@
 import time
+import json
 from datetime import datetime
 from typing import List, Optional
 
@@ -31,6 +32,59 @@ if "lem_progress" not in st.session_state:
     st.session_state.lem_progress = {}
 if "lem_logs" not in st.session_state:
     st.session_state.lem_logs = []
+# Initialize default config values in session state
+st.session_state.setdefault("lem_cfg_target", 10.0)
+st.session_state.setdefault("lem_cfg_actual", 22.0)
+st.session_state.setdefault("lem_active", False)
+st.session_state.setdefault("lem_port", "")
+st.session_state.setdefault("lem_volume_ml", 0.0)
+
+# -----------------------------
+# LEM status chip/panel (above first row)
+# -----------------------------
+_status_mqtt = MQTTService()
+_status_mqtt.subscribe("module_controller/lem-status")
+
+def _drain_lem_status() -> bool:
+    changed = False
+    for _, data in _status_mqtt.drain("module_controller/lem-status", max_items=50):
+        try:
+            if isinstance(data, (bytes, str)):
+                data = json.loads(data) if isinstance(data, str) else json.loads(data.decode("utf-8", errors="ignore"))
+            new_active = bool(data.get("lem_active", False))
+            new_port = str(data.get("port", ""))
+            if st.session_state.get("lem_active") != new_active:
+                st.session_state["lem_active"] = new_active
+                changed = True
+            if st.session_state.get("lem_port") != new_port:
+                st.session_state["lem_port"] = new_port
+                changed = True
+        except Exception:
+            pass
+    return changed
+
+@st.fragment(run_every=1.0)
+def _lem_status_fragment():
+    _drain_lem_status()
+    status_color = "green" if st.session_state.get("lem_active", False) else "red"
+    status_text = "ACTIVE" if st.session_state.get("lem_active", False) else "DISABLED"
+    port_text = st.session_state.get("lem_port", "")
+    st.markdown(
+        f"<div class='lem-chip-wrap'><span class='lem-chip {status_color}'>LEM: {status_text}{(' (' + port_text + ')') if port_text else ''}</span></div>",
+        unsafe_allow_html=True,
+    )
+
+status_css = """
+<style>
+.lem-chip { display:inline-block; padding:6px 12px; border-radius:16px; font-weight:600; color:#fff; }
+.lem-chip.green { background:#2E7D32; }
+.lem-chip.red { background:#C62828; }
+.lem-chip-wrap { margin-bottom:8px; }
+</style>
+"""
+st.markdown(status_css, unsafe_allow_html=True)
+_lem_status_fragment()
+
 
 
 def _append_lem_log(message: str) -> None:
@@ -50,6 +104,21 @@ def _publish_lem_command(message: dict) -> None:
         "message": message or {},
     }
     MQTTService().publish(topic, envelope)
+
+
+def _request_config_snapshot() -> None:
+    try:
+        MQTTService().publish("lem-get-config", {"source": "proteus-ui"})
+    except Exception:
+        pass
+
+
+def _update_config(values: dict) -> None:
+    try:
+        MQTTService().publish("lem-update-config", values)
+        _append_lem_log("Sent LEM config update")
+    except Exception as exc:
+        _append_lem_log(f"ERROR: Failed to update config: {exc}")
 
 
 def lem_stop() -> None:
@@ -93,19 +162,103 @@ def _available_modules() -> List[str]:
 
 
 # -----------------------------
-# Top controls: volume + global Start/Stop
+# Top row: Left = Dispense Volume, Right = LEM Pump Config
 # -----------------------------
-with st.container(border=True):
-    st.subheader("Dispense Volume (mL)")
-    st.number_input(
-        "Volume (mL)",
-        min_value=0.0,
-        step=10.0,
-        value=0.0,
-        key="lem_volume_ml",
-    )
-    if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
-        lem_stop()
+left_col, right_col = st.columns([2, 2], gap="small")
+
+with left_col:
+    with st.container(border=True):
+        st.subheader("Dispense Volume (mL)")
+        st.number_input(
+            "Volume (mL)",
+            min_value=0.0,
+            step=10.0,
+            key="lem_volume_ml",
+        )
+        if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
+            lem_stop()
+
+
+with right_col:
+    with st.container(border=True):
+        st.subheader("LEM Pump Config")
+
+        # Subscribe once for config and status
+        _mqtt = MQTTService()
+        _mqtt.subscribe("lem-config")
+        _mqtt.subscribe("lem-status")
+
+        # Drain any pending config snapshots BEFORE rendering inputs so values reflect latest
+        def _apply_latest_cfg():
+            changed = False
+            for _, data in _mqtt.drain("lem-config", max_items=50):
+                try:
+                    if isinstance(data, (bytes, str)):
+                        data = json.loads(data) if isinstance(data, str) else json.loads(data.decode("utf-8", errors="ignore"))
+                    tgt = float(data.get("LEM_DISPENSE_TARGET_VOLUME", st.session_state.get("lem_cfg_target", 10.0)))
+                    act = float(data.get("LEM_DISPENSE_ACTUAL_VOLUME", st.session_state.get("lem_cfg_actual", 22.0)))
+                    if st.session_state.get("lem_cfg_target") != tgt:
+                        st.session_state["lem_cfg_target"] = tgt; changed = True
+                    if st.session_state.get("lem_cfg_actual") != act:
+                        st.session_state["lem_cfg_actual"] = act; changed = True
+                except Exception:
+                    pass
+            return changed
+
+        _apply_latest_cfg()
+
+        # Auto-apply incoming config snapshots and rerun to refresh inputs
+        @st.fragment(run_every=1.0)
+        def _auto_apply_cfg():
+            if _apply_latest_cfg():
+                st.rerun()
+
+    # Local editable fields
+        colA, colB = st.columns(2, gap="small")
+        with colA:
+            tgt = st.number_input(
+            "Target Volume",
+            min_value=0.0001,
+            step=1.0,
+            key="lem_cfg_target",
+        )
+        with colB:
+            act = st.number_input(
+            "Actual Volume",
+            min_value=0.0001,
+            step=1.0,
+            key="lem_cfg_actual",
+        )
+
+        cols_btn = st.columns([1,1,6])
+        with cols_btn[0]:
+            if st.button("Get Config", key="lem_btn_getcfg", use_container_width=True):
+                _request_config_snapshot()
+                # Briefly poll for the snapshot and apply immediately
+                start = time.time()
+                applied = False
+                while time.time() - start < 1.0:  # up to 1s
+                    if _apply_latest_cfg():
+                        applied = True
+                        break
+                    time.sleep(0.05)
+                if applied:
+                    st.rerun()
+        with cols_btn[1]:
+            if st.button("Update Config", key="lem_btn_setcfg", use_container_width=True):
+                _update_config({
+                    "LEM_DISPENSE_TARGET_VOLUME": float(st.session_state.get("lem_cfg_target", 10.0)),
+                    "LEM_DISPENSE_ACTUAL_VOLUME": float(st.session_state.get("lem_cfg_actual", 22.0))
+                })
+
+        # Also reflect status messages to the log box (light polling here)
+        for _, data in _mqtt.drain("lem-status", max_items=50):
+            try:
+                _append_lem_log(str(data))
+            except Exception:
+                pass
+
+        # Trigger refresh via Get Config only
 
 
 # -----------------------------
@@ -227,7 +380,7 @@ with st.container(border=True):
         content = "\n".join(lines)
         _lem_log_area.markdown(f"<div class='log-box'>{content}</div>", unsafe_allow_html=True)
 
-    @st.fragment(run_every=0.5)
+    @st.fragment(run_every=1.0)
     def _refresh_lem_logs():
         _render_lem_logs()
 

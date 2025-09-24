@@ -8,6 +8,7 @@ import paho.mqtt.client as mqtt
 from common.logger import Logger
 from common.mqtt_base_class import MqttBaseClass
 from .module_handler import ModuleHandler
+from .lem_handler import LEMHandler
 
 
 class ModuleController(MqttBaseClass):
@@ -29,6 +30,11 @@ class ModuleController(MqttBaseClass):
         self.baudrate = 115200
         self.timeout = 0.1
         self.detection_timeout = 3.0
+
+        # Track single LEM handler separately from regular modules
+        self.lem_handler: Optional[LEMHandler] = None
+        self.lem_active: bool = False
+        self.lem_port: Optional[str] = None
 
         self.logger.info("ModuleController initialized")
 
@@ -52,6 +58,19 @@ class ModuleController(MqttBaseClass):
             self.logger.info(f"Stopping module handler for module {module_id}")
             handler.stop()
         self.module_handlers.clear()
+        # Stop LEM handler if active
+        if self.lem_handler is not None:
+            try:
+                self.lem_handler.stop()
+            except Exception:
+                pass
+            self.lem_handler = None
+            self.lem_active = False
+            try:
+                payload = {"source": "module_controller", "lem_active": False, "timestamp": time.time()}
+                self.mqtt_client.publish("module_controller/lem-status", json.dumps(payload))
+            except Exception:
+                pass
         self.logger.info("ModuleController stopped")
         # Publish final empty list to indicate no modules are managed
         try:
@@ -69,9 +88,17 @@ class ModuleController(MqttBaseClass):
                     "timestamp": time.time(),
                 }
                 self.mqtt_client.publish("module_controller/list-of-modules", json.dumps(payload))
+                # Also publish LEM heartbeat status
+                lem_payload = {
+                    "command": "lem_status",
+                    "lem_active": bool(self.lem_active),
+                    "port": self.lem_port,
+                    "timestamp": time.time(),
+                }
+                self.mqtt_client.publish("module_controller/lem-status", json.dumps(lem_payload))
             except Exception as e:
                 self.logger.debug(f"Failed to publish module list: {e}")
-            time.sleep(5.0)
+            time.sleep(2.0)
 
     def _scan_loop(self):
         while self.scanning and self.running:
@@ -89,6 +116,25 @@ class ModuleController(MqttBaseClass):
         except Exception as e:
             self.logger.error(f"Failed to list serial ports: {e}")
             comports = []
+
+        available_devices = set([getattr(p, "device", None) for p in comports if getattr(p, "device", None)])
+        # Detect LEM disconnect
+        if self.lem_active and self.lem_port and self.lem_port not in available_devices:
+            self.logger.warn(f"LEM disconnected from {self.lem_port}")
+            try:
+                if self.lem_handler:
+                    self.lem_handler.stop()
+            except Exception:
+                pass
+            self.lem_handler = None
+            self.lem_active = False
+            old_port = self.lem_port
+            self.lem_port = None
+            try:
+                payload = {"source": "module_controller", "lem_active": False, "port": old_port, "timestamp": time.time()}
+                self.mqtt_client.publish("module_controller/lem-status", json.dumps(payload))
+            except Exception:
+                pass
 
         for port_info in comports:
             port = getattr(port_info, "device", None)
@@ -119,6 +165,7 @@ class ModuleController(MqttBaseClass):
             return
 
         detected_module_id: Optional[int] = None
+        detected_lem: bool = False
         try:
             while time.time() - start_time < self.detection_timeout:
                 try:
@@ -134,6 +181,18 @@ class ModuleController(MqttBaseClass):
                     continue
                 if not line:
                     continue
+                # Try LEM CSV detection first: token[2]==1001 and token[1]==9101
+                parts = [p for p in line.strip().strip(',').split(',') if p != ""]
+                if len(parts) >= 3 and parts[2] == "1001":
+                    try:
+                        moduid = int(parts[1])
+                        if moduid == 9101:
+                            detected_lem = True
+                            detected_module_id = 9101
+                            break
+                    except Exception:
+                        pass
+                # Fallback to JSON-based detection (other modules)
                 try:
                     obj = json.loads(line)
                 except Exception:
@@ -162,9 +221,26 @@ class ModuleController(MqttBaseClass):
             self.logger.info(f"Module {detected_module_id} already has a handler; skipping {port}")
             return
 
-        handler = self._create_module_handler(detected_module_id, port)
-        if handler:
-            self.logger.info(f"Detected module {detected_module_id} on {port}")
+        if detected_lem and detected_module_id == 9101:
+            try:
+                # If already active, ignore duplicate detection
+                if self.lem_handler is None:
+                    self.lem_handler = LEMHandler(port, self.baudrate)
+                    self.lem_handler.start()
+                    self.lem_active = True
+                    self.lem_port = port
+                    self.logger.info(f"Detected LEM (9101) on {port}")
+                    try:
+                        payload = {"source": "module_controller", "lem_active": True, "port": port, "timestamp": time.time()}
+                        self.mqtt_client.publish("module_controller/lem-status", json.dumps(payload))
+                    except Exception:
+                        pass
+            except Exception as e:
+                self.logger.error(f"Failed to start LEMHandler on {port}: {e}")
+        else:
+            handler = self._create_module_handler(detected_module_id, port)
+            if handler:
+                self.logger.info(f"Detected module {detected_module_id} on {port}")
 
     def _create_module_handler(self, module_id: int, port: str) -> Optional[ModuleHandler]:
         try:
@@ -263,10 +339,9 @@ class ModuleController(MqttBaseClass):
     def _publish_module_list(self):
         module_list = {
             "command": "module_list",
-            "modules": list(self.module_handlers.keys()),
+            "modules": list(self.module_handlers.keys()),  # LEM excluded by design
             "timestamp": time.time(),
         }
-        # Publish to the canonical module_controller topic
         self.mqtt_client.publish("module_controller/list-of-modules", json.dumps(module_list))
 
     def run(self):
