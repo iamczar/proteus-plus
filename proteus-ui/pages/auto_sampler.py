@@ -27,6 +27,8 @@ st.markdown(
     .as-image-wrapper img { max-height: 150px; object-fit: contain; }
     /* Make all buttons fill the container width (match number input width) */
     div.stButton > button { width: 100%; min-width: 0; }
+    /* Add breathing room between header chips */
+    .as-chip { margin: 8px 0; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -204,7 +206,7 @@ def _render_header(sid: int) -> None:
 
         st.markdown(
             f"""
-            <div style='text-align:center;padding:10px;border-radius:8px;background:{panel_color};color:white;font-weight:800;'>
+            <div class='as-chip' style='text-align:center;padding:10px;border-radius:8px;background:{panel_color};color:white;font-weight:800;'>
                 {panel_text}
             </div>
             """,
@@ -214,7 +216,7 @@ def _render_header(sid: int) -> None:
         # Middle chip: remaining hold time (updates every refresh)
         st.markdown(
             f"""
-            <div style='text-align:center;padding:10px;border-radius:8px;background:#EAEAF6;color:#111827;font-weight:700;'>
+            <div class='as-chip' style='text-align:center;padding:10px;border-radius:8px;background:#EAEAF6;color:#111827;font-weight:700;'>
                 {remaining_text}
             </div>
             """,
@@ -224,7 +226,7 @@ def _render_header(sid: int) -> None:
         # Sensor status (display-only)
         st.markdown(
             f"""
-            <div style='text-align:center;padding:10px;border-radius:8px;background:#F59E0B;color:#111827;font-weight:800;'>
+            <div class='as-chip' style='text-align:center;padding:10px;border-radius:8px;background:#F59E0B;color:#111827;font-weight:800;'>
                 {sensor_value}
             </div>
             """,
