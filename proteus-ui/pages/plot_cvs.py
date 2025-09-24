@@ -131,14 +131,5 @@ if file_bytes is not None:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Please select at least one column to visualize.")
-
-    # Utilities
-    with st.sidebar.expander("Data source", expanded=False):
-        file_name = st.session_state.get("plot_cvs_file", {}).get("name", "uploaded.csv")
-        st.caption(f"File: {file_name}")
-        if st.button("Clear uploaded file"):
-            st.session_state.pop("plot_cvs_file", None)
-            st.query_params.clear()
-            st.rerun()
 else:
     st.info("👆 Upload a CSV file above to get started.")
