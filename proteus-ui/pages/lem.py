@@ -2,6 +2,7 @@ import time
 import json
 from datetime import datetime
 from typing import List, Optional
+from pathlib import Path
 
 import streamlit as st
 
@@ -37,7 +38,36 @@ st.session_state.setdefault("lem_cfg_target", 10.0)
 st.session_state.setdefault("lem_cfg_actual", 22.0)
 st.session_state.setdefault("lem_active", False)
 st.session_state.setdefault("lem_port", "")
-st.session_state.setdefault("lem_volume_ml", 0.0)
+
+# Persisted UI settings file (proteus-ui/data/settings.json)
+_ui_settings_path = Path(__file__).resolve().parents[1] / "data" / "settings.json"
+
+def _load_ui_settings_default_volume() -> float:
+    try:
+        if _ui_settings_path.exists():
+            data = json.loads(_ui_settings_path.read_text(encoding="utf-8"))
+            v = data.get("lem_volume_ml")
+            if isinstance(v, (int, float)):
+                return float(v)
+    except Exception:
+        pass
+    return 0.0
+
+def _save_ui_settings_volume(v: float) -> None:
+    try:
+        data = {}
+        if _ui_settings_path.exists():
+            try:
+                data = json.loads(_ui_settings_path.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+        data["lem_volume_ml"] = float(v)
+        _ui_settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+if "lem_volume_ml" not in st.session_state:
+    st.session_state.lem_volume_ml = _load_ui_settings_default_volume()
 
 # -----------------------------
 # LEM status chip/panel (above first row)
@@ -175,6 +205,8 @@ with left_col:
             step=10.0,
             key="lem_volume_ml",
         )
+        # Persist on change
+        _save_ui_settings_volume(st.session_state.get("lem_volume_ml", 0.0))
         if st.button("STOP LEM", type="secondary", use_container_width=True, key="lem_stop_btn"):
             lem_stop()
 

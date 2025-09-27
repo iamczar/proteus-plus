@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 import serial
@@ -30,9 +31,9 @@ SYS_SEQ_LEM_BASELINE = [
     0,9101,1002,9101,0,0,
     0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,5000,37,1,0.9,
-    0.003125,0.003125,2,5,1,1,3,0.1,0,0,0,0,0,0,
-    0,1,1,1,1,37,38,35,36,33,34,31,32,30,29,28,27,26,25,24,23,2,3,4,5,6,7,8,9,47,54,0,8,
+    0,0,0,0,0,0,0,5000,37,1,0.9,
+    0.003125,0.003125,2,5,1,1,3,0.1,0,0,0,0,0,0,0,
+    1,1,1,1,37,38,35,36,33,34,31,32,30,29,28,27,26,25,24,23,2,3,4,5,6,7,8,9,47,54,0,8,
     0,0,115200,115200,115200,9101,0
 ]
 
@@ -57,6 +58,15 @@ class LEMHandler:
         self.config_path = os.path.abspath(self.config_path)
         self.config: Dict[str, Any] = {}
         self._load_config()
+        self._last_auto_stop_ts: float = 0.0
+        self._waiting_for_volume: bool = False
+        self._dispense_deadline_ts: float = 0.0
+        self._last_valve_key: Optional[str] = None
+        # Emulate legacy behavior: close port after stop to allow clean re-opens
+        self._close_port_after_stop: bool = True
+        # Handshake tracking: expect 1001,50 after reopen
+        self._expect_wake_on_next_open: bool = False
+        self._last_seen_wake_ts: float = 0.0
 
     # ---------------- MQTT -----------------
     def _on_mqtt_connect(self, client, userdata, flags, reason_code, properties):
@@ -119,13 +129,16 @@ class LEMHandler:
 
     def _publish_status(self, obj: Dict[str, Any]):
         try:
+            if "ts" not in obj:
+                obj["ts"] = time.time()
             self.mqtt.publish("lem-status", json.dumps(obj))
         except Exception:
             pass
 
     def _publish_raw(self, line: str):
         try:
-            self.mqtt.publish("lem-status-raw", line)
+            ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            self.mqtt.publish("lem-status-raw", f"[{ts}] {line}")
         except Exception:
             pass
 
@@ -182,6 +195,18 @@ class LEMHandler:
                 time.sleep(0.05)
                 continue
             if not raw:
+                # Watchdog for volume-complete timeout
+                if self._waiting_for_volume and time.time() > self._dispense_deadline_ts:
+                    self._publish_status({
+                        "type": "dispense_timeout",
+                        "note": "51 not received before deadline; sending stop",
+                        "valve_key": self._last_valve_key,
+                    })
+                    try:
+                        self._send_stop()
+                    except Exception:
+                        pass
+                    self._waiting_for_volume = False
                 continue
             try:
                 line = raw.decode(errors="ignore").strip()
@@ -198,8 +223,30 @@ class LEMHandler:
                 except Exception:
                     pass
                 if parts[2] == "1001":
-                    obj = {"type": "state_request", "modUID": self.mod_uid, "transId": int(parts[3]) if len(parts) > 3 else None}
+                    trans_id = int(parts[3]) if len(parts) > 3 else None
+                    obj = {"type": "state_request", "modUID": self.mod_uid, "transId": trans_id}
                     self._publish_status(obj)
+                    if trans_id == 50:
+                        self._last_seen_wake_ts = time.time()
+                        self._expect_wake_on_next_open = False
+                    # Auto stop on VOLUME transition (51) so back-to-back dispenses work
+                    if trans_id == 51:
+                        now_ts = time.time()
+                        if (now_ts - self._last_auto_stop_ts) > 0.5:
+                            try:
+                                self._send_stop()
+                                self._publish_status({
+                                    "type": "volume_complete",
+                                    "modUID": self.mod_uid,
+                                    "note": "auto stop row sent after 51"
+                                })
+                                if self._close_port_after_stop:
+                                    self._close_serial(reason="after_volume_complete")
+                            except Exception:
+                                pass
+                            self._last_auto_stop_ts = now_ts
+                        # Clear watchdog
+                        self._waiting_for_volume = False
                 elif parts[2] == "1515":
                     rep = {"type": "report", "modUID": self.mod_uid, "stateId": int(parts[3]) if len(parts) > 3 else None}
                     self._publish_status(rep)
@@ -215,8 +262,22 @@ class LEMHandler:
         self._reset_valves(state)
         state[SYS_SEQ_LEM_HEADER.index("dispensePara")] = 0
         state[SYS_SEQ_LEM_HEADER.index("dispenseVolumeSP")] = 0
-        self._send_state(state)
-        self._publish_status({"type": "stop_sent"})
+        if self._send_state(state):
+            self._publish_status({"type": "stop_sent"})
+            if self._close_port_after_stop:
+                self._close_serial(reason="explicit_stop")
+
+    def _send_idle_no_close(self):
+        """Send a one-off idle/stop row without closing the port or publishing stop_sent.
+        Helps clear residual state before a new dispense (legacy ALF behavior)."""
+        try:
+            state = self._state.copy()
+            self._reset_valves(state)
+            state[SYS_SEQ_LEM_HEADER.index("dispensePara")] = 0
+            state[SYS_SEQ_LEM_HEADER.index("dispenseVolumeSP")] = 0
+            self._send_state(state)
+        except Exception:
+            pass
 
     def _send_dispense(self, valve_index: int, volume_ml: float):
         try:
@@ -228,6 +289,25 @@ class LEMHandler:
             self._publish_status({"type": "config_error", "error": "Missing or invalid correction/calibration values in lem_config.json"})
             return
 
+        # For reliability, always close → open → handshake → idle before sending action
+        try:
+            if self._serial and getattr(self._serial, "is_open", False):
+                self._close_serial(reason="pre_dispense")
+        except Exception:
+            pass
+        if not self._ensure_serial_open():
+            return
+        # Wait up to 2s for 1001,50 from Arduino boot
+        self._expect_wake_on_next_open = True
+        start = time.time()
+        while time.time() - start < 2.0:
+            if not self._expect_wake_on_next_open:
+                break
+            time.sleep(0.05)
+        # Send a preflight idle row to reset state before action (no close, no event)
+        self._send_idle_no_close()
+        time.sleep(0.1)
+
         dose = volume_ml * (tgt / act)
         state = self._state.copy()
         self._reset_valves(state)
@@ -236,15 +316,61 @@ class LEMHandler:
             self._publish_status({"type": "error", "error": f"Invalid valve_index {valve_index}"})
             return
         state[SYS_SEQ_LEM_HEADER.index(valve_key)] = 1
+        self._last_valve_key = valve_key
         pump_index = ((int(valve_index) - 1) // 4) + 1
         state[SYS_SEQ_LEM_HEADER.index("dispensePara")] = pump_index
         state[SYS_SEQ_LEM_HEADER.index("dispenseVolumeSP")] = dose
         state[SYS_SEQ_LEM_HEADER.index("circPumpCal")] = circ_cal
         state[SYS_SEQ_LEM_HEADER.index("pressurePumpCal")] = pres_cal
-        self._send_state(state)
-        self._publish_status({"type": "dispense_sent", "valve_index": valve_index, "pump_index": pump_index, "volume_ml": volume_ml, "dose_sp": dose})
+        # Ensure PID block matches legacy defaults (avoid accidental shifts)
+        state[SYS_SEQ_LEM_HEADER.index("pressureKp")] = 2
+        state[SYS_SEQ_LEM_HEADER.index("pressureKi")] = 5
+        state[SYS_SEQ_LEM_HEADER.index("pressureKd")] = 1
+        state[SYS_SEQ_LEM_HEADER.index("oxyKp")] = 1
+        state[SYS_SEQ_LEM_HEADER.index("oxyKi")] = 3
+        state[SYS_SEQ_LEM_HEADER.index("oxyKd")] = 0.1
+        # Ensure baud block has all three rates
+        state[SYS_SEQ_LEM_HEADER.index("pcBaudRate")] = 115200
+        state[SYS_SEQ_LEM_HEADER.index("oxyBaudRate")] = 115200
+        state[SYS_SEQ_LEM_HEADER.index("pressureBaudRate")] = 115200
+        # Flag check mirrors modUID in old builds
+        try:
+            state[SYS_SEQ_LEM_HEADER.index("flagCheck")] = int(self.mod_uid) if self.mod_uid is not None else state[SYS_SEQ_LEM_HEADER.index("flagCheck")]
+        except Exception:
+            pass
+        ok = self._send_state(state)
+        if not ok:
+            # Do not arm watchdog or report success if write failed
+            return
+        # Start watchdog: expect 51 within 15 seconds (tune as needed)
+        self._waiting_for_volume = True
+        self._dispense_deadline_ts = time.time() + 15.0
+        # Diagnostic snapshot (CSV tail)
+        try:
+            idxs = [
+                SYS_SEQ_LEM_HEADER.index("flow0Address"),
+                SYS_SEQ_LEM_HEADER.index("dispensePara"),
+                SYS_SEQ_LEM_HEADER.index("dispenseVolumeSP"),
+                SYS_SEQ_LEM_HEADER.index("pcBaudRate"),
+                SYS_SEQ_LEM_HEADER.index("oxyBaudRate"),
+                SYS_SEQ_LEM_HEADER.index("pressureBaudRate"),
+                SYS_SEQ_LEM_HEADER.index("flagCheck"),
+                SYS_SEQ_LEM_HEADER.index("nullTrailer"),
+            ]
+            csv_tail = [state[i] for i in idxs]
+        except Exception:
+            csv_tail = []
+        self._publish_status({
+            "type": "dispense_sent",
+            "valve_index": valve_index,
+            "valve_key": valve_key,
+            "pump_index": pump_index,
+            "volume_ml": volume_ml,
+            "dose_sp": dose,
+            "csv_tail": csv_tail,
+        })
 
-    def _send_state(self, state: List[Any]):
+    def _send_state(self, state: List[Any]) -> bool:
         idx_mod = SYS_SEQ_LEM_HEADER.index("modId")
         idx_stateid = SYS_SEQ_LEM_HEADER.index("stateId")
         if self.mod_uid is not None:
@@ -270,10 +396,55 @@ class LEMHandler:
             self.mqtt.publish("lem-debug", line)
         except Exception:
             pass
+        # Ensure serial is open; try to reopen once if needed
         try:
-            if self._serial:
-                self._serial.write(line.encode("utf-8"))
+            if (self._serial is None) or (not getattr(self._serial, "is_open", False)):
+                if not self._ensure_serial_open():
+                    return False
+            self._serial.write(line.encode("utf-8"))
+            return True
         except Exception as e:
             self._publish_status({"type": "error", "error": f"Serial write failed: {e}"})
+            return False
+
+    def _ensure_serial_open(self) -> bool:
+        # Robust reopen with small backoff, toggle DTR to enforce reset, flush buffers
+        deadline = time.time() + 3.0
+        last_err = None
+        while time.time() < deadline:
+            try:
+                # Some Windows drivers need a tiny gap after prior close
+                time.sleep(0.05)
+                ser = serial.Serial(self.port, self.baud, timeout=0.1)
+                try:
+                    # Toggle DTR for reset pulse
+                    try:
+                        ser.dtr = False
+                        time.sleep(0.05)
+                        ser.dtr = True
+                    except Exception:
+                        pass
+                    try:
+                        ser.reset_input_buffer()
+                        ser.reset_output_buffer()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                self._serial = ser
+                return True
+            except Exception as open_err:
+                last_err = open_err
+                time.sleep(0.05)
+        self._publish_status({"type": "error", "error": f"Serial open failed: {last_err}"})
+        return False
+
+    def _close_serial(self, reason: str = "") -> None:
+        try:
+            if self._serial and getattr(self._serial, "is_open", False):
+                self._serial.close()
+                self._publish_status({"type": "port_closed", "reason": reason})
+        except Exception:
+            pass
 
 
