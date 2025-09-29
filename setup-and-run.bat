@@ -61,6 +61,10 @@ echo =======================================
 echo 📦 Installing Python dependencies...
 echo =======================================
 pip install --upgrade pip
+REM Install root requirements
+pip install -r requirements.txt
+REM Install module_controller specific requirements
+pip install -r module_controller/requirements.txt
 pip install -r software_update/requirements.txt
 pip install -r proteus-ui/requirements.txt
 

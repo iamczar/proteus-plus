@@ -3,6 +3,8 @@ import os
 import time
 import json
 import csv
+import subprocess
+import sys
 from typing import Optional, Callable, Any, Dict, List, Union
 from datetime import datetime
 import serial
@@ -56,6 +58,8 @@ class ModuleHandler:
             self._ensure_jsonl_dirs()
         except Exception:
             pass
+
+        # Transfer state removed; no longer used
 
     def start(self):
         if self._running:
@@ -217,6 +221,10 @@ class ModuleHandler:
                 return
 
             cmd = str(inner.get("command", "")).strip()
+            if cmd == "retrieve_data":
+                # Feature removed: ignore retrieve_data commands
+                self.logger.info(f"{self.module_name}: retrieve_data ignored (MSC/manual copy expected)")
+                return
             if cmd == "set_experiment_context":
                 # {experiment_dir, run_id?, sequence_filename?}
                 exp_dir = inner.get("experiment_dir")
@@ -274,6 +282,8 @@ class ModuleHandler:
                 self.send(self._wrap_alpha_envelope(normalized))
         except Exception as e:
             self.logger.warn(f"{self.module_name}: sequence command error: {e}")
+
+    # Retrieve Data via mpremote removed; MSC/manual copy path is recommended
 
     def _cb_autosampler_command(self, client, userdata, msg):
         try:
