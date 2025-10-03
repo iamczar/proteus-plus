@@ -362,4 +362,73 @@ else:
                     except Exception as e:
                         _pt_append_log(f"!! error publishing pressure toggle: {e}")
 
+    # Debug toggle checkbox that publishes its state when changed
+    try:
+        with st.container(border=False):
+            st.subheader("Debug Controls")
+            debug_checked = st.checkbox("Enable Debug Mode", key="pt_debug_checkbox")
+            prev_debug = st.session_state.get("_pt_prev_debug_checkbox", None)
+            if prev_debug is None:
+                st.session_state["_pt_prev_debug_checkbox"] = debug_checked
+            elif debug_checked != prev_debug:
+                mod = st.session_state.get("pt_selected_module")
+                if mod:
+                    _pt_append_log(f">> CLICK Debug checkbox (mod={mod}) state={debug_checked}")
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "debug_mode", "enabled": bool(debug_checked)})
+                        _pt_append_log(f"dbg: publish debug toggle ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug toggle: {e}")
+                st.session_state["_pt_prev_debug_checkbox"] = debug_checked
+    except Exception:
+        pass
+
+    if st.session_state.get("pt_debug_checkbox"):
+        with st.container(border=True):
+            st.subheader("Debug Controls")
+            # Row 1: Oxygen + Send
+            with st.form("debug_oxygen_form"):
+                c1, c2 = st.columns([1, 0.6], gap="small")
+                with c1:
+                    st.number_input("Oxygen : micromole/liter", key="pt_debug_oxygen")
+                with c2:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    send_o2 = st.form_submit_button("Send Oxygen")
+                if send_o2:
+                    mod = st.session_state.get("pt_selected_module")
+                    _pt_append_log(
+                        f">> CLICK Send Debug Oxygen (mod={mod}) O2={st.session_state.pt_debug_oxygen}"
+                    )
+                    payload = {
+                        "type": "debug_mode",
+                        "oxygen": float(st.session_state.pt_debug_oxygen)
+                    }
+                    try:
+                        ok = _publish_pid_command(mod, payload)
+                        _pt_append_log(f"dbg: publish debug oxygen ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug oxygen: {e}")
+
+            # Row 2: Pressure + Send
+            with st.form("debug_pressure_form"):
+                c3, c4 = st.columns([1, 0.6], gap="small")
+                with c3:
+                    st.number_input("Pressure : psi", key="pt_debug_pressure")
+                with c4:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    send_p = st.form_submit_button("Send Pressure")
+                if send_p:
+                    mod = st.session_state.get("pt_selected_module")
+                    _pt_append_log(
+                        f">> CLICK Send Debug Pressure (mod={mod}) P={st.session_state.pt_debug_pressure}"
+                    )
+                    payload = {
+                        "type": "debug_mode",
+                        "pressure": float(st.session_state.pt_debug_pressure),
+                    }
+                    try:
+                        ok = _publish_pid_command(mod, payload)
+                        _pt_append_log(f"dbg: publish debug pressure ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug pressure: {e}")
 

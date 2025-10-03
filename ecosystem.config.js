@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "streamlit-app",
+      name: "cellag-app",
       script: "./venv/Scripts/python.exe",
       args: "-m streamlit run main.py",
       cwd: __dirname + "/proteus-ui",
