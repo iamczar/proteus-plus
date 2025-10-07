@@ -244,7 +244,12 @@ def _render_charts():
             st.session_state._pidc_charts["pump_speeds"].add_rows(pd.DataFrame(rows_speeds))
         if st.session_state._pidc_charts.get("pressure"):
             st.session_state._pidc_charts["pressure"].add_rows(pd.DataFrame(rows_pressure))
-        st.session_state._pidc_painted = len(t)
+        painted = min(
+            len(t),
+            len(data.get("circ_pump_speed") or []),
+            len(data.get("pressure_pump_speed") or []),
+        )
+        st.session_state._pidc_painted = painted
 
 
 _render_charts()
