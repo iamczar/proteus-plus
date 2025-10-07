@@ -287,44 +287,6 @@ else:
                             _pt_append_log(f"!! error publishing pressure gains: {e}")
 
     with right:
-        # Debug Controls (Override)
-        with st.container(border=True):
-            st.subheader("Debug Controls")
-            mod = st.session_state.get("pt_selected_module")
-            ov = st.session_state.get("pt_pid_override") or {"enabled": False}
-            enabled = bool(ov.get("enabled", False))
-            toggle_label = "Disable Debug Mode" if enabled else "Enable Debug Mode"
-            c1, c2 = st.columns([1,1], gap="small")
-            with c1:
-                if st.button(toggle_label, use_container_width=True):
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "debug_mode", "enabled": (not enabled)})
-                        _pt_append_log(f"dbg: publish debug_mode toggle ok={ok}")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing debug_mode toggle: {e}")
-            with c2:
-                st.caption(f"Override is {'ON' if enabled else 'OFF'}")
-
-        with st.container(border=True):
-            st.subheader("Debug Controls")
-            st.caption("Send fake sensor values to Alpha when Debug Mode is enabled")
-            o2_val = st.number_input("Oxygen : micromole/liter (decimal fraction, e.g. 0.21)", key="pt_dbg_oxygen", value=0.0)
-            c3, c4 = st.columns([1,1], gap="small")
-            with c3:
-                if st.button("Send Oxygen", disabled=not enabled):
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "debug_mode", "oxygen": float(o2_val)})
-                        _pt_append_log(f"dbg: publish debug oxygen ok={ok}")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing debug oxygen: {e}")
-            p_val = st.number_input("Pressure : psi", key="pt_dbg_pressure", value=0.0)
-            with c4:
-                if st.button("Send Pressure", disabled=not enabled):
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "debug_mode", "pressure": float(p_val)})
-                        _pt_append_log(f"dbg: publish debug pressure ok={ok}")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing debug pressure: {e}")
         @st.fragment(run_every=1.0)
         def _pid_right_status():
             try:
@@ -339,6 +301,22 @@ else:
                             flow_enabled,
                         )
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+                        s = st.session_state.get("pt_flow_status") or {}
+                        flow_enabled = bool(s.get("pid_enabled", False))
+                        toggle_label = "Disable Flow PID" if flow_enabled else "Enable Flow PID"
+                        if st.button(toggle_label, key="pt_flow_toggle_btn", use_container_width=True):
+                            mod = st.session_state.get("pt_selected_module")
+                            target = not flow_enabled
+                            _pt_append_log(f">> CLICK Toggle Flow PID (mod={mod}) target={target}")
+                            try:
+                                ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
+                                _pt_append_log(f"dbg: publish flow toggle ok={ok}")
+                                if ok:
+                                    _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
+                            except Exception as e:
+                                _pt_append_log(f"!! error publishing flow toggle: {e}")
+                                    
                         try:
                             s = st.session_state.get("pt_flow_status") or {}
                             with st.container(border=True):
@@ -360,6 +338,22 @@ else:
                             pressure_enabled,
                         )
                         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+                        s2 = st.session_state.get("pt_pressure_status") or {}
+                        pressure_enabled = bool(s2.get("pid_enabled", False))
+                        toggle_label2 = "Disable Pressure PID" if pressure_enabled else "Enable Pressure PID"
+                        if st.button(toggle_label2, key="pt_pressure_toggle_btn", use_container_width=True):
+                            mod = st.session_state.get("pt_selected_module")
+                            target = not pressure_enabled
+                            _pt_append_log(f">> CLICK Toggle Pressure PID (mod={mod}) target={target}")
+                            try:
+                                ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
+                                _pt_append_log(f"dbg: publish pressure toggle ok={ok}")
+                                if ok:
+                                    _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
+                            except Exception as e:
+                                _pt_append_log(f"!! error publishing pressure toggle: {e}")
+
                         try:
                             with st.container(border=True):
                                 st.caption("Current Pressure PID Status")
@@ -376,48 +370,20 @@ else:
 
         _pid_right_status()
 
-        # Place buttons directly under their respective status panels
-        c1_btns, c2_btns = st.columns([1, 1], gap="small")
-        with c1_btns:
-            s = st.session_state.get("pt_flow_status") or {}
-            flow_enabled = bool(s.get("pid_enabled", False))
-            toggle_label = "Disable Flow PID" if flow_enabled else "Enable Flow PID"
-            with st.form("pt_flow_enable_form"):
-                submitted_toggle = st.form_submit_button(toggle_label)
-                if submitted_toggle:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not flow_enabled
-                    _pt_append_log(f">> CLICK Toggle Flow PID (mod={mod}) target={target}")
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "flow_pid_enable", "enabled": target})
-                        _pt_append_log(f"dbg: publish flow toggle ok={ok}")
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} flow PID")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing flow toggle: {e}")
 
-        with c2_btns:
-            s2 = st.session_state.get("pt_pressure_status") or {}
-            pressure_enabled = bool(s2.get("pid_enabled", False))
-            toggle_label2 = "Disable Pressure PID" if pressure_enabled else "Enable Pressure PID"
-            with st.form("pt_pressure_enable_form"):
-                submitted_toggle2 = st.form_submit_button(toggle_label2)
-                if submitted_toggle2:
-                    mod = st.session_state.get("pt_selected_module")
-                    target = not pressure_enabled
-                    _pt_append_log(f">> CLICK Toggle Pressure PID (mod={mod}) target={target}")
-                    try:
-                        ok = _publish_pid_command(mod, {"type": "pressure_pid_enable", "enabled": target})
-                        _pt_append_log(f"dbg: publish pressure toggle ok={ok}")
-                        if ok:
-                            _pt_append_log(f">> {'ENABLE' if target else 'DISABLE'} pressure PID")
-                    except Exception as e:
-                        _pt_append_log(f"!! error publishing pressure toggle: {e}")
 
     # Debug toggle checkbox that publishes its state when changed
     try:
         with st.container(border=False):
             st.subheader("Debug Controls")
+            # PID Override status chip (driven by pid-command-status/<module-id>)
+            try:
+                ov = st.session_state.get("pt_pid_override") or {"enabled": False}
+                ov_enabled = bool(ov.get("enabled", False))
+                _status_chip(f"PID Override {'Enabled' if ov_enabled else 'Disabled'}", ov_enabled)
+                st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            except Exception:
+                pass
             debug_checked = st.checkbox("Enable Debug Mode", key="pt_debug_checkbox")
             prev_debug = st.session_state.get("_pt_prev_debug_checkbox", None)
             if prev_debug is None:
