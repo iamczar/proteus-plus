@@ -28,6 +28,7 @@ st.title("PID Charts")
 
 inject_button_theme(height="32px", min_width="110px", font_size="14px", padding_x="10px")
 
+# Keep 5 hours of data at a 10-second cadence (~1800 points)
 MAX_POINTS = 1800
 
 if "pt_selected_module" not in st.session_state:
@@ -90,6 +91,7 @@ def _append_live_point(payload: dict) -> None:
         for k in list(buf.keys()):
             if len(buf[k]) > N:
                 buf[k] = buf[k][-N:]
+        # No rate gating; rely solely on ring buffer size (MAX_POINTS)
     except Exception:
         pass
 
@@ -296,8 +298,10 @@ def _render_tick():
     # If the ring buffer trimmed and the painted index is ahead of current end,
     # restart streaming from 0 so charts continue updating for large datasets.
     if start > end:
-        start = 0
+        # Buffer wrapped/truncated; rebuild charts and repaint from scratch
         st.session_state._pidc_painted = 0
+        _render_charts()
+        return
     if end <= start:
         return
     rows_oxygen = {"x": [], "y": [], "series": []}
