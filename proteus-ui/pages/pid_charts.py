@@ -149,10 +149,10 @@ def _backfill_pid_from_file(module_id: str) -> None:
                 st.session_state.pt_data["ox_meas1"].append(float(obj.get("ox_meas1", 0.0)))
                 st.session_state.pt_data["ox_meas2"].append(float(obj.get("ox_meas2", 0.0)))
                 st.session_state.pt_data["ox_meas3"].append(float(obj.get("ox_meas3", 0.0)))
-                st.session_state.pt_data["flow_desired"].append(float(obj.get("flow_desired", 0.0)))
                 st.session_state.pt_data["flow_actual"].append(float(obj.get("flow_actual", 0.0)))
-                st.session_state.pt_data["press_pump_desired"].append(float(obj.get("press_pump_desired", 0.0)))
-                st.session_state.pt_data["press_pump_actual"].append(float(obj.get("press_pump_actual", 0.0)))
+                # New unified pump speeds in backfill
+                st.session_state.pt_data["circ_pump_speed"].append(float(obj.get("circ_pump_speed", 0.0)))
+                st.session_state.pt_data["pressure_pump_speed"].append(float(obj.get("pressure_pump_speed", 0.0)))
                 st.session_state.pt_data["pressure_desired"].append(float(obj.get("pressure_desired", 0.0)))
                 st.session_state.pt_data["pressure_actual"].append(float(obj.get("pressure_actual", 0.0)))
             except Exception:
