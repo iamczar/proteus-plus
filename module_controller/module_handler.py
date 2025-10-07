@@ -170,6 +170,8 @@ class ModuleHandler:
                 "ox_meas2": float(d.get("oxygen_measured_2", 0.0)),
                 "ox_meas3": float(d.get("oxygen_measured_3", 0.0)),
                 "flow_actual": float(d.get("flow_measured", 0.0)),
+                "circ_pump_speed": float(d.get("circ_pump_speed", 0.0)),
+                "pressure_pump_speed": float(d.get("pressure_pump_speed", 0.0)),
                 "press_pump_actual": float(d.get("pressure_pump_speed", 0.0)),
                 "pressure_desired": float(d.get("pressure_setpoint", 0.0)),
                 "pressure_actual": float(d.get("pressure_measured", 0.0)),
