@@ -293,6 +293,11 @@ def _render_tick():
         return datetime.fromtimestamp(int(t[x_idx]))
     start = int(st.session_state.get("_pidc_painted", 0))
     end = len(t)
+    # If the ring buffer trimmed and the painted index is ahead of current end,
+    # restart streaming from 0 so charts continue updating for large datasets.
+    if start > end:
+        start = 0
+        st.session_state._pidc_painted = 0
     if end <= start:
         return
     rows_oxygen = {"x": [], "y": [], "series": []}
