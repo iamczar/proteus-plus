@@ -25,6 +25,7 @@ if "pt_selected_module" not in st.session_state:
 st.session_state.setdefault("pt_flow_status", {})
 st.session_state.setdefault("pt_pressure_status", {})
 st.session_state.setdefault("pt_logs", [])
+st.session_state.setdefault("pt_pid_override", {"enabled": False})
 
 
 # -----------------------------
@@ -145,6 +146,7 @@ def _pid_status_tick():
             f"pid-flow-status/{mod}",
             f"pid-pressure-status/{mod}",
             f"alphacommsmanager-status/{mod}",
+            f"pid-command-status/{mod}",
         }
         new_topics = need - subs
         if new_topics:
@@ -159,6 +161,7 @@ def _pid_status_tick():
         t_flow = f"pid-flow-status/{mod}"
         t_press = f"pid-pressure-status/{mod}"
         t_am = f"alphacommsmanager-status/{mod}"
+        t_override = f"pid-command-status/{mod}"
 
         for _, payload in get_mqtt().drain(t_flow, max_items=100):
             try:
@@ -191,6 +194,17 @@ def _pid_status_tick():
                             del st.session_state["_pt_last_toggle"]
                     except Exception:
                         pass
+            except Exception:
+                pass
+
+        # PID override status stream
+        for _, payload in get_mqtt().drain(t_override, max_items=200):
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if isinstance(inner, dict) and inner.get("event") == "pid_override_status":
+                    st.session_state.pt_pid_override = {
+                        "enabled": bool(inner.get("enabled", False))
+                    }
             except Exception:
                 pass
     except Exception:
@@ -273,6 +287,44 @@ else:
                             _pt_append_log(f"!! error publishing pressure gains: {e}")
 
     with right:
+        # Debug Controls (Override)
+        with st.container(border=True):
+            st.subheader("Debug Controls")
+            mod = st.session_state.get("pt_selected_module")
+            ov = st.session_state.get("pt_pid_override") or {"enabled": False}
+            enabled = bool(ov.get("enabled", False))
+            toggle_label = "Disable Debug Mode" if enabled else "Enable Debug Mode"
+            c1, c2 = st.columns([1,1], gap="small")
+            with c1:
+                if st.button(toggle_label, use_container_width=True):
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "debug_mode", "enabled": (not enabled)})
+                        _pt_append_log(f"dbg: publish debug_mode toggle ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug_mode toggle: {e}")
+            with c2:
+                st.caption(f"Override is {'ON' if enabled else 'OFF'}")
+
+        with st.container(border=True):
+            st.subheader("Debug Controls")
+            st.caption("Send fake sensor values to Alpha when Debug Mode is enabled")
+            o2_val = st.number_input("Oxygen : micromole/liter (decimal fraction, e.g. 0.21)", key="pt_dbg_oxygen", value=0.0)
+            c3, c4 = st.columns([1,1], gap="small")
+            with c3:
+                if st.button("Send Oxygen", disabled=not enabled):
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "debug_mode", "oxygen": float(o2_val)})
+                        _pt_append_log(f"dbg: publish debug oxygen ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug oxygen: {e}")
+            p_val = st.number_input("Pressure : psi", key="pt_dbg_pressure", value=0.0)
+            with c4:
+                if st.button("Send Pressure", disabled=not enabled):
+                    try:
+                        ok = _publish_pid_command(mod, {"type": "debug_mode", "pressure": float(p_val)})
+                        _pt_append_log(f"dbg: publish debug pressure ok={ok}")
+                    except Exception as e:
+                        _pt_append_log(f"!! error publishing debug pressure: {e}")
         @st.fragment(run_every=1.0)
         def _pid_right_status():
             try:

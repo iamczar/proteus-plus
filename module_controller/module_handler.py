@@ -589,14 +589,20 @@ class ModuleHandler:
             if source == "sequence_controller":
                 return f"sequence-controller-status/{self.module_id}"
 
-            # - AlphaCommsManager state notifications -> alphacommsmanager-status
+            # - AlphaCommsManager state notifications
             if source == "alpha_comms_manager":
-                # Mirror auto sampler acks into autosampler-status as well
+                # Route specific override status to pid-command-status; others to alphacommsmanager-status
                 try:
+                    # Mirror auto sampler acks into autosampler-status as well
                     if isinstance(inner, dict) and inner.get("command") == "auto_sampler_cmd_ack":
                         self.mqtt_client.publish(
                             f"autosampler-status/{self.module_id}", json.dumps(obj)
                         )
+                except Exception:
+                    pass
+                try:
+                    if isinstance(inner, dict) and inner.get("event") == "pid_override_status":
+                        return f"pid-command-status/{self.module_id}"
                 except Exception:
                     pass
                 return f"alphacommsmanager-status/{self.module_id}"
