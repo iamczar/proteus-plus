@@ -91,7 +91,27 @@ def _append_live_point(payload: dict) -> None:
         for k in list(buf.keys()):
             if len(buf[k]) > N:
                 buf[k] = buf[k][-N:]
-        # No rate gating; rely solely on ring buffer size (MAX_POINTS)
+        # Keep streaming after ring buffer trim: ensure painted index < current length
+        try:
+            end_len = len(buf.get("t") or [])
+            painted = int(st.session_state.get("_pidc_painted") or 0)
+            if painted >= end_len and end_len > 0:
+                st.session_state._pidc_painted = end_len - 1
+        except Exception:
+            pass
+        # Debug: confirm live appends and buffer lengths (rate-limited ~5s)
+        try:
+            now_dbg = int(time.time())
+            last_dbg = int(st.session_state.get("_pidc_dbg_live") or 0)
+            if now_dbg - last_dbg >= 5:
+                _pt_append_log(
+                    f"dbg: live t={t_epoch} circ={buf.get('circ_pump_speed', [])[-1] if buf.get('circ_pump_speed') else None} "
+                    f"press={buf.get('pressure_pump_speed', [])[-1] if buf.get('pressure_pump_speed') else None} "
+                    f"len(t)={len(buf.get('t', []))}"
+                )
+                st.session_state._pidc_dbg_live = now_dbg
+        except Exception:
+            pass
     except Exception:
         pass
 
