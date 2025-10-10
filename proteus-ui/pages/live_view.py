@@ -329,7 +329,8 @@ def _load_live_records(module_id: str, max_points: int) -> list[dict]:
         for ln in lines:
             try:
                 obj = json.loads(ln.strip())
-                if isinstance(obj, dict) and ("x" in obj or "ts" in obj) and isinstance(obj.get("data"), dict):
+                # Accept records shaped like live payloads: must have data dict; timestamp is optional
+                if isinstance(obj, dict) and isinstance(obj.get("data"), dict):
                     out.append(obj)
             except Exception:
                 continue
@@ -337,6 +338,89 @@ def _load_live_records(module_id: str, max_points: int) -> list[dict]:
     except Exception:
         return []
 
+
+def _backfill_live_from_file(module_id: str) -> None:
+    """Load last MAX_POINTS records from JSONL, fill buffers, and paint charts.
+    Mirrors the behavior of pid_charts backfill while applying series mapping
+    and derived calculations used in the live stream path.
+    """
+    try:
+        mod = str(module_id)
+        records = _load_live_records(mod, MAX_POINTS)
+        if not records:
+            return
+        # Ensure buffers for module
+        if "_live_buffers" not in st.session_state:
+            st.session_state._live_buffers = {}
+        st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+        buffers = st.session_state._live_buffers[mod]
+        prev_vals = st.session_state.get("live_last_values", [0.0 for _ in range(len(METRICS))])
+
+        # Build timestamps aligned to now if missing
+        now_ts_ms = int(time.time() * 1000)
+        total = len(records)
+        for i, rec in enumerate(records):
+            # Parse timestamp preference: payload['timestamp'] (ISO) → 'ts' (ms) → synthetic
+            x_val = None
+            try:
+                ts_str = rec.get("timestamp")
+                if isinstance(ts_str, str) and ts_str:
+                    try:
+                        x_val = datetime.fromisoformat(ts_str)
+                    except Exception:
+                        x_val = None
+                if x_val is None:
+                    ts_ms = rec.get("ts")
+                    if isinstance(ts_ms, (int, float)):
+                        x_val = datetime.fromtimestamp(int(ts_ms) / 1000.0)
+                if x_val is None:
+                    synth_ms = now_ts_ms - (total - 1 - i) * 1000
+                    x_val = datetime.fromtimestamp(int(synth_ms) / 1000.0)
+            except Exception:
+                x_val = datetime.fromtimestamp(int(now_ts_ms) / 1000.0)
+
+            dct = rec.get("data", {})
+            values = _compute_series_values_from_payload(dct, prev_vals, mod)
+            prev_vals = values
+            for idx, _ in enumerate(METRICS):
+                try:
+                    y_val = float(values[idx])
+                except Exception:
+                    y_val = 0.0
+                buffers[idx].append((x_val, y_val))
+
+        # Paint hydrated history grouped by chart
+        charts = st.session_state.get("chart_elements_v2") or []
+        if charts:
+            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+            for s_idx, buf in enumerate(buffers):
+                if not buf:
+                    continue
+                try:
+                    df = pd.DataFrame({
+                        "x": [pt[0] for pt in buf],
+                        "y": [pt[1] for pt in buf],
+                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
+                    })
+                    target_chart = _series_to_chart_idx.get(s_idx, 0)
+                    group_frames[target_chart].append(df)
+                except Exception:
+                    pass
+            for chart_i, frames in enumerate(group_frames):
+                if not frames:
+                    continue
+                try:
+                    charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
+                except Exception:
+                    pass
+        # Mark painted counts
+        if "_live_painted" not in st.session_state:
+            st.session_state._live_painted = {}
+        st.session_state._live_painted[mod] = [len(b) for b in buffers]
+        st.session_state.live_last_values = prev_vals
+        st.session_state[("_live_backfilled", mod)] = True
+    except Exception:
+        pass
 
 def _list_experiment_files() -> list[str]:
     base = _get_experiments_dir()
@@ -691,6 +775,92 @@ for chart_i, (_, idxs) in enumerate(_group_index_lists):
 colors = get_colors(len(METRICS))
 
 
+# --- Payload → series mapping and derived series helpers ---
+# Map series keys to incoming payload keys (snake_case). Derived series map to None.
+FLOW_ROLLING_WINDOW_SAMPLES = 60
+PUMP_HZ_TO_MLMIN = 0.018587
+
+_PAYLOAD_KEY_BY_METRIC: dict[str, str | None] = {
+    "OXYGENMEASURED1": "oxygen_measured_1",
+    "OXYGENMEASURED2": "oxygen_measured_2",
+    "OXYGENMEASURED3": "oxygen_measured_3",
+    "OXYGENSETPOINT": "oxygen_setpoint",
+    "PRESSUREMEASURED": "pressure_measured",
+    "PRESSURESETPOINT": "pressure_setpoint",
+    "FLOWMEASURED": "flow_measured",
+    # Derived values below
+    "FLOWMEASURED_rolling_avg": None,
+    "Pump1_mlmin": None,  # pressure_pump_speed * factor
+    "Pump2_mlmin": None,  # circ_pump_speed * factor
+}
+
+def _get_flow_window(mod: str):
+    if "_flow_windows" not in st.session_state:
+        st.session_state._flow_windows = {}
+    if mod not in st.session_state._flow_windows:
+        st.session_state._flow_windows[mod] = deque(maxlen=FLOW_ROLLING_WINDOW_SAMPLES)
+    return st.session_state._flow_windows[mod]
+
+def _compute_series_values_from_payload(data: dict, last_values: list[float], mod: str, flow_window: deque | None = None) -> list[float]:
+    """Compute per-series values from an incoming payload, applying alias mapping
+    and derived-series logic. Returns a list aligned with METRICS order.
+    """
+    values = list(last_values)
+    # Resolve indices we need multiple times
+    idx_flow = _key_to_index.get("FLOWMEASURED")
+    idx_flow_avg = _key_to_index.get("FLOWMEASURED_rolling_avg")
+    idx_p1 = _key_to_index.get("Pump1_mlmin")
+    idx_p2 = _key_to_index.get("Pump2_mlmin")
+
+    # Compute base series (non-derived) first
+    for i, (_, series_key) in enumerate(METRICS):
+        if series_key in ("FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"):
+            continue
+        payload_key = _PAYLOAD_KEY_BY_METRIC.get(series_key)
+        if not payload_key:
+            continue
+        try:
+            raw_val = data.get(payload_key, values[i])
+            values[i] = float(raw_val)
+        except Exception:
+            # Keep previous value if conversion fails
+            pass
+
+    # Flow rolling average (60-sample SMA over FLOWMEASURED)
+    if idx_flow is not None:
+        current_flow_val = values[idx_flow]
+        win = flow_window if flow_window is not None else _get_flow_window(str(mod))
+        try:
+            win.append(float(current_flow_val))
+        except Exception:
+            # If current flow isn't numeric, do not modify the window
+            pass
+        if idx_flow_avg is not None:
+            try:
+                avg_val = (sum(win) / len(win)) if len(win) > 0 else float(values[idx_flow_avg])
+                values[idx_flow_avg] = float(avg_val)
+            except Exception:
+                # Preserve previous average on error
+                pass
+
+    # Pump conversions (Hz → ml/min)
+    if idx_p1 is not None:
+        try:
+            p1_hz = data.get("pressure_pump_speed", None)
+            if p1_hz is not None:
+                values[idx_p1] = float(p1_hz) * PUMP_HZ_TO_MLMIN
+        except Exception:
+            pass
+    if idx_p2 is not None:
+        try:
+            p2_hz = data.get("circ_pump_speed", None)
+            if p2_hz is not None:
+                values[idx_p2] = float(p2_hz) * PUMP_HZ_TO_MLMIN
+        except Exception:
+            pass
+
+    return values
+
 def render_base_charts() -> list:
     chart_elements = []
     for name, _ in CHART_GROUPS:
@@ -704,9 +874,6 @@ def render_base_charts() -> list:
                 y=alt.Y("y:Q", title=None),
                 color=alt.Color("series:N", legend=alt.Legend(title=None))
             )
-            .transform_window(index="row_number()", sort=[alt.SortField("x")])
-            .transform_window(max_index="max(index)", frame=[None, None])
-            .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
         )
         chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
     return chart_elements
@@ -785,50 +952,9 @@ def _init_charts_if_needed(force: bool = False) -> None:
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
         else:
             # If no in-memory buffer, try to hydrate from persisted file
-            records = _load_live_records(mod, MAX_POINTS)
-            if records:
-                if not buffers:
-                    st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
-                    buffers = st.session_state._live_buffers[mod]
-                charts = st.session_state.chart_elements_v2
-                for rec in records:
-                    # Prefer persisted timestamp; fallback to x counter mapped to now
-                    ts_ms = rec.get("ts")
-                    if ts_ms is None:
-                        # Map legacy x to approximate timestamps spaced by 1s ending at now
-                        # This is a fallback for older files
-                        ts_ms = int(time.time()*1000)
-                    x_val = datetime.fromtimestamp(int(ts_ms)/1000.0)
-                    dct = rec.get("data", {})
-                    for idx, (_, key) in enumerate(METRICS):
-                        try:
-                            y_val = float(dct.get(key, 0.0))
-                        except Exception:
-                            y_val = 0.0
-                        buffers[idx].append((x_val, y_val))
-                # Paint hydrated history (grouped)
-                group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-                for s_idx, buf in enumerate(buffers):
-                    if not buf:
-                        continue
-                    try:
-                        df = pd.DataFrame({
-                            "x": [pt[0] for pt in buf],
-                            "y": [pt[1] for pt in buf],
-                            "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                        })
-                        target_chart = _series_to_chart_idx.get(s_idx, 0)
-                        group_frames[target_chart].append(df)
-                    except Exception:
-                        pass
-                for chart_i, frames in enumerate(group_frames):
-                    if not frames:
-                        continue
-                    try:
-                        charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
-                    except Exception:
-                        pass
-                st.session_state._live_painted[mod] = [len(b) for b in buffers]
+            _backfill_live_from_file(mod)
+            buffers = st.session_state._live_buffers.get(mod)
+            if buffers:
                 # Advance x counter based on count, not persisted x
                 st.session_state._live_x_counters[mod] = len(buffers[0]) if buffers and buffers[0] else 0
 
@@ -948,19 +1074,22 @@ def background_collector():
                         continue
                     # Use real time for x-axis
                     row_x = datetime.now()
-                    for idx, (_, key) in enumerate(METRICS):
-                        val = data.get(key, last_values[idx])
+                    # Compute mapped and derived series values
+                    values = _compute_series_values_from_payload(data, last_values, mod)
+                    # Append to buffers in METRICS order
+                    for idx, _ in enumerate(METRICS):
                         try:
-                            new_y = float(val)
+                            new_y = float(values[idx])
                         except Exception:
                             new_y = float(last_values[idx])
                         buffers[idx].append((row_x, new_y))
-                        last_values[idx] = new_y
+                    last_values = values
                     # UI no longer persists JSONL; ModuleHandler writes the live history
                     x_counter += 1
                 except Exception:
                     continue
         st.session_state._live_x_counters[mod] = x_counter
+        st.session_state.live_last_values = last_values
         # Drain data-logging status and store flag
         dl_updates = MQTTService().drain(f"{DATA_LOGGING_PREFIX}/{m}", max_items=200)
         for _, payload in dl_updates:
