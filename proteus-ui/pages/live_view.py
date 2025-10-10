@@ -652,47 +652,63 @@ def get_colors(number: int) -> list:
     return [random_color() for _ in range(number)]
 
 
-colors = get_colors(6)
 # Charts map to fields from data_logger 'data' payload
+# Flat list of all series
 METRICS = [
-    ("Oxygen PID", "oxygen_pid"),
-    ("Pressure PID", "pressure_pid"),
-    ("Temperature (C)", "temp_measured"),
-    ("Flow (SLPM)", "flow_measured"),
-    ("Pressure Measured", "pressure_measured"),
-    ("Circ Pump Speed", "circ_pump_speed"),
+    ("OXYGENMEASURED1", "OXYGENMEASURED1"),
+    ("OXYGENMEASURED2", "OXYGENMEASURED2"),
+    ("OXYGENMEASURED3", "OXYGENMEASURED3"),
+    ("OXYGENSETPOINT", "OXYGENSETPOINT"),
+    ("PRESSUREMEASURED", "PRESSUREMEASURED"),
+    ("PRESSURESETPOINT", "PRESSURESETPOINT"),
+    ("FLOWMEASURED", "FLOWMEASURED"),
+    ("FLOWMEASURED_rolling_avg", "FLOWMEASURED_rolling_avg"),
+    ("Pump1_mlmin", "Pump1_mlmin"),
+    ("Pump2_mlmin", "Pump2_mlmin"),
 ]
-table_titles = [m[0] for m in METRICS]
+
+# Three charts, each grouping multiple series from METRICS
+CHART_GROUPS = [
+    ("Oxygen", ["OXYGENMEASURED1", "OXYGENMEASURED2", "OXYGENMEASURED3", "OXYGENSETPOINT"]),
+    ("Pressure", ["PRESSUREMEASURED", "PRESSURESETPOINT"]),
+    ("Flow", ["FLOWMEASURED", "FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"]),
+]
+
+# Derived helpers
+_series_keys = [m[1] for m in METRICS]
+_series_labels = [m[0] for m in METRICS]
+_key_to_index = {k: i for i, k in enumerate(_series_keys)}
+_group_index_lists = [(name, [
+    _key_to_index[k] for k in keys if k in _key_to_index
+]) for name, keys in CHART_GROUPS]
+
+# Map each series index to its chart index for fast routing
+_series_to_chart_idx = {}
+for chart_i, (_, idxs) in enumerate(_group_index_lists):
+    for si in idxs:
+        _series_to_chart_idx[si] = chart_i
+
+colors = get_colors(len(METRICS))
 
 
 def render_base_charts() -> list:
     chart_elements = []
-    for row in range(3):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader(f"{table_titles[row * 2]}")
-            init_df = pd.DataFrame({"x": [], "y": []})
-            base_chart = (
-                alt.Chart(init_df)
-                .mark_line(color=colors[row * 2])
-                .encode(x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")), y=alt.Y("y:Q", title=None))
-                .transform_window(index="row_number()", sort=[alt.SortField("x")])
-                .transform_window(max_index="max(index)", frame=[None, None])
-                .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
+    for name, _ in CHART_GROUPS:
+        st.subheader(name)
+        init_df = pd.DataFrame({"x": [], "y": [], "series": []})
+        base_chart = (
+            alt.Chart(init_df)
+            .mark_line()
+            .encode(
+                x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                y=alt.Y("y:Q", title=None),
+                color=alt.Color("series:N", legend=alt.Legend(title=None))
             )
-            chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
-        with col2:
-            st.subheader(f"{table_titles[row * 2 + 1]}")
-            init_df = pd.DataFrame({"x": [], "y": []})
-            base_chart = (
-                alt.Chart(init_df)
-                .mark_line(color=colors[row * 2 + 1])
-                .encode(x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")), y=alt.Y("y:Q", title=None))
-                .transform_window(index="row_number()", sort=[alt.SortField("x")])
-                .transform_window(max_index="max(index)", frame=[None, None])
-                .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
-            )
-            chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
+            .transform_window(index="row_number()", sort=[alt.SortField("x")])
+            .transform_window(max_index="max(index)", frame=[None, None])
+            .transform_filter(f"datum.index >= datum.max_index - {MAX_POINTS}")
+        )
+        chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
     return chart_elements
 
 
@@ -702,14 +718,14 @@ def _init_charts_if_needed(force: bool = False) -> None:
     init_key = ("live_v3", current_module, run_token)
     need_init = force or (st.session_state.get("_live_init_key") != init_key)
     need_init = need_init or ("chart_elements_v2" not in st.session_state)
-    need_init = need_init or (len(st.session_state.get("chart_elements_v2", [])) != 6)
+    need_init = need_init or (len(st.session_state.get("chart_elements_v2", [])) != len(CHART_GROUPS))
     if need_init:
         st.session_state.chart_elements_v2 = render_base_charts()
         # Initialize registries
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
         mod = str(current_module) if current_module else ""
-        # Painted counters per-module per-metric (how many points already rendered)
+        # Painted counters per-series (how many points already rendered)
         if "_live_painted" not in st.session_state:
             st.session_state._live_painted = {}
         # X counters per-module (advance per received message)
@@ -744,19 +760,28 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 has_points = False
         if has_points:
             charts = st.session_state.chart_elements_v2
-            # Refill charts from buffers efficiently in chunks
-            for idx, buf in enumerate(buffers):
+            # Refill charts from buffers in grouped layers
+            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+            for s_idx, buf in enumerate(buffers):
                 if not buf:
                     continue
                 try:
                     df = pd.DataFrame({
                         "x": [pt[0] for pt in buf],
                         "y": [pt[1] for pt in buf],
+                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
                     })
-                    charts[idx].add_rows(df)
+                    target_chart = _series_to_chart_idx.get(s_idx, 0)
+                    group_frames[target_chart].append(df)
                 except Exception:
                     pass
-            # Mark painted lengths
+            for chart_i, frames in enumerate(group_frames):
+                if not frames:
+                    continue
+                try:
+                    charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
+                except Exception:
+                    pass
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
         else:
             # If no in-memory buffer, try to hydrate from persisted file
@@ -781,16 +806,26 @@ def _init_charts_if_needed(force: bool = False) -> None:
                         except Exception:
                             y_val = 0.0
                         buffers[idx].append((x_val, y_val))
-                # Paint hydrated history
-                for idx, buf in enumerate(buffers):
+                # Paint hydrated history (grouped)
+                group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+                for s_idx, buf in enumerate(buffers):
                     if not buf:
                         continue
                     try:
                         df = pd.DataFrame({
                             "x": [pt[0] for pt in buf],
                             "y": [pt[1] for pt in buf],
+                            "series": [_series_labels[s_idx] for _ in range(len(buf))],
                         })
-                        charts[idx].add_rows(df)
+                        target_chart = _series_to_chart_idx.get(s_idx, 0)
+                        group_frames[target_chart].append(df)
+                    except Exception:
+                        pass
+                for chart_i, frames in enumerate(group_frames):
+                    if not frames:
+                        continue
+                    try:
+                        charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
                     except Exception:
                         pass
                 st.session_state._live_painted[mod] = [len(b) for b in buffers]
@@ -817,17 +852,29 @@ def update_loop():
         return
     chart_elements = st.session_state.chart_elements_v2
     painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
-    for idx, buf in enumerate(buffers):
+    # Build grouped data frames for only the newly added points
+    group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+    for s_idx, buf in enumerate(buffers):
         try:
-            start = painted[idx]
+            start = painted[s_idx]
             if start >= len(buf):
                 continue
+            slice_buf = list(buf)[start:]
             df = pd.DataFrame({
-                "x": [pt[0] for pt in list(buf)[start:]],
-                "y": [pt[1] for pt in list(buf)[start:]],
+                "x": [pt[0] for pt in slice_buf],
+                "y": [pt[1] for pt in slice_buf],
+                "series": [_series_labels[s_idx] for _ in range(len(slice_buf))],
             })
-            chart_elements[idx].add_rows(df)
-            painted[idx] = len(buf)
+            target_chart = _series_to_chart_idx.get(s_idx, 0)
+            group_frames[target_chart].append(df)
+            painted[s_idx] = len(buf)
+        except Exception:
+            pass
+    for chart_i, frames in enumerate(group_frames):
+        if not frames:
+            continue
+        try:
+            chart_elements[chart_i].add_rows(pd.concat(frames, ignore_index=True))
         except Exception:
             pass
     st.session_state._live_painted[mod] = painted
