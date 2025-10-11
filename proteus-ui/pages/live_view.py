@@ -346,6 +346,9 @@ def _backfill_live_from_file(module_id: str) -> None:
     """
     try:
         mod = str(module_id)
+        # Avoid duplicate backfill/paint per module within this session
+        if st.session_state.get(("_live_backfilled", mod)):
+            return
         records = _load_live_records(mod, MAX_POINTS)
         if not records:
             return
@@ -918,6 +921,10 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     st.session_state._live_sub_topic = topic
                 except Exception:
                     pass
+        # Always attempt to hydrate initial history from file once (no-op if already done)
+        if current_module:
+            _backfill_live_from_file(mod)
+
         # If we have buffered history for this module, paint it
         has_points = False
         if buffers:
@@ -951,8 +958,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
                     pass
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
         else:
-            # If no in-memory buffer, try to hydrate from persisted file
-            _backfill_live_from_file(mod)
+            # If buffers were created by backfill but are still empty, nothing to paint yet
             buffers = st.session_state._live_buffers.get(mod)
             if buffers:
                 # Advance x counter based on count, not persisted x
