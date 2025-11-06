@@ -43,7 +43,7 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 8640  # show last ~2.4h at 1 Hz (adjust as needed)
+MAX_POINTS = 20  # default; overridden by UI control below
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -72,6 +72,8 @@ inject_button_theme(
 # Unique token for this page lifetime (do not change on every rerun)
 if "_current_run_token" not in st.session_state:
     st.session_state._current_run_token = f"run_{int(time.time()*1000)}_{random.randint(0, 1_000_000)}"
+
+# Rolling window uses constant MAX_POINTS defined above (no UI control)
 
 # Module selection + right-hand status panels row
 left_col, right_col = st.columns([1, 1], gap="large")
@@ -869,6 +871,7 @@ def render_base_charts() -> list:
     for name, _ in CHART_GROUPS:
         st.subheader(name)
         init_df = pd.DataFrame({"x": [], "y": [], "series": []})
+        ph = st.empty()
         base_chart = (
             alt.Chart(init_df)
             .mark_line()
@@ -878,7 +881,8 @@ def render_base_charts() -> list:
                 color=alt.Color("series:N", legend=alt.Legend(title=None))
             )
         )
-        chart_elements.append(st.altair_chart(base_chart, use_container_width=True))
+        ph.altair_chart(base_chart, use_container_width=True)
+        chart_elements.append(ph)
     return chart_elements
 
 
@@ -934,7 +938,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 has_points = False
         if has_points:
             charts = st.session_state.chart_elements_v2
-            # Refill charts from buffers in grouped layers
+            # Refill charts from buffers using full-window redraw into placeholders
             group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
             for s_idx, buf in enumerate(buffers):
                 if not buf:
@@ -950,10 +954,18 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 except Exception:
                     pass
             for chart_i, frames in enumerate(group_frames):
-                if not frames:
-                    continue
                 try:
-                    charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
+                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
+                    ch = (
+                        alt.Chart(combined)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(title=None))
+                        )
+                    )
+                    charts[chart_i].altair_chart(ch, use_container_width=True)
                 except Exception:
                     pass
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
@@ -982,34 +994,42 @@ def update_loop():
     buffers = st.session_state._live_buffers.get(mod)
     if not buffers:
         return
-    chart_elements = st.session_state.chart_elements_v2
-    painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
-    # Build grouped data frames for only the newly added points
-    group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-    for s_idx, buf in enumerate(buffers):
-        try:
-            start = painted[s_idx]
-            if start >= len(buf):
+    charts = st.session_state.chart_elements_v2
+    # Full-window redraw from current buffers each tick (bounded to MAX_POINTS by deque)
+    try:
+        group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+        for s_idx, buf in enumerate(buffers):
+            if not buf:
                 continue
-            slice_buf = list(buf)[start:]
-            df = pd.DataFrame({
-                "x": [pt[0] for pt in slice_buf],
-                "y": [pt[1] for pt in slice_buf],
-                "series": [_series_labels[s_idx] for _ in range(len(slice_buf))],
-            })
-            target_chart = _series_to_chart_idx.get(s_idx, 0)
-            group_frames[target_chart].append(df)
-            painted[s_idx] = len(buf)
-        except Exception:
-            pass
-    for chart_i, frames in enumerate(group_frames):
-        if not frames:
-            continue
-        try:
-            chart_elements[chart_i].add_rows(pd.concat(frames, ignore_index=True))
-        except Exception:
-            pass
-    st.session_state._live_painted[mod] = painted
+            try:
+                df = pd.DataFrame({
+                    "x": [pt[0] for pt in buf],
+                    "y": [pt[1] for pt in buf],
+                    "series": [_series_labels[s_idx] for _ in range(len(buf))],
+                })
+                target_chart = _series_to_chart_idx.get(s_idx, 0)
+                group_frames[target_chart].append(df)
+            except Exception:
+                pass
+        for chart_i, frames in enumerate(group_frames):
+            try:
+                combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
+                ch = (
+                    alt.Chart(combined)
+                    .mark_line()
+                    .encode(
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(title=None))
+                    )
+                )
+                charts[chart_i].altair_chart(ch, use_container_width=True)
+            except Exception:
+                pass
+        # Book-keeping (not used for rendering anymore but kept for compatibility)
+        st.session_state._live_painted[mod] = [len(b) for b in buffers]
+    except Exception:
+        pass
 
 
 # Background collector: subscribe to topics and buffer/update UI state
