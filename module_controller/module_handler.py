@@ -639,23 +639,26 @@ class ModuleHandler:
         if self._data_csv_writer is not None:
             return
         try:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base_name = f"{self.module_id}_data_{ts}.csv" if not self._run_id else f"{self.module_id}_data_{self._run_id}.csv"
+            # Persist to a single per-module file within the experiment directory
+            base_name = f"{self.module_id}_data.csv"
             path = os.path.join(self._experiment_dir, base_name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            f = open(path, "w", newline="")
+            # Append mode; write header only if file is new or empty
+            write_header = (not os.path.exists(path)) or (os.path.getsize(path) == 0)
+            f = open(path, "a", newline="")
             writer = csv.writer(f)
-            # Header matching example 3006_data.csv
-            header = [
-                "TIME","NULLEADER","MODUID","COMMAND","STATEID","OXYMEASURED","PRESSUREMEASURED","FLOWMEASURED","TEMPMEASURED",
-                "CIRCPUMPSPEED","PRESSUREPUMPSPEED","PRESSUREPID","PRESSURESETPOINT","PRESSUREKP","PRESSUREKI","PRESSUREKD",
-                "OXYGENPID","OXYGENSETPOINT","OXYGENKP","OXYGENKI","OXYGENKD","OXYGENMEASURED1","OXYGENMEASURED2","OXYGENMEASURED3","OXYGENMEASURED4","NULLTRAILER"
-            ]
-            writer.writerow(header)
+            if write_header:
+                # Header matching example 3006_data.csv
+                header = [
+                    "TIME","NULLEADER","MODUID","COMMAND","STATEID","OXYMEASURED","PRESSUREMEASURED","FLOWMEASURED","TEMPMEASURED",
+                    "CIRCPUMPSPEED","PRESSUREPUMPSPEED","PRESSUREPID","PRESSURESETPOINT","PRESSUREKP","PRESSUREKI","PRESSUREKD",
+                    "OXYGENPID","OXYGENSETPOINT","OXYGENKP","OXYGENKI","OXYGENKD","OXYGENMEASURED1","OXYGENMEASURED2","OXYGENMEASURED3","OXYGENMEASURED4","NULLTRAILER"
+                ]
+                writer.writerow(header)
             self._data_csv_file = f
             self._data_csv_writer = writer
             self._data_csv_path = path
-            self.logger.info(f"{self.module_name}: data log file opened -> {path}")
+            self.logger.info(f"{self.module_name}: data log file opened (append) -> {path}")
         except Exception as e:
             self.logger.warn(f"{self.module_name}: failed to open data file: {e}")
 
