@@ -28,12 +28,8 @@ st.title("PID Charts")
 
 inject_button_theme(height="32px", min_width="110px", font_size="14px", padding_x="10px")
 
-# Configurable rolling window size for display
-if "_pid_max_points" not in st.session_state:
-    st.session_state._pid_max_points = 20
-prev_pid_max = int(st.session_state._pid_max_points)
-st.session_state._pid_max_points = int(st.number_input("Max samples (rolling window)", min_value=10, max_value=200000, value=prev_pid_max, step=10, key="_pid_max_points_input"))
-MAX_POINTS = int(st.session_state._pid_max_points)
+# Rolling window size (fixed)
+MAX_POINTS = 1800
 
 if "pt_selected_module" not in st.session_state:
     st.session_state.pt_selected_module = None
