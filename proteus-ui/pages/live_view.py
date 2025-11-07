@@ -43,7 +43,7 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 20  # default; overridden by UI control below
+MAX_POINTS = 8640  # default; overridden by UI control below
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -882,8 +882,8 @@ def render_base_charts() -> list:
             )
             .properties(height=220)
         )
-        ph.altair_chart(base_chart, use_container_width=True)
-        chart_elements.append(ph)
+        chart_handle = ph.altair_chart(base_chart, use_container_width=True)
+        chart_elements.append({"ph": ph, "chart": chart_handle})
     return chart_elements
 
 
@@ -939,7 +939,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
                 has_points = False
         if has_points:
             charts = st.session_state.chart_elements_v2
-            # Refill charts from buffers using full-window redraw into placeholders
+            # Initial fill: add current window rows into chart handles
             group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
             for s_idx, buf in enumerate(buffers):
                 if not buf:
@@ -957,17 +957,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
             for chart_i, frames in enumerate(group_frames):
                 try:
                     combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    ch = (
-                        alt.Chart(combined)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(title=None))
-                        )
-                        .properties(height=220)
-                    )
-                    charts[chart_i].altair_chart(ch, use_container_width=True)
+                    charts[chart_i]["chart"].add_rows(combined)
                 except Exception:
                     pass
             st.session_state._live_painted[mod] = [len(b) for b in buffers]
@@ -997,7 +987,7 @@ def update_loop():
     if not buffers:
         return
     charts = st.session_state.chart_elements_v2
-    # Full-window redraw from current buffers each tick (bounded to MAX_POINTS by deque)
+    # Hybrid: incremental add_rows per tick, periodic compaction to last window
     try:
         group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
         for s_idx, buf in enumerate(buffers):
@@ -1013,24 +1003,78 @@ def update_loop():
                 group_frames[target_chart].append(df)
             except Exception:
                 pass
-        for chart_i, frames in enumerate(group_frames):
+        # Incremental additions since last paint
+        painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
+        incr_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+        for s_idx, buf in enumerate(buffers):
             try:
-                combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                ch = (
-                    alt.Chart(combined)
-                    .mark_line()
-                    .encode(
-                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
-                        y=alt.Y("y:Q", title=None),
-                        color=alt.Color("series:N", legend=alt.Legend(title=None))
-                    )
-                    .properties(height=220)
-                )
-                charts[chart_i].altair_chart(ch, use_container_width=True)
+                start = painted[s_idx]
+                if start < len(buf):
+                    slice_buf = list(buf)[start:]
+                    df_inc = pd.DataFrame({
+                        "x": [pt[0] for pt in slice_buf],
+                        "y": [pt[1] for pt in slice_buf],
+                        "series": [_series_labels[s_idx] for _ in range(len(slice_buf))],
+                    })
+                    target_chart = _series_to_chart_idx.get(s_idx, 0)
+                    incr_frames[target_chart].append(df_inc)
+                painted[s_idx] = len(buf)
             except Exception:
                 pass
-        # Book-keeping (not used for rendering anymore but kept for compatibility)
-        st.session_state._live_painted[mod] = [len(b) for b in buffers]
+        for chart_i, frames in enumerate(incr_frames):
+            if not frames:
+                continue
+            try:
+                df_added = pd.concat(frames, ignore_index=True)
+                charts[chart_i]["chart"].add_rows(df_added)
+            except Exception:
+                pass
+        st.session_state._live_painted[mod] = painted
+
+        # Compaction trigger to enforce visual window and shift cleanly
+        at_capacity = False
+        try:
+            at_capacity = len(buffers[0]) >= MAX_POINTS if buffers and buffers[0] is not None else False
+        except Exception:
+            at_capacity = False
+        append_ctr = int((st.session_state.get("_live_x_counters") or {}).get(mod, 0))
+        last_compact_key = ("_live_last_compact_counter", mod)
+        last_compact = int(st.session_state.get(last_compact_key) or -1)
+        # Compact every MAX_POINTS appends, or if painted is at end while at capacity (rotation)
+        need_compact_interval = (append_ctr // max(1, MAX_POINTS)) != (last_compact // max(1, MAX_POINTS))
+        painted_at_end = all(painted[i] >= len(buffers[i]) for i in range(len(buffers)))
+        if at_capacity and (need_compact_interval or painted_at_end):
+            full_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+            for s_idx, buf in enumerate(buffers):
+                if not buf:
+                    continue
+                try:
+                    df_full = pd.DataFrame({
+                        "x": [pt[0] for pt in buf],
+                        "y": [pt[1] for pt in buf],
+                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
+                    })
+                    target_chart = _series_to_chart_idx.get(s_idx, 0)
+                    full_frames[target_chart].append(df_full)
+                except Exception:
+                    pass
+            for chart_i, frames in enumerate(full_frames):
+                try:
+                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
+                    ch = (
+                        alt.Chart(combined)
+                        .mark_line()
+                        .encode(
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(title=None))
+                        )
+                        .properties(height=220)
+                    )
+                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(ch, use_container_width=True)
+                except Exception:
+                    pass
+            st.session_state[last_compact_key] = append_ctr
     except Exception:
         pass
 
