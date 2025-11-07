@@ -876,10 +876,11 @@ def render_base_charts() -> list:
             alt.Chart(init_df)
             .mark_line()
             .encode(
-                x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
                 y=alt.Y("y:Q", title=None),
                 color=alt.Color("series:N", legend=alt.Legend(title=None))
             )
+            .properties(height=220)
         )
         ph.altair_chart(base_chart, use_container_width=True)
         chart_elements.append(ph)
@@ -960,10 +961,11 @@ def _init_charts_if_needed(force: bool = False) -> None:
                         alt.Chart(combined)
                         .mark_line()
                         .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
                             y=alt.Y("y:Q", title=None),
                             color=alt.Color("series:N", legend=alt.Legend(title=None))
                         )
+                        .properties(height=220)
                     )
                     charts[chart_i].altair_chart(ch, use_container_width=True)
                 except Exception:
@@ -1018,10 +1020,11 @@ def update_loop():
                     alt.Chart(combined)
                     .mark_line()
                     .encode(
-                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S")),
+                        x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
                         y=alt.Y("y:Q", title=None),
                         color=alt.Color("series:N", legend=alt.Legend(title=None))
                     )
+                    .properties(height=220)
                 )
                 charts[chart_i].altair_chart(ch, use_container_width=True)
             except Exception:
