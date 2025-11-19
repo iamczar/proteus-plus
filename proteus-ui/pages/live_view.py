@@ -44,6 +44,8 @@ LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 MAX_POINTS = 8640  # default; rolling window in memory
+# How often (in seconds) to perform a full decimated repaint of charts.
+FULL_REPAINT_INTERVAL_SEC = 4.0
 # Target visual density: maximum number of points we will render per series
 # in a single chart repaint. Higher values increase fidelity at the cost of
 # more CPU; lower values improve responsiveness.
@@ -914,56 +916,137 @@ def update_loop():
         return
     charts = st.session_state.chart_elements_v2
 
-    # Always repaint from the current in-memory window, but decimate each series
-    # so that we render at most MAX_VIS_POINTS_PER_SERIES points per series.
+    # Hybrid painting strategy:
+    # - Keep full rolling history in _live_buffers (bounded by MAX_POINTS).
+    # - Periodically perform a full decimated repaint (to realign charts and
+    #   handle ring-buffer wrap).
+    # - Between full repaints, stream only incremental points via add_rows to
+    #   minimize flicker and CPU usage.
     try:
-        for chart_i, (_, idxs) in enumerate(_group_index_lists):
-            frames = []
-            for s_idx in idxs:
-                buf = buffers[s_idx]
-                if not buf:
+        # Ensure per-module painted index tracking
+        if "_live_painted_idx" not in st.session_state:
+            st.session_state._live_painted_idx = {}
+        painted_map = st.session_state._live_painted_idx
+        if mod not in painted_map or len(painted_map[mod]) != len(METRICS):
+            painted_map[mod] = [0 for _ in range(len(METRICS))]
+        painted = painted_map[mod]
+
+        # Ensure per-module last full repaint timestamps
+        if "_live_last_full_repaint" not in st.session_state:
+            st.session_state._live_last_full_repaint = {}
+        last_full_map = st.session_state._live_last_full_repaint
+        last_full_ts = float(last_full_map.get(mod, 0.0) or 0.0)
+
+        now_ts = time.time()
+        need_full = False
+
+        # If ring buffer wrapped (len < painted), force a full repaint so that
+        # incremental indices realign with current buffers.
+        for s_idx, buf in enumerate(buffers):
+            try:
+                if painted[s_idx] > len(buf):
+                    need_full = True
+                    break
+            except Exception:
+                continue
+
+        # Periodic full repaint to keep visual window decimated and stable
+        if (now_ts - last_full_ts) >= FULL_REPAINT_INTERVAL_SEC:
+            need_full = True
+
+        if need_full:
+            # Full decimated repaint using the current buffers
+            for chart_i, (_, idxs) in enumerate(_group_index_lists):
+                frames = []
+                for s_idx in idxs:
+                    buf = buffers[s_idx]
+                    if not buf:
+                        continue
+                    try:
+                        n = len(buf)
+                        if n == 0:
+                            continue
+                        stride = max(1, int(np.ceil(n / float(MAX_VIS_POINTS_PER_SERIES))))
+                        indices = list(range(0, n, stride))
+                        if indices[-1] != n - 1:
+                            indices.append(n - 1)
+                        xs = [buf[j][0] for j in indices]
+                        ys = [buf[j][1] for j in indices]
+                        df = pd.DataFrame(
+                            {
+                                "x": xs,
+                                "y": ys,
+                                "series": [_series_labels[s_idx] for _ in range(len(indices))],
+                            }
+                        )
+                        frames.append(df)
+                    except Exception:
+                        continue
+                if not frames:
                     continue
                 try:
-                    n = len(buf)
-                    if n == 0:
-                        continue
-                    stride = max(1, int(np.ceil(n / float(MAX_VIS_POINTS_PER_SERIES))))
-                    indices = list(range(0, n, stride))
-                    if indices[-1] != n - 1:
-                        indices.append(n - 1)
-                    xs = [buf[j][0] for j in indices]
-                    ys = [buf[j][1] for j in indices]
-                    df = pd.DataFrame(
-                        {
-                            "x": xs,
-                            "y": ys,
-                            "series": [_series_labels[s_idx] for _ in range(len(indices))],
-                        }
+                    combined = pd.concat(frames, ignore_index=True)
+                    ch = (
+                        alt.Chart(combined)
+                        .mark_line()
+                        .encode(
+                            x=alt.X(
+                                "x:T",
+                                title=None,
+                                axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False),
+                            ),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                        )
+                        .properties(height=220)
                     )
-                    frames.append(df)
+                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(
+                        ch, use_container_width=True
+                    )
                 except Exception:
                     continue
+
+            # After a full repaint, consider all current buffer points as painted
+            try:
+                for s_idx, buf in enumerate(buffers):
+                    painted[s_idx] = len(buf)
+            except Exception:
+                pass
+            last_full_map[mod] = now_ts
+            return
+
+        # Incremental add_rows path: only append new points since last painted index
+        incr_frames = [[] for _ in range(len(CHART_GROUPS))]
+        for s_idx, buf in enumerate(buffers):
+            try:
+                start = max(0, int(painted[s_idx] or 0))
+                end = len(buf)
+                if end <= start:
+                    continue
+                slice_buf = list(buf)[start:end]
+                xs = [pt[0] for pt in slice_buf]
+                ys = [pt[1] for pt in slice_buf]
+                if not xs:
+                    continue
+                df_inc = pd.DataFrame(
+                    {
+                        "x": xs,
+                        "y": ys,
+                        "series": [_series_labels[s_idx] for _ in range(len(xs))],
+                    }
+                )
+                chart_i = _series_to_chart_idx.get(s_idx, 0)
+                incr_frames[chart_i].append(df_inc)
+                painted[s_idx] = end
+            except Exception:
+                continue
+
+        for chart_i, frames in enumerate(incr_frames):
             if not frames:
                 continue
             try:
-                combined = pd.concat(frames, ignore_index=True)
-                ch = (
-                    alt.Chart(combined)
-                    .mark_line()
-                    .encode(
-                        x=alt.X(
-                            "x:T",
-                            title=None,
-                            axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False),
-                        ),
-                        y=alt.Y("y:Q", title=None),
-                        color=alt.Color("series:N", legend=alt.Legend(title=None)),
-                    )
-                    .properties(height=220)
-                )
-                charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(
-                    ch, use_container_width=True
-                )
+                df_added = pd.concat(frames, ignore_index=True)
+                charts[chart_i]["chart"].add_rows(df_added)
             except Exception:
                 continue
     except Exception:
