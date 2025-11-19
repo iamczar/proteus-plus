@@ -106,6 +106,22 @@ winget install OpenJS.NodeJS
 npm install -g pm2
 ```
 
+### First-Time Streamlit Initialization (skip email prompt)
+On the **first run on a new machine**, initialize Streamlit interactively (so it can store your choice and won't prompt when run under PM2):
+
+```powershell
+cd proteus-plus
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r proteus-ui\requirements.txt
+
+cd proteus-ui
+streamlit run main.py
+```
+
+When prompted for an email, either enter one or just press **Enter** to leave it blank. After closing Streamlit (Ctrl+C), future runs via PM2 will start without blocking for input.
+
 ### Setup Virtual Environment (Windows)
 ```powershell
 cd proteus-plus
