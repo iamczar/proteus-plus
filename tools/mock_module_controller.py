@@ -14,8 +14,8 @@ publish rates, or MQTT connection details.
 
 import json
 import os
-import random
 import time
+import math
 from datetime import datetime
 from typing import List
 
@@ -90,11 +90,21 @@ def build_sensor_payload(module_id: int) -> dict:
       "data": { ... }
     }
     """
-    # Slightly vary temperature, flow, and pressure to look "alive"
+    # Generate smooth sinusoidal variations for temperature, flow, and pressure
+    # so that charts show clear wave-like behavior over time.
+    t = time.time()
+    # Base values roughly matching previous example, with modest amplitudes
     base_temp = 26.35
-    temp_measured = base_temp + random.uniform(-0.2, 0.2)
-    flow_measured = 66.0 + random.uniform(-1.0, 1.0)
-    pressure_measured = -829.0 + random.uniform(-1.0, 1.0)
+    temp_amp = 0.4
+    temp_measured = base_temp + temp_amp * math.sin(2.0 * math.pi * 0.01 * t)
+
+    base_flow = 66.0
+    flow_amp = 3.0
+    flow_measured = base_flow + flow_amp * math.sin(2.0 * math.pi * 0.02 * t)
+
+    base_pressure = -829.0
+    pressure_amp = 5.0
+    pressure_measured = base_pressure + pressure_amp * math.sin(2.0 * math.pi * 0.015 * t)
 
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -106,9 +116,11 @@ def build_sensor_payload(module_id: int) -> dict:
         "pressure_kd": 0.0,
         "oxygen_ki": 0.0,
         "oxygen_kd": 0.0,
-        "oxygen_measured_1": -3000.0,
-        "oxygen_measured_2": -3000.0,
-        "oxygen_measured_3": -3000.0,
+        # Mirror the flow/pressure sinusoid into oxygen channels so Live View
+        # shows clearly changing traces.
+        "oxygen_measured_1": flow_measured,
+        "oxygen_measured_2": flow_measured * 0.95,
+        "oxygen_measured_3": flow_measured * 1.05,
         "oxygen_measured_4": 0.0,
         "state_id": 0.0,
         "pressure_pump_speed": 0.0,
