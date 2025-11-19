@@ -13,6 +13,11 @@ from common.logger import Logger
 from pathlib import Path
 
 
+# Upper bound for how many recent live JSONL lines we keep per module when trimming.
+# This does NOT affect the in-memory buffers in the UI, which are controlled separately.
+LIVE_JSONL_MAX_LINES = 10_000
+
+
 class ModuleHandler:
     def __init__(
         self,
@@ -128,6 +133,34 @@ class ModuleHandler:
         except Exception:
             pass
 
+    def _trim_live_jsonl(self, fp: Path) -> None:
+        """Best-effort size control for live JSONL files.
+
+        Keeps at most LIVE_JSONL_MAX_LINES most recent lines by rewriting the file
+        when it grows beyond a modest size threshold. This keeps startup/backfill
+        costs bounded for the UI without impacting the live sensor stream.
+        """
+        try:
+            if not fp.exists():
+                return
+            # Only attempt a trim once the file is larger than ~5MB to avoid
+            # unnecessary work on small files.
+            max_bytes = 5_000_000
+            st = fp.stat()
+            if st.st_size <= max_bytes:
+                return
+            with fp.open("r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if len(lines) <= LIVE_JSONL_MAX_LINES:
+                # File is large in bytes but still under our logical line budget
+                return
+            keep = lines[-LIVE_JSONL_MAX_LINES:]
+            with fp.open("w", encoding="utf-8") as f:
+                f.writelines(keep)
+        except Exception:
+            # Never allow trimming to interfere with the main read loop
+            pass
+
     def _append_live_jsonl(self, data: Dict[str, Any]) -> None:
         try:
             fp = self._live_jsonl_dir() / f"module_{self.module_id}.jsonl"
@@ -139,6 +172,10 @@ class ModuleHandler:
             with fp.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
             self._live_x_counter += 1
+            # Periodically trim to keep file size and line count bounded. This runs
+            # infrequently relative to the sensor rate and is best-effort only.
+            if self._live_x_counter % 1000 == 0:
+                self._trim_live_jsonl(fp)
         except Exception:
             # Best effort; never crash read loop on file errors
             pass

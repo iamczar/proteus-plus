@@ -43,7 +43,11 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 8640  # default; overridden by UI control below
+MAX_POINTS = 8640  # default; rolling window in memory
+# Target visual density: maximum number of points we will render per series
+# in a single chart repaint. Higher values increase fidelity at the cost of
+# more CPU; lower values improve responsiveness.
+MAX_VIS_POINTS_PER_SERIES = 1000
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -394,34 +398,8 @@ def _backfill_live_from_file(module_id: str) -> None:
                     y_val = 0.0
                 buffers[idx].append((x_val, y_val))
 
-        # Paint hydrated history grouped by chart
-        charts = st.session_state.get("chart_elements_v2") or []
-        if charts:
-            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    group_frames[target_chart].append(df)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(group_frames):
-                if not frames:
-                    continue
-                try:
-                    charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
-                except Exception:
-                    pass
-        # Mark painted counts
-        if "_live_painted" not in st.session_state:
-            st.session_state._live_painted = {}
-        st.session_state._live_painted[mod] = [len(b) for b in buffers]
+        # Backfill only populates in-memory buffers; painting is handled by the
+        # main update loop to keep chart refresh logic centralized.
         st.session_state.live_last_values = prev_vals
         st.session_state[("_live_backfilled", mod)] = True
     except Exception:
@@ -900,21 +878,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
         mod = str(current_module) if current_module else ""
-        # Painted counters per-series (how many points already rendered)
-        if "_live_painted" not in st.session_state:
-            st.session_state._live_painted = {}
-        # X counters per-module (advance per received message)
-        if "_live_x_counters" not in st.session_state:
-            st.session_state._live_x_counters = {}
-        # Set counters based on existing buffer length (so reselecting module restores history)
-        buffers = st.session_state._live_buffers.get(mod) if mod else None
-        pre_len = 0
-        if buffers:
-            try:
-                pre_len = max((len(b) for b in buffers), default=0)
-            except Exception:
-                pre_len = 0
-        st.session_state.live_i = pre_len
+        # Reset last-values baseline for derived series calculations
         st.session_state.live_last_values = [0.0 for _ in range(len(METRICS))]
         st.session_state._live_init_key = init_key
         # Subscribe to live topic for selected module
@@ -929,44 +893,6 @@ def _init_charts_if_needed(force: bool = False) -> None:
         # Always attempt to hydrate initial history from file once (no-op if already done)
         if current_module:
             _backfill_live_from_file(mod)
-
-        # If we have buffered history for this module, paint it
-        has_points = False
-        if buffers:
-            try:
-                has_points = any(len(b) > 0 for b in buffers)
-            except Exception:
-                has_points = False
-        if has_points:
-            charts = st.session_state.chart_elements_v2
-            # Initial fill: add current window rows into chart handles
-            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    group_frames[target_chart].append(df)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(group_frames):
-                try:
-                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    charts[chart_i]["chart"].add_rows(combined)
-                except Exception:
-                    pass
-            st.session_state._live_painted[mod] = [len(b) for b in buffers]
-        else:
-            # If buffers were created by backfill but are still empty, nothing to paint yet
-            buffers = st.session_state._live_buffers.get(mod)
-            if buffers:
-                # Advance x counter based on count, not persisted x
-                st.session_state._live_x_counters[mod] = len(buffers[0]) if buffers and buffers[0] else 0
 
 
 if module_selected:
@@ -987,94 +913,59 @@ def update_loop():
     if not buffers:
         return
     charts = st.session_state.chart_elements_v2
-    # Hybrid: incremental add_rows per tick, periodic compaction to last window
-    try:
-        group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-        for s_idx, buf in enumerate(buffers):
-            if not buf:
-                continue
-            try:
-                df = pd.DataFrame({
-                    "x": [pt[0] for pt in buf],
-                    "y": [pt[1] for pt in buf],
-                    "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                })
-                target_chart = _series_to_chart_idx.get(s_idx, 0)
-                group_frames[target_chart].append(df)
-            except Exception:
-                pass
-        # Incremental additions since last paint
-        painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
-        incr_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-        for s_idx, buf in enumerate(buffers):
-            try:
-                start = painted[s_idx]
-                if start < len(buf):
-                    slice_buf = list(buf)[start:]
-                    df_inc = pd.DataFrame({
-                        "x": [pt[0] for pt in slice_buf],
-                        "y": [pt[1] for pt in slice_buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(slice_buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    incr_frames[target_chart].append(df_inc)
-                painted[s_idx] = len(buf)
-            except Exception:
-                pass
-        for chart_i, frames in enumerate(incr_frames):
-            if not frames:
-                continue
-            try:
-                df_added = pd.concat(frames, ignore_index=True)
-                charts[chart_i]["chart"].add_rows(df_added)
-            except Exception:
-                pass
-        st.session_state._live_painted[mod] = painted
 
-        # Compaction trigger to enforce visual window and shift cleanly
-        at_capacity = False
-        try:
-            at_capacity = len(buffers[0]) >= MAX_POINTS if buffers and buffers[0] is not None else False
-        except Exception:
-            at_capacity = False
-        append_ctr = int((st.session_state.get("_live_x_counters") or {}).get(mod, 0))
-        last_compact_key = ("_live_last_compact_counter", mod)
-        last_compact = int(st.session_state.get(last_compact_key) or -1)
-        # Compact every MAX_POINTS appends, or if painted is at end while at capacity (rotation)
-        need_compact_interval = (append_ctr // max(1, MAX_POINTS)) != (last_compact // max(1, MAX_POINTS))
-        painted_at_end = all(painted[i] >= len(buffers[i]) for i in range(len(buffers)))
-        if at_capacity and (need_compact_interval or painted_at_end):
-            full_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
+    # Always repaint from the current in-memory window, but decimate each series
+    # so that we render at most MAX_VIS_POINTS_PER_SERIES points per series.
+    try:
+        for chart_i, (_, idxs) in enumerate(_group_index_lists):
+            frames = []
+            for s_idx in idxs:
+                buf = buffers[s_idx]
                 if not buf:
                     continue
                 try:
-                    df_full = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    full_frames[target_chart].append(df_full)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(full_frames):
-                try:
-                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    ch = (
-                        alt.Chart(combined)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(title=None))
-                        )
-                        .properties(height=220)
+                    n = len(buf)
+                    if n == 0:
+                        continue
+                    stride = max(1, int(np.ceil(n / float(MAX_VIS_POINTS_PER_SERIES))))
+                    indices = list(range(0, n, stride))
+                    if indices[-1] != n - 1:
+                        indices.append(n - 1)
+                    xs = [buf[j][0] for j in indices]
+                    ys = [buf[j][1] for j in indices]
+                    df = pd.DataFrame(
+                        {
+                            "x": xs,
+                            "y": ys,
+                            "series": [_series_labels[s_idx] for _ in range(len(indices))],
+                        }
                     )
-                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(ch, use_container_width=True)
+                    frames.append(df)
                 except Exception:
-                    pass
-            st.session_state[last_compact_key] = append_ctr
+                    continue
+            if not frames:
+                continue
+            try:
+                combined = pd.concat(frames, ignore_index=True)
+                ch = (
+                    alt.Chart(combined)
+                    .mark_line()
+                    .encode(
+                        x=alt.X(
+                            "x:T",
+                            title=None,
+                            axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False),
+                        ),
+                        y=alt.Y("y:Q", title=None),
+                        color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                    )
+                    .properties(height=220)
+                )
+                charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(
+                    ch, use_container_width=True
+                )
+            except Exception:
+                continue
     except Exception:
         pass
 
