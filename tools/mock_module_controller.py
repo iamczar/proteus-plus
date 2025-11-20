@@ -40,7 +40,7 @@ MODULE_LIST_INTERVAL_SEC: float = 2.0
 
 # How often to publish live sensor data for each module, in seconds
 # e.g. 0.5 => 2 Hz, 0.2 => 5 Hz
-SENSOR_DATA_INTERVAL_SEC: float = 0.1
+SENSOR_DATA_INTERVAL_SEC: float = 1
 
 # JSONL live history: match ModuleHandler layout so Live View backfill behaves
 # identically when using this mock instead of real hardware. Align this with
