@@ -99,10 +99,11 @@ def _append_live_jsonl(module_id: int, data: dict) -> None:
         }
         with fp.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
-        _live_x_counters[module_id] = x + 1
+        new_x = x + 1
+        _live_x_counters[module_id] = new_x
         # Periodically trim so the mock's JSONL file behaves like the real one
         # in size and backfill cost.
-        if x > 0 and x % 1000 == 0:
+        if new_x % 1000 == 0:
             _trim_live_jsonl(fp)
     except Exception:
         # Best-effort only; never interfere with publishing
