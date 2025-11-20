@@ -918,40 +918,42 @@ def update_loop():
 
     # Hybrid painting strategy:
     # - Keep full rolling history in _live_buffers (bounded by MAX_POINTS).
+    # - Track a simple per-module append counter from background_collector.
     # - Periodically perform a full decimated repaint (to realign charts and
-    #   handle ring-buffer wrap).
+    #   handle any counter resets).
     # - Between full repaints, stream only incremental points via add_rows to
     #   minimize flicker and CPU usage.
     try:
-        # Ensure per-module painted index tracking
-        if "_live_painted_idx" not in st.session_state:
-            st.session_state._live_painted_idx = {}
-        painted_map = st.session_state._live_painted_idx
-        if mod not in painted_map or len(painted_map[mod]) != len(METRICS):
-            painted_map[mod] = [0 for _ in range(len(METRICS))]
-        painted = painted_map[mod]
-
-        # Ensure per-module last full repaint timestamps
+        # Ensure per-module last full repaint timestamps and painted counters
         if "_live_last_full_repaint" not in st.session_state:
             st.session_state._live_last_full_repaint = {}
         last_full_map = st.session_state._live_last_full_repaint
         last_full_ts = float(last_full_map.get(mod, 0.0) or 0.0)
 
+        if "_live_painted_counter" not in st.session_state:
+            st.session_state._live_painted_counter = {}
+        painted_counter_map = st.session_state._live_painted_counter
+        painted_counter = int(painted_counter_map.get(mod, 0) or 0)
+
+        # Append counter maintained by background_collector
+        x_counters = st.session_state.get("_live_x_counters") or {}
+        x_counter = int(x_counters.get(mod, 0) or 0)
+
         now_ts = time.time()
         need_full = False
 
-        # If ring buffer wrapped (len < painted), force a full repaint so that
-        # incremental indices realign with current buffers.
-        for s_idx, buf in enumerate(buffers):
-            try:
-                if painted[s_idx] > len(buf):
-                    need_full = True
-                    break
-            except Exception:
-                continue
+        # If counters went backwards (reset), force a full repaint.
+        if x_counter < painted_counter:
+            need_full = True
 
-        # Periodic full repaint to keep visual window decimated and stable
+        # Periodic full repaint to keep visual window decimated and stable.
         if (now_ts - last_full_ts) >= FULL_REPAINT_INTERVAL_SEC:
+            need_full = True
+
+        # If we've appended more than our ring buffer size since the last paint,
+        # a full repaint is simpler than trying to stream a huge incremental set.
+        new_samples = max(0, x_counter - painted_counter)
+        if new_samples >= MAX_POINTS:
             need_full = True
 
         if need_full:
@@ -1006,24 +1008,24 @@ def update_loop():
                 except Exception:
                     continue
 
-            # After a full repaint, consider all current buffer points as painted
-            try:
-                for s_idx, buf in enumerate(buffers):
-                    painted[s_idx] = len(buf)
-            except Exception:
-                pass
+            # After a full repaint, consider all appends up to x_counter as painted
+            painted_counter_map[mod] = x_counter
             last_full_map[mod] = now_ts
             return
 
         # Incremental add_rows path: only append new points since last painted index
+        if new_samples <= 0:
+            return
+
         incr_frames = [[] for _ in range(len(CHART_GROUPS))]
         for s_idx, buf in enumerate(buffers):
             try:
-                start = max(0, int(painted[s_idx] or 0))
-                end = len(buf)
-                if end <= start:
+                # Take the last `new_samples` points for each series. If the buffer
+                # contains fewer points (e.g. just after startup), use everything.
+                k = min(new_samples, len(buf))
+                if k <= 0:
                     continue
-                slice_buf = list(buf)[start:end]
+                slice_buf = list(buf)[-k:]
                 xs = [pt[0] for pt in slice_buf]
                 ys = [pt[1] for pt in slice_buf]
                 if not xs:
@@ -1037,7 +1039,6 @@ def update_loop():
                 )
                 chart_i = _series_to_chart_idx.get(s_idx, 0)
                 incr_frames[chart_i].append(df_inc)
-                painted[s_idx] = end
             except Exception:
                 continue
 
@@ -1049,6 +1050,8 @@ def update_loop():
                 charts[chart_i]["chart"].add_rows(df_added)
             except Exception:
                 continue
+        # Record that we've painted through x_counter
+        painted_counter_map[mod] = x_counter
     except Exception:
         pass
 
