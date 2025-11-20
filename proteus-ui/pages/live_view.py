@@ -43,13 +43,13 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 100  # default; rolling window in memory
+MAX_POINTS = 86400  # default; rolling window in memory
 # How often (in seconds) to perform a full decimated repaint of charts.
 FULL_REPAINT_INTERVAL_SEC = 4.0
 # Target visual density: maximum number of points we will render per series
 # in a single chart repaint. Higher values increase fidelity at the cost of
 # more CPU; lower values improve responsiveness.
-MAX_VIS_POINTS_PER_SERIES = 100
+MAX_VIS_POINTS_PER_SERIES = 86400
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
