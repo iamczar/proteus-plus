@@ -39,7 +39,7 @@ MODULE_LIST_INTERVAL_SEC: float = 2.0
 
 # How often to publish live sensor data for each module, in seconds
 # e.g. 0.5 => 2 Hz, 0.2 => 5 Hz
-SENSOR_DATA_INTERVAL_SEC: float = 0.5
+SENSOR_DATA_INTERVAL_SEC: float = 0.1
 
 
 # ---------------------------------------------------------------------------
