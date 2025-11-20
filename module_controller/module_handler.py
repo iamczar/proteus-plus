@@ -13,11 +13,13 @@ from common.logger import Logger
 from pathlib import Path
 
 
-# Upper bound for how many recent live JSONL lines we keep per module when trimming.
-# This does NOT affect the in-memory buffers in the UI, which are controlled separately.
-# Align with the UI's MAX_POINTS default (8640) so that on-disk history roughly
-# matches the rolling window used in Live View.
+# Upper bounds for how many recent JSONL lines we keep per module when trimming.
+# These do NOT affect the in-memory buffers in the UI, which are controlled
+# separately.
+# - LIVE_JSONL_MAX_LINES aligns with Live View's MAX_POINTS default (8640)
+# - PID_JSONL_MAX_LINES aligns with PID Charts' MAX_POINTS default (1800)
 LIVE_JSONL_MAX_LINES = 8_640
+PID_JSONL_MAX_LINES = 1_800
 
 
 class ModuleHandler:
@@ -156,6 +158,27 @@ class ModuleHandler:
             # Never allow trimming to interfere with the main read loop
             pass
 
+    def _trim_pid_jsonl(self, fp: Path) -> None:
+        """Best-effort size control for PID JSONL files.
+
+        Keeps at most PID_JSONL_MAX_LINES most recent lines by rewriting the
+        file. This keeps PID Charts backfill bounded without affecting the
+        live sensor stream.
+        """
+        try:
+            if not fp.exists():
+                return
+            with fp.open("r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if len(lines) <= PID_JSONL_MAX_LINES:
+                return
+            keep = lines[-PID_JSONL_MAX_LINES:]
+            with fp.open("w", encoding="utf-8") as f:
+                f.writelines(keep)
+        except Exception:
+            # Never allow trimming to interfere with the main read loop
+            pass
+
     def _append_live_jsonl(self, data: Dict[str, Any]) -> None:
         try:
             fp = self._live_jsonl_dir() / f"module_{self.module_id}.jsonl"
@@ -211,6 +234,12 @@ class ModuleHandler:
             fp = self._pid_jsonl_dir() / f"{self.module_id}.jsonl"
             with fp.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(pid_row) + "\n")
+            # Periodically trim PID JSONL so PID Charts backfill remains fast.
+            # Reuse the live counter cadence; it's global per module so this is
+            # only an approximate interval, which is fine for best-effort trim.
+            self._live_x_counter += 1
+            if self._live_x_counter % 1000 == 0:
+                self._trim_pid_jsonl(fp)
         except Exception:
             pass
 
