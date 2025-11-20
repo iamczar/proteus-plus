@@ -403,6 +403,16 @@ def _backfill_live_from_file(module_id: str) -> None:
         # Backfill only populates in-memory buffers; painting is handled by the
         # main update loop to keep chart refresh logic centralized.
         st.session_state.live_last_values = prev_vals
+        # Seed the append counter so that the first update_loop tick knows how
+        # many historical samples are present and can paint them. We use the
+        # length of the first buffer, which matches the number of loaded records.
+        try:
+            buf0_len = len(buffers[0]) if buffers and buffers[0] is not None else 0
+        except Exception:
+            buf0_len = total
+        if "_live_x_counters" not in st.session_state:
+            st.session_state._live_x_counters = {}
+        st.session_state._live_x_counters[mod] = int(buf0_len)
         st.session_state[("_live_backfilled", mod)] = True
     except Exception:
         pass

@@ -15,7 +15,9 @@ from pathlib import Path
 
 # Upper bound for how many recent live JSONL lines we keep per module when trimming.
 # This does NOT affect the in-memory buffers in the UI, which are controlled separately.
-LIVE_JSONL_MAX_LINES = 10_000
+# Align with the UI's MAX_POINTS default (8640) so that on-disk history roughly
+# matches the rolling window used in Live View.
+LIVE_JSONL_MAX_LINES = 8_640
 
 
 class ModuleHandler:
@@ -136,23 +138,16 @@ class ModuleHandler:
     def _trim_live_jsonl(self, fp: Path) -> None:
         """Best-effort size control for live JSONL files.
 
-        Keeps at most LIVE_JSONL_MAX_LINES most recent lines by rewriting the file
-        when it grows beyond a modest size threshold. This keeps startup/backfill
-        costs bounded for the UI without impacting the live sensor stream.
+        Keeps at most LIVE_JSONL_MAX_LINES most recent lines by rewriting the file.
+        This keeps startup/backfill costs bounded for the UI without impacting the
+        live sensor stream.
         """
         try:
             if not fp.exists():
                 return
-            # Only attempt a trim once the file is larger than ~5MB to avoid
-            # unnecessary work on small files.
-            max_bytes = 5_000_000
-            st = fp.stat()
-            if st.st_size <= max_bytes:
-                return
             with fp.open("r", encoding="utf-8") as f:
                 lines = f.readlines()
             if len(lines) <= LIVE_JSONL_MAX_LINES:
-                # File is large in bytes but still under our logical line budget
                 return
             keep = lines[-LIVE_JSONL_MAX_LINES:]
             with fp.open("w", encoding="utf-8") as f:

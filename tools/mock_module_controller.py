@@ -43,8 +43,10 @@ MODULE_LIST_INTERVAL_SEC: float = 2.0
 SENSOR_DATA_INTERVAL_SEC: float = 0.1
 
 # JSONL live history: match ModuleHandler layout so Live View backfill behaves
-# identically when using this mock instead of real hardware.
-LIVE_JSONL_MAX_LINES: int = 10_000
+# identically when using this mock instead of real hardware. Align this with
+# the UI's MAX_POINTS default (8640) so on-disk history size matches the
+# intended rolling window.
+LIVE_JSONL_MAX_LINES: int = 8_640
 _live_x_counters: Dict[int, int] = {}
 
 
