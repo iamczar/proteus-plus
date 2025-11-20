@@ -847,6 +847,14 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
     return values
 
 def render_base_charts() -> list:
+    # Display an indicator of how many samples are in the current window.
+    # This is updated from the update_loop fragment; here we just ensure
+    # the placeholder exists and render an initial stub.
+    if "_live_window_info" not in st.session_state:
+        st.session_state._live_window_info = st.empty()
+    with st.session_state._live_window_info.container():
+        st.caption("Samples in window: —")
+
     chart_elements = []
     for name, _ in CHART_GROUPS:
         st.subheader(name)
@@ -915,6 +923,18 @@ def update_loop():
     if not buffers:
         return
     charts = st.session_state.chart_elements_v2
+
+    # Update the window sample count indicator using the longest series buffer
+    try:
+        info_ph = st.session_state.get("_live_window_info")
+        if info_ph:
+            try:
+                window_len = max((len(b) for b in buffers), default=0)
+            except Exception:
+                window_len = 0
+            info_ph.caption(f"Samples in window: {int(window_len)}")
+    except Exception:
+        pass
 
     # Hybrid painting strategy:
     # - Keep full rolling history in _live_buffers (bounded by MAX_POINTS).
