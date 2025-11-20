@@ -17,7 +17,8 @@ import os
 import time
 import math
 from datetime import datetime
-from typing import List
+from typing import List, Dict
+from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
@@ -40,6 +41,44 @@ MODULE_LIST_INTERVAL_SEC: float = 2.0
 # How often to publish live sensor data for each module, in seconds
 # e.g. 0.5 => 2 Hz, 0.2 => 5 Hz
 SENSOR_DATA_INTERVAL_SEC: float = 0.1
+
+# JSONL live history: match ModuleHandler layout so Live View backfill behaves
+# identically when using this mock instead of real hardware.
+_live_x_counters: Dict[int, int] = {}
+
+
+def _repo_root() -> Path:
+    """Resolve repository root, mirroring ModuleHandler._repo_root."""
+    here = Path(__file__).resolve()
+    return here.parents[1]
+
+
+def _live_jsonl_dir() -> Path:
+    """Directory for live JSONL history, mirroring ModuleHandler._live_jsonl_dir."""
+    d = _repo_root() / "proteus-ui" / "data" / "live"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _append_live_jsonl(module_id: int, data: dict) -> None:
+    """Append a live JSONL record for this module, using the same schema as
+    ModuleHandler._append_live_jsonl so that Live View backfill works against
+    files created by this mock.
+    """
+    try:
+        x = int(_live_x_counters.get(module_id, 0))
+        fp = _live_jsonl_dir() / f"module_{module_id}.jsonl"
+        record = {
+            "x": x,
+            "ts": int(time.time() * 1000),  # ms epoch
+            "data": data or {},
+        }
+        with fp.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+        _live_x_counters[module_id] = x + 1
+    except Exception:
+        # Best-effort only; never interfere with publishing
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +198,14 @@ def publish_sensor_data_for_all_modules(client: mqtt.Client) -> None:
         payload = build_sensor_payload(module_id)
         topic = f"live-sensor-data/{module_id}"
         client.publish(topic, json.dumps(payload))
+        # Mirror the data_logger sensor_data into live JSONL so that the UI
+        # backfill path sees the same structure it would from ModuleHandler.
+        try:
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(data, dict):
+                _append_live_jsonl(module_id, data)
+        except Exception:
+            pass
         print(f"[mock_module_controller] Published sensor data to '{topic}'")
 
 
