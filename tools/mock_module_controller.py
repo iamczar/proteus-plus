@@ -44,6 +44,7 @@ SENSOR_DATA_INTERVAL_SEC: float = 0.1
 
 # JSONL live history: match ModuleHandler layout so Live View backfill behaves
 # identically when using this mock instead of real hardware.
+LIVE_JSONL_MAX_LINES: int = 10_000
 _live_x_counters: Dict[int, int] = {}
 
 
@@ -58,6 +59,27 @@ def _live_jsonl_dir() -> Path:
     d = _repo_root() / "proteus-ui" / "data" / "live"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _trim_live_jsonl(fp: Path) -> None:
+    """Best-effort size control for mock live JSONL files.
+
+    Keeps at most LIVE_JSONL_MAX_LINES most recent lines so that startup/backfill
+    remains cheap even if the mock runs for a long time.
+    """
+    try:
+        if not fp.exists():
+            return
+        with fp.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= LIVE_JSONL_MAX_LINES:
+            return
+        keep = lines[-LIVE_JSONL_MAX_LINES:]
+        with fp.open("w", encoding="utf-8") as f:
+            f.writelines(keep)
+    except Exception:
+        # Never let trimming interfere with publishing
+        pass
 
 
 def _append_live_jsonl(module_id: int, data: dict) -> None:
@@ -76,6 +98,10 @@ def _append_live_jsonl(module_id: int, data: dict) -> None:
         with fp.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
         _live_x_counters[module_id] = x + 1
+        # Periodically trim so the mock's JSONL file behaves like the real one
+        # in size and backfill cost.
+        if x > 0 and x % 1000 == 0:
+            _trim_live_jsonl(fp)
     except Exception:
         # Best-effort only; never interfere with publishing
         pass
