@@ -43,13 +43,13 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 86400  # default; rolling window in memory
+MAX_POINTS = 8640  # default; rolling window in memory
 # How often (in seconds) to perform a full decimated repaint of charts.
 FULL_REPAINT_INTERVAL_SEC = 4.0
 # Target visual density: maximum number of points we will render per series
 # in a single chart repaint. Higher values increase fidelity at the cost of
 # more CPU; lower values improve responsiveness.
-MAX_VIS_POINTS_PER_SERIES = 86400
+MAX_VIS_POINTS_PER_SERIES = 8640
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -945,11 +945,6 @@ def update_loop():
     #   minimize flicker and CPU usage.
     try:
         # Ensure per-module last full repaint timestamps and painted counters
-        if "_live_last_full_repaint" not in st.session_state:
-            st.session_state._live_last_full_repaint = {}
-        last_full_map = st.session_state._live_last_full_repaint
-        last_full_ts = float(last_full_map.get(mod, 0.0) or 0.0)
-
         if "_live_painted_counter" not in st.session_state:
             st.session_state._live_painted_counter = {}
         painted_counter_map = st.session_state._live_painted_counter
@@ -964,10 +959,6 @@ def update_loop():
 
         # If counters went backwards (reset), force a full repaint.
         if x_counter < painted_counter:
-            need_full = True
-
-        # Periodic full repaint to keep visual window decimated and stable.
-        if (now_ts - last_full_ts) >= FULL_REPAINT_INTERVAL_SEC:
             need_full = True
 
         # If we've appended more than our ring buffer size since the last paint,
@@ -1030,7 +1021,6 @@ def update_loop():
 
             # After a full repaint, consider all appends up to x_counter as painted
             painted_counter_map[mod] = x_counter
-            last_full_map[mod] = now_ts
             return
 
         # Incremental add_rows path: only append new points since last painted index
