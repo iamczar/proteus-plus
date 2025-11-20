@@ -44,12 +44,10 @@ LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 MAX_POINTS = 8640  # default; rolling window in memory
-# How often (in seconds) to perform a full decimated repaint of charts.
-FULL_REPAINT_INTERVAL_SEC = 4.0
-# Target visual density: maximum number of points we will render per series
-# in a single chart repaint. Higher values increase fidelity at the cost of
-# more CPU; lower values improve responsiveness.
-MAX_VIS_POINTS_PER_SERIES = 8640
+# How many new samples (per module) should accumulate before we force a full
+# repaint of the charts. Between full repaints we stream increments via
+# add_rows to reduce flicker and CPU usage.
+FULL_REPAINT_EVERY_SAMPLES = 10
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -949,22 +947,26 @@ def update_loop():
     # Hybrid painting strategy:
     # - Keep full rolling history in _live_buffers (bounded by MAX_POINTS).
     # - Track a simple per-module append counter from background_collector.
-    # - Periodically perform a full decimated repaint (to realign charts and
-    #   handle any counter resets).
+    # - Periodically perform a full repaint (to realign charts and handle any
+    #   counter resets).
     # - Between full repaints, stream only incremental points via add_rows to
     #   minimize flicker and CPU usage.
     try:
-        # Ensure per-module last full repaint timestamps and painted counters
+        # Ensure per-module last full repaint counters and painted counters
         if "_live_painted_counter" not in st.session_state:
             st.session_state._live_painted_counter = {}
         painted_counter_map = st.session_state._live_painted_counter
         painted_counter = int(painted_counter_map.get(mod, 0) or 0)
 
+        if "_live_last_full_counter" not in st.session_state:
+            st.session_state._live_last_full_counter = {}
+        last_full_counter_map = st.session_state._live_last_full_counter
+        last_full_counter = int(last_full_counter_map.get(mod, 0) or 0)
+
         # Append counter maintained by background_collector
         x_counters = st.session_state.get("_live_x_counters") or {}
         x_counter = int(x_counters.get(mod, 0) or 0)
 
-        now_ts = time.time()
         need_full = False
 
         # If counters went backwards (reset), force a full repaint.
@@ -977,8 +979,16 @@ def update_loop():
         if new_samples >= MAX_POINTS:
             need_full = True
 
+        # Periodic full repaint based on number of new samples since the last
+        # full repaint. This prevents charts from drifting too far from the
+        # ideal window and keeps axes/legends in sync with the current window.
+        delta_since_full = max(0, x_counter - last_full_counter)
+        if delta_since_full >= FULL_REPAINT_EVERY_SAMPLES:
+            need_full = True
+
         if need_full:
-            # Full decimated repaint using the current buffers
+            # Full repaint using the current buffers. We render all points in
+            # the MAX_POINTS rolling window for each series.
             for chart_i, (_, idxs) in enumerate(_group_index_lists):
                 frames = []
                 for s_idx in idxs:
@@ -986,20 +996,13 @@ def update_loop():
                     if not buf:
                         continue
                     try:
-                        n = len(buf)
-                        if n == 0:
-                            continue
-                        stride = max(1, int(np.ceil(n / float(MAX_VIS_POINTS_PER_SERIES))))
-                        indices = list(range(0, n, stride))
-                        if indices[-1] != n - 1:
-                            indices.append(n - 1)
-                        xs = [buf[j][0] for j in indices]
-                        ys = [buf[j][1] for j in indices]
+                        xs = [pt[0] for pt in buf]
+                        ys = [pt[1] for pt in buf]
                         df = pd.DataFrame(
                             {
                                 "x": xs,
                                 "y": ys,
-                                "series": [_series_labels[s_idx] for _ in range(len(indices))],
+                                "series": [_series_labels[s_idx] for _ in range(len(xs))],
                             }
                         )
                         frames.append(df)
@@ -1031,6 +1034,7 @@ def update_loop():
 
             # After a full repaint, consider all appends up to x_counter as painted
             painted_counter_map[mod] = x_counter
+            last_full_counter_map[mod] = x_counter
             return
 
         # Incremental add_rows path: only append new points since last painted index
