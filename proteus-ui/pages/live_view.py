@@ -712,17 +712,14 @@ if module_selected:
 else:
     st.info("Select a module to view live controls and graphs.")
 
-# Toasts are useful; keep a lightweight refresher
-@st.fragment(run_every=1.0)
-def update_toasts():
+# Toasts are useful; keep a lightweight refresher. This helper is invoked
+# from the main heartbeat loop rather than as an independent fragment so
+# that all timed updates share a single schedule.
+def _update_toasts_tick():
     try:
         render_toast_area(max_messages=3, container=toast_placeholder.container())
     except Exception:
         pass
-
-# Invoke so it starts ticking
-update_toasts()
-
 
 @st.cache_data
 def get_colors(number: int) -> list:
@@ -917,8 +914,7 @@ if module_selected:
     _init_charts_if_needed()
 
 
-@st.fragment(run_every=0.4)
-def update_loop():
+def _charts_tick():
     # Reinitialize when module changes or after navigation reset
     _init_charts_if_needed()
 
@@ -1080,9 +1076,10 @@ def update_loop():
         pass
 
 
-# Background collector: subscribe to topics and buffer/update UI state
-@st.fragment(run_every=0.5)
-def background_collector():
+# Background collector: subscribe to topics and buffer/update UI state.
+# This helper is invoked from the main heartbeat loop rather than as an
+# independent fragment.
+def _background_collector_tick():
     modules = st.session_state.get("_available_modules", [])
     if not modules:
         return
@@ -1312,13 +1309,8 @@ def background_collector():
         st.session_state._seq_toast_flags[mod] = flags
         st.session_state._cmd_toast_flags[mod] = cmd_flags
 
-    # Note: Rendering is done synchronously outside this fragment to avoid
+    # Note: Rendering is done synchronously from the heartbeat loop to avoid
     # placeholder capture issues across module swaps and navigation.
-
-
-# Kick off background collector
-background_collector()
-
 
 def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
@@ -1413,8 +1405,7 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-@st.fragment(run_every=1.5)
-def _status_panels_tick():
+def _status_panels_tick_body():
     try:
         phs = st.session_state.get("_status_panel_placeholders") or {}
         main_ph = phs.get("main")
@@ -1440,8 +1431,44 @@ def _status_panels_tick():
     except Exception:
         pass
 
-_status_panels_tick()
+def _heartbeat_tick():
+    """Single tick function orchestrating all periodic updates for this page.
+
+    This is invoked from a single Streamlit fragment so that toasts, charts,
+    status panels, and MQTT collection all share one schedule. That helps
+    avoid races with SessionInfo when the page is reloaded or navigated.
+    """
+    # Only run if we're actually on this page
+    if st.session_state.get("_current_page_key") != PAGE_KEY:
+        return
+
+    # Background MQTT + state updates
+    try:
+        _background_collector_tick()
+    except Exception:
+        pass
+
+    module_selected_local = bool(st.session_state.get("selected_module"))
+    if module_selected_local:
+        try:
+            _charts_tick()
+        except Exception:
+            pass
+
+    try:
+        _status_panels_tick_body()
+    except Exception:
+        pass
+
+    try:
+        _update_toasts_tick()
+    except Exception:
+        pass
 
 
-if module_selected:
-    update_loop()
+@st.fragment(run_every=0.5)
+def heartbeat():
+    _heartbeat_tick()
+
+
+heartbeat()
