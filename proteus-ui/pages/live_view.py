@@ -47,7 +47,7 @@ MAX_POINTS = 8640  # default; rolling window in memory
 # How many new samples (per module) should accumulate before we force a full
 # repaint of the charts. Between full repaints we stream increments via
 # add_rows to reduce flicker and CPU usage.
-FULL_REPAINT_EVERY_SAMPLES = 10
+FULL_REPAINT_EVERY_SAMPLES = 100
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
