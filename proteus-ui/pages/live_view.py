@@ -734,6 +734,7 @@ METRICS = [
     ("OXYGENMEASURED3", "OXYGENMEASURED3"),
     ("OXYGENSETPOINT", "OXYGENSETPOINT"),
     ("PRESSUREMEASURED", "PRESSUREMEASURED"),
+    ("PRESSUREMEASURED_rolling_avg", "PRESSUREMEASURED_rolling_avg"),
     ("PRESSURESETPOINT", "PRESSURESETPOINT"),
     ("FLOWMEASURED", "FLOWMEASURED"),
     ("FLOWMEASURED_rolling_avg", "FLOWMEASURED_rolling_avg"),
@@ -744,7 +745,7 @@ METRICS = [
 # Three charts, each grouping multiple series from METRICS
 CHART_GROUPS = [
     ("Oxygen", ["OXYGENMEASURED1", "OXYGENMEASURED2", "OXYGENMEASURED3", "OXYGENSETPOINT"]),
-    ("Pressure", ["PRESSUREMEASURED", "PRESSURESETPOINT"]),
+    ("Pressure", ["PRESSUREMEASURED", "PRESSUREMEASURED_rolling_avg", "PRESSURESETPOINT"]),
     ("Flow", ["FLOWMEASURED", "FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"]),
 ]
 
@@ -768,6 +769,7 @@ colors = get_colors(len(METRICS))
 # --- Payload → series mapping and derived series helpers ---
 # Map series keys to incoming payload keys (snake_case). Derived series map to None.
 FLOW_ROLLING_WINDOW_SAMPLES = 60
+PRESSURE_ROLLING_WINDOW_SAMPLES = 60
 PUMP_HZ_TO_MLMIN = 0.018587
 
 _PAYLOAD_KEY_BY_METRIC: dict[str, str | None] = {
@@ -776,6 +778,7 @@ _PAYLOAD_KEY_BY_METRIC: dict[str, str | None] = {
     "OXYGENMEASURED3": "oxygen_measured_3",
     "OXYGENSETPOINT": "oxygen_setpoint",
     "PRESSUREMEASURED": "pressure_measured",
+    "PRESSUREMEASURED_rolling_avg": None,
     "PRESSURESETPOINT": "pressure_setpoint",
     "FLOWMEASURED": "flow_measured",
     # Derived values below
@@ -791,6 +794,14 @@ def _get_flow_window(mod: str):
         st.session_state._flow_windows[mod] = deque(maxlen=FLOW_ROLLING_WINDOW_SAMPLES)
     return st.session_state._flow_windows[mod]
 
+
+def _get_pressure_window(mod: str):
+    if "_pressure_windows" not in st.session_state:
+        st.session_state._pressure_windows = {}
+    if mod not in st.session_state._pressure_windows:
+        st.session_state._pressure_windows[mod] = deque(maxlen=PRESSURE_ROLLING_WINDOW_SAMPLES)
+    return st.session_state._pressure_windows[mod]
+
 def _compute_series_values_from_payload(data: dict, last_values: list[float], mod: str, flow_window: deque | None = None) -> list[float]:
     """Compute per-series values from an incoming payload, applying alias mapping
     and derived-series logic. Returns a list aligned with METRICS order.
@@ -799,12 +810,14 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
     # Resolve indices we need multiple times
     idx_flow = _key_to_index.get("FLOWMEASURED")
     idx_flow_avg = _key_to_index.get("FLOWMEASURED_rolling_avg")
+    idx_press = _key_to_index.get("PRESSUREMEASURED")
+    idx_press_avg = _key_to_index.get("PRESSUREMEASURED_rolling_avg")
     idx_p1 = _key_to_index.get("Pump1_mlmin")
     idx_p2 = _key_to_index.get("Pump2_mlmin")
 
     # Compute base series (non-derived) first
     for i, (_, series_key) in enumerate(METRICS):
-        if series_key in ("FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"):
+        if series_key in ("FLOWMEASURED_rolling_avg", "PRESSUREMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"):
             continue
         payload_key = _PAYLOAD_KEY_BY_METRIC.get(series_key)
         if not payload_key:
@@ -831,6 +844,21 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
                 values[idx_flow_avg] = float(avg_val)
             except Exception:
                 # Preserve previous average on error
+                pass
+
+    # Pressure rolling average (60-sample SMA over PRESSUREMEASURED)
+    if idx_press is not None:
+        current_press_val = values[idx_press]
+        p_win = _get_pressure_window(str(mod))
+        try:
+            p_win.append(float(current_press_val))
+        except Exception:
+            pass
+        if idx_press_avg is not None:
+            try:
+                p_avg = (sum(p_win) / len(p_win)) if len(p_win) > 0 else float(values[idx_press_avg])
+                values[idx_press_avg] = float(p_avg)
+            except Exception:
                 pass
 
     # Pump conversions (Hz → ml/min)
