@@ -14,10 +14,11 @@ publish rates, or MQTT connection details.
 
 import json
 import os
-import random
 import time
+import math
 from datetime import datetime
-from typing import List
+from typing import List, Dict
+from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
@@ -39,7 +40,74 @@ MODULE_LIST_INTERVAL_SEC: float = 2.0
 
 # How often to publish live sensor data for each module, in seconds
 # e.g. 0.5 => 2 Hz, 0.2 => 5 Hz
-SENSOR_DATA_INTERVAL_SEC: float = 0.5
+SENSOR_DATA_INTERVAL_SEC: float = 1
+
+# JSONL live history: match ModuleHandler layout so Live View backfill behaves
+# identically when using this mock instead of real hardware. Align this with
+# the UI's MAX_POINTS default (8640) so on-disk history size matches the
+# intended rolling window.
+LIVE_JSONL_MAX_LINES: int = 8_640
+_live_x_counters: Dict[int, int] = {}
+
+
+def _repo_root() -> Path:
+    """Resolve repository root, mirroring ModuleHandler._repo_root."""
+    here = Path(__file__).resolve()
+    return here.parents[1]
+
+
+def _live_jsonl_dir() -> Path:
+    """Directory for live JSONL history, mirroring ModuleHandler._live_jsonl_dir."""
+    d = _repo_root() / "proteus-ui" / "data" / "live"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _trim_live_jsonl(fp: Path) -> None:
+    """Best-effort size control for mock live JSONL files.
+
+    Keeps at most LIVE_JSONL_MAX_LINES most recent lines so that startup/backfill
+    remains cheap even if the mock runs for a long time.
+    """
+    try:
+        if not fp.exists():
+            return
+        with fp.open("r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= LIVE_JSONL_MAX_LINES:
+            return
+        keep = lines[-LIVE_JSONL_MAX_LINES:]
+        with fp.open("w", encoding="utf-8") as f:
+            f.writelines(keep)
+    except Exception:
+        # Never let trimming interfere with publishing
+        pass
+
+
+def _append_live_jsonl(module_id: int, data: dict) -> None:
+    """Append a live JSONL record for this module, using the same schema as
+    ModuleHandler._append_live_jsonl so that Live View backfill works against
+    files created by this mock.
+    """
+    try:
+        x = int(_live_x_counters.get(module_id, 0))
+        fp = _live_jsonl_dir() / f"module_{module_id}.jsonl"
+        record = {
+            "x": x,
+            "ts": int(time.time() * 1000),  # ms epoch
+            "data": data or {},
+        }
+        with fp.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+        new_x = x + 1
+        _live_x_counters[module_id] = new_x
+        # Periodically trim so the mock's JSONL file behaves like the real one
+        # in size and backfill cost.
+        if new_x % 1000 == 0:
+            _trim_live_jsonl(fp)
+    except Exception:
+        # Best-effort only; never interfere with publishing
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -90,11 +158,21 @@ def build_sensor_payload(module_id: int) -> dict:
       "data": { ... }
     }
     """
-    # Slightly vary temperature, flow, and pressure to look "alive"
+    # Generate smooth sinusoidal variations for temperature, flow, and pressure
+    # so that charts show clear wave-like behavior over time.
+    t = time.time()
+    # Base values roughly matching previous example, with modest amplitudes
     base_temp = 26.35
-    temp_measured = base_temp + random.uniform(-0.2, 0.2)
-    flow_measured = 66.0 + random.uniform(-1.0, 1.0)
-    pressure_measured = -829.0 + random.uniform(-1.0, 1.0)
+    temp_amp = 0.4
+    temp_measured = base_temp + temp_amp * math.sin(2.0 * math.pi * 0.01 * t)
+
+    base_flow = 66.0
+    flow_amp = 3.0
+    flow_measured = base_flow + flow_amp * math.sin(2.0 * math.pi * 0.02 * t)
+
+    base_pressure = -829.0
+    pressure_amp = 5.0
+    pressure_measured = base_pressure + pressure_amp * math.sin(2.0 * math.pi * 0.015 * t)
 
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -106,9 +184,11 @@ def build_sensor_payload(module_id: int) -> dict:
         "pressure_kd": 0.0,
         "oxygen_ki": 0.0,
         "oxygen_kd": 0.0,
-        "oxygen_measured_1": -3000.0,
-        "oxygen_measured_2": -3000.0,
-        "oxygen_measured_3": -3000.0,
+        # Mirror the flow/pressure sinusoid into oxygen channels so Live View
+        # shows clearly changing traces.
+        "oxygen_measured_1": flow_measured,
+        "oxygen_measured_2": flow_measured * 0.95,
+        "oxygen_measured_3": flow_measured * 1.05,
         "oxygen_measured_4": 0.0,
         "state_id": 0.0,
         "pressure_pump_speed": 0.0,
@@ -147,6 +227,14 @@ def publish_sensor_data_for_all_modules(client: mqtt.Client) -> None:
         payload = build_sensor_payload(module_id)
         topic = f"live-sensor-data/{module_id}"
         client.publish(topic, json.dumps(payload))
+        # Mirror the data_logger sensor_data into live JSONL so that the UI
+        # backfill path sees the same structure it would from ModuleHandler.
+        try:
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(data, dict):
+                _append_live_jsonl(module_id, data)
+        except Exception:
+            pass
         print(f"[mock_module_controller] Published sensor data to '{topic}'")
 
 

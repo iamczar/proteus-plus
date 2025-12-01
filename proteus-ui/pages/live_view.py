@@ -43,7 +43,11 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
-MAX_POINTS = 8640  # default; overridden by UI control below
+MAX_POINTS = 8640  # default; rolling window in memory
+# How many new samples (per module) should accumulate before we force a full
+# repaint of the charts. Between full repaints we stream increments via
+# add_rows to reduce flicker and CPU usage.
+FULL_REPAINT_EVERY_SAMPLES = 100
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -394,35 +398,19 @@ def _backfill_live_from_file(module_id: str) -> None:
                     y_val = 0.0
                 buffers[idx].append((x_val, y_val))
 
-        # Paint hydrated history grouped by chart
-        charts = st.session_state.get("chart_elements_v2") or []
-        if charts:
-            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    group_frames[target_chart].append(df)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(group_frames):
-                if not frames:
-                    continue
-                try:
-                    charts[chart_i].add_rows(pd.concat(frames, ignore_index=True))
-                except Exception:
-                    pass
-        # Mark painted counts
-        if "_live_painted" not in st.session_state:
-            st.session_state._live_painted = {}
-        st.session_state._live_painted[mod] = [len(b) for b in buffers]
+        # Backfill only populates in-memory buffers; painting is handled by the
+        # main update loop to keep chart refresh logic centralized.
         st.session_state.live_last_values = prev_vals
+        # Seed the append counter so that the first update_loop tick knows how
+        # many historical samples are present and can paint them. We use the
+        # length of the first buffer, which matches the number of loaded records.
+        try:
+            buf0_len = len(buffers[0]) if buffers and buffers[0] is not None else 0
+        except Exception:
+            buf0_len = total
+        if "_live_x_counters" not in st.session_state:
+            st.session_state._live_x_counters = {}
+        st.session_state._live_x_counters[mod] = int(buf0_len)
         st.session_state[("_live_backfilled", mod)] = True
     except Exception:
         pass
@@ -724,17 +712,14 @@ if module_selected:
 else:
     st.info("Select a module to view live controls and graphs.")
 
-# Toasts are useful; keep a lightweight refresher
-@st.fragment(run_every=1.0)
-def update_toasts():
+# Toasts are useful; keep a lightweight refresher. This helper is invoked
+# from the main heartbeat loop rather than as an independent fragment so
+# that all timed updates share a single schedule.
+def _update_toasts_tick():
     try:
         render_toast_area(max_messages=3, container=toast_placeholder.container())
     except Exception:
         pass
-
-# Invoke so it starts ticking
-update_toasts()
-
 
 @st.cache_data
 def get_colors(number: int) -> list:
@@ -749,6 +734,7 @@ METRICS = [
     ("OXYGENMEASURED3", "OXYGENMEASURED3"),
     ("OXYGENSETPOINT", "OXYGENSETPOINT"),
     ("PRESSUREMEASURED", "PRESSUREMEASURED"),
+    ("PRESSUREMEASURED_rolling_avg", "PRESSUREMEASURED_rolling_avg"),
     ("PRESSURESETPOINT", "PRESSURESETPOINT"),
     ("FLOWMEASURED", "FLOWMEASURED"),
     ("FLOWMEASURED_rolling_avg", "FLOWMEASURED_rolling_avg"),
@@ -759,7 +745,7 @@ METRICS = [
 # Three charts, each grouping multiple series from METRICS
 CHART_GROUPS = [
     ("Oxygen", ["OXYGENMEASURED1", "OXYGENMEASURED2", "OXYGENMEASURED3", "OXYGENSETPOINT"]),
-    ("Pressure", ["PRESSUREMEASURED", "PRESSURESETPOINT"]),
+    ("Pressure", ["PRESSUREMEASURED", "PRESSUREMEASURED_rolling_avg", "PRESSURESETPOINT"]),
     ("Flow", ["FLOWMEASURED", "FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"]),
 ]
 
@@ -783,6 +769,7 @@ colors = get_colors(len(METRICS))
 # --- Payload → series mapping and derived series helpers ---
 # Map series keys to incoming payload keys (snake_case). Derived series map to None.
 FLOW_ROLLING_WINDOW_SAMPLES = 60
+PRESSURE_ROLLING_WINDOW_SAMPLES = 60
 PUMP_HZ_TO_MLMIN = 0.018587
 
 _PAYLOAD_KEY_BY_METRIC: dict[str, str | None] = {
@@ -791,6 +778,7 @@ _PAYLOAD_KEY_BY_METRIC: dict[str, str | None] = {
     "OXYGENMEASURED3": "oxygen_measured_3",
     "OXYGENSETPOINT": "oxygen_setpoint",
     "PRESSUREMEASURED": "pressure_measured",
+    "PRESSUREMEASURED_rolling_avg": None,
     "PRESSURESETPOINT": "pressure_setpoint",
     "FLOWMEASURED": "flow_measured",
     # Derived values below
@@ -806,6 +794,14 @@ def _get_flow_window(mod: str):
         st.session_state._flow_windows[mod] = deque(maxlen=FLOW_ROLLING_WINDOW_SAMPLES)
     return st.session_state._flow_windows[mod]
 
+
+def _get_pressure_window(mod: str):
+    if "_pressure_windows" not in st.session_state:
+        st.session_state._pressure_windows = {}
+    if mod not in st.session_state._pressure_windows:
+        st.session_state._pressure_windows[mod] = deque(maxlen=PRESSURE_ROLLING_WINDOW_SAMPLES)
+    return st.session_state._pressure_windows[mod]
+
 def _compute_series_values_from_payload(data: dict, last_values: list[float], mod: str, flow_window: deque | None = None) -> list[float]:
     """Compute per-series values from an incoming payload, applying alias mapping
     and derived-series logic. Returns a list aligned with METRICS order.
@@ -814,12 +810,14 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
     # Resolve indices we need multiple times
     idx_flow = _key_to_index.get("FLOWMEASURED")
     idx_flow_avg = _key_to_index.get("FLOWMEASURED_rolling_avg")
+    idx_press = _key_to_index.get("PRESSUREMEASURED")
+    idx_press_avg = _key_to_index.get("PRESSUREMEASURED_rolling_avg")
     idx_p1 = _key_to_index.get("Pump1_mlmin")
     idx_p2 = _key_to_index.get("Pump2_mlmin")
 
     # Compute base series (non-derived) first
     for i, (_, series_key) in enumerate(METRICS):
-        if series_key in ("FLOWMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"):
+        if series_key in ("FLOWMEASURED_rolling_avg", "PRESSUREMEASURED_rolling_avg", "Pump1_mlmin", "Pump2_mlmin"):
             continue
         payload_key = _PAYLOAD_KEY_BY_METRIC.get(series_key)
         if not payload_key:
@@ -848,6 +846,21 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
                 # Preserve previous average on error
                 pass
 
+    # Pressure rolling average (60-sample SMA over PRESSUREMEASURED)
+    if idx_press is not None:
+        current_press_val = values[idx_press]
+        p_win = _get_pressure_window(str(mod))
+        try:
+            p_win.append(float(current_press_val))
+        except Exception:
+            pass
+        if idx_press_avg is not None:
+            try:
+                p_avg = (sum(p_win) / len(p_win)) if len(p_win) > 0 else float(values[idx_press_avg])
+                values[idx_press_avg] = float(p_avg)
+            except Exception:
+                pass
+
     # Pump conversions (Hz → ml/min)
     if idx_p1 is not None:
         try:
@@ -867,6 +880,14 @@ def _compute_series_values_from_payload(data: dict, last_values: list[float], mo
     return values
 
 def render_base_charts() -> list:
+    # Display an indicator of how many samples are in the current window.
+    # This is updated from the update_loop fragment; here we just ensure
+    # the placeholder exists and render an initial stub.
+    if "_live_window_info" not in st.session_state:
+        st.session_state._live_window_info = st.empty()
+    with st.session_state._live_window_info.container():
+        st.caption("Samples in window: —")
+
     chart_elements = []
     for name, _ in CHART_GROUPS:
         st.subheader(name)
@@ -900,21 +921,7 @@ def _init_charts_if_needed(force: bool = False) -> None:
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
         mod = str(current_module) if current_module else ""
-        # Painted counters per-series (how many points already rendered)
-        if "_live_painted" not in st.session_state:
-            st.session_state._live_painted = {}
-        # X counters per-module (advance per received message)
-        if "_live_x_counters" not in st.session_state:
-            st.session_state._live_x_counters = {}
-        # Set counters based on existing buffer length (so reselecting module restores history)
-        buffers = st.session_state._live_buffers.get(mod) if mod else None
-        pre_len = 0
-        if buffers:
-            try:
-                pre_len = max((len(b) for b in buffers), default=0)
-            except Exception:
-                pre_len = 0
-        st.session_state.live_i = pre_len
+        # Reset last-values baseline for derived series calculations
         st.session_state.live_last_values = [0.0 for _ in range(len(METRICS))]
         st.session_state._live_init_key = init_key
         # Subscribe to live topic for selected module
@@ -930,51 +937,12 @@ def _init_charts_if_needed(force: bool = False) -> None:
         if current_module:
             _backfill_live_from_file(mod)
 
-        # If we have buffered history for this module, paint it
-        has_points = False
-        if buffers:
-            try:
-                has_points = any(len(b) > 0 for b in buffers)
-            except Exception:
-                has_points = False
-        if has_points:
-            charts = st.session_state.chart_elements_v2
-            # Initial fill: add current window rows into chart handles
-            group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    group_frames[target_chart].append(df)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(group_frames):
-                try:
-                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    charts[chart_i]["chart"].add_rows(combined)
-                except Exception:
-                    pass
-            st.session_state._live_painted[mod] = [len(b) for b in buffers]
-        else:
-            # If buffers were created by backfill but are still empty, nothing to paint yet
-            buffers = st.session_state._live_buffers.get(mod)
-            if buffers:
-                # Advance x counter based on count, not persisted x
-                st.session_state._live_x_counters[mod] = len(buffers[0]) if buffers and buffers[0] else 0
-
 
 if module_selected:
     _init_charts_if_needed()
 
 
-@st.fragment(run_every=0.4)
-def update_loop():
+def _charts_tick():
     # Reinitialize when module changes or after navigation reset
     _init_charts_if_needed()
 
@@ -987,40 +955,141 @@ def update_loop():
     if not buffers:
         return
     charts = st.session_state.chart_elements_v2
-    # Hybrid: incremental add_rows per tick, periodic compaction to last window
+
+    # Update the window sample count indicator using the longest series buffer
     try:
-        group_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+        info_ph = st.session_state.get("_live_window_info")
+        if info_ph:
+            try:
+                window_len = max((len(b) for b in buffers), default=0)
+            except Exception:
+                window_len = 0
+            info_ph.caption(f"Samples in window: {int(window_len)}")
+    except Exception:
+        pass
+
+    # Hybrid painting strategy:
+    # - Keep full rolling history in _live_buffers (bounded by MAX_POINTS).
+    # - Track a simple per-module append counter from background_collector.
+    # - Periodically perform a full repaint (to realign charts and handle any
+    #   counter resets).
+    # - Between full repaints, stream only incremental points via add_rows to
+    #   minimize flicker and CPU usage.
+    try:
+        # Ensure per-module last full repaint counters and painted counters
+        if "_live_painted_counter" not in st.session_state:
+            st.session_state._live_painted_counter = {}
+        painted_counter_map = st.session_state._live_painted_counter
+        painted_counter = int(painted_counter_map.get(mod, 0) or 0)
+
+        if "_live_last_full_counter" not in st.session_state:
+            st.session_state._live_last_full_counter = {}
+        last_full_counter_map = st.session_state._live_last_full_counter
+        last_full_counter = int(last_full_counter_map.get(mod, 0) or 0)
+
+        # Append counter maintained by background_collector
+        x_counters = st.session_state.get("_live_x_counters") or {}
+        x_counter = int(x_counters.get(mod, 0) or 0)
+
+        need_full = False
+
+        # If counters went backwards (reset), force a full repaint.
+        if x_counter < painted_counter:
+            need_full = True
+
+        # If we've appended more than our ring buffer size since the last paint,
+        # a full repaint is simpler than trying to stream a huge incremental set.
+        new_samples = max(0, x_counter - painted_counter)
+        if new_samples >= MAX_POINTS:
+            need_full = True
+
+        # Periodic full repaint based on number of new samples since the last
+        # full repaint. This prevents charts from drifting too far from the
+        # ideal window and keeps axes/legends in sync with the current window.
+        delta_since_full = max(0, x_counter - last_full_counter)
+        if delta_since_full >= FULL_REPAINT_EVERY_SAMPLES:
+            need_full = True
+
+        if need_full:
+            # Full repaint using the current buffers. We render all points in
+            # the MAX_POINTS rolling window for each series.
+            for chart_i, (_, idxs) in enumerate(_group_index_lists):
+                frames = []
+                for s_idx in idxs:
+                    buf = buffers[s_idx]
+                    if not buf:
+                        continue
+                    try:
+                        xs = [pt[0] for pt in buf]
+                        ys = [pt[1] for pt in buf]
+                        df = pd.DataFrame(
+                            {
+                                "x": xs,
+                                "y": ys,
+                                "series": [_series_labels[s_idx] for _ in range(len(xs))],
+                            }
+                        )
+                        frames.append(df)
+                    except Exception:
+                        continue
+                if not frames:
+                    continue
+                try:
+                    combined = pd.concat(frames, ignore_index=True)
+                    ch = (
+                        alt.Chart(combined)
+                        .mark_line()
+                        .encode(
+                            x=alt.X(
+                                "x:T",
+                                title=None,
+                                axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False),
+                            ),
+                            y=alt.Y("y:Q", title=None),
+                            color=alt.Color("series:N", legend=alt.Legend(title=None)),
+                        )
+                        .properties(height=220)
+                    )
+                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(
+                        ch, use_container_width=True
+                    )
+                except Exception:
+                    continue
+
+            # After a full repaint, consider all appends up to x_counter as painted
+            painted_counter_map[mod] = x_counter
+            last_full_counter_map[mod] = x_counter
+            return
+
+        # Incremental add_rows path: only append new points since last painted index
+        if new_samples <= 0:
+            return
+
+        incr_frames = [[] for _ in range(len(CHART_GROUPS))]
         for s_idx, buf in enumerate(buffers):
-            if not buf:
+            try:
+                # Take the last `new_samples` points for each series. If the buffer
+                # contains fewer points (e.g. just after startup), use everything.
+                k = min(new_samples, len(buf))
+                if k <= 0:
+                    continue
+                slice_buf = list(buf)[-k:]
+                xs = [pt[0] for pt in slice_buf]
+                ys = [pt[1] for pt in slice_buf]
+                if not xs:
+                    continue
+                df_inc = pd.DataFrame(
+                    {
+                        "x": xs,
+                        "y": ys,
+                        "series": [_series_labels[s_idx] for _ in range(len(xs))],
+                    }
+                )
+                chart_i = _series_to_chart_idx.get(s_idx, 0)
+                incr_frames[chart_i].append(df_inc)
+            except Exception:
                 continue
-            try:
-                df = pd.DataFrame({
-                    "x": [pt[0] for pt in buf],
-                    "y": [pt[1] for pt in buf],
-                    "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                })
-                target_chart = _series_to_chart_idx.get(s_idx, 0)
-                group_frames[target_chart].append(df)
-            except Exception:
-                pass
-        # Incremental additions since last paint
-        painted = st.session_state._live_painted.get(mod, [0 for _ in range(len(METRICS))])
-        incr_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-        for s_idx, buf in enumerate(buffers):
-            try:
-                start = painted[s_idx]
-                if start < len(buf):
-                    slice_buf = list(buf)[start:]
-                    df_inc = pd.DataFrame({
-                        "x": [pt[0] for pt in slice_buf],
-                        "y": [pt[1] for pt in slice_buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(slice_buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    incr_frames[target_chart].append(df_inc)
-                painted[s_idx] = len(buf)
-            except Exception:
-                pass
+
         for chart_i, frames in enumerate(incr_frames):
             if not frames:
                 continue
@@ -1028,60 +1097,17 @@ def update_loop():
                 df_added = pd.concat(frames, ignore_index=True)
                 charts[chart_i]["chart"].add_rows(df_added)
             except Exception:
-                pass
-        st.session_state._live_painted[mod] = painted
-
-        # Compaction trigger to enforce visual window and shift cleanly
-        at_capacity = False
-        try:
-            at_capacity = len(buffers[0]) >= MAX_POINTS if buffers and buffers[0] is not None else False
-        except Exception:
-            at_capacity = False
-        append_ctr = int((st.session_state.get("_live_x_counters") or {}).get(mod, 0))
-        last_compact_key = ("_live_last_compact_counter", mod)
-        last_compact = int(st.session_state.get(last_compact_key) or -1)
-        # Compact every MAX_POINTS appends, or if painted is at end while at capacity (rotation)
-        need_compact_interval = (append_ctr // max(1, MAX_POINTS)) != (last_compact // max(1, MAX_POINTS))
-        painted_at_end = all(painted[i] >= len(buffers[i]) for i in range(len(buffers)))
-        if at_capacity and (need_compact_interval or painted_at_end):
-            full_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df_full = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    full_frames[target_chart].append(df_full)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(full_frames):
-                try:
-                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    ch = (
-                        alt.Chart(combined)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(title=None))
-                        )
-                        .properties(height=220)
-                    )
-                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(ch, use_container_width=True)
-                except Exception:
-                    pass
-            st.session_state[last_compact_key] = append_ctr
+                continue
+        # Record that we've painted through x_counter
+        painted_counter_map[mod] = x_counter
     except Exception:
         pass
 
 
-# Background collector: subscribe to topics and buffer/update UI state
-@st.fragment(run_every=0.5)
-def background_collector():
+# Background collector: subscribe to topics and buffer/update UI state.
+# This helper is invoked from the main heartbeat loop rather than as an
+# independent fragment.
+def _background_collector_tick():
     modules = st.session_state.get("_available_modules", [])
     if not modules:
         return
@@ -1311,13 +1337,8 @@ def background_collector():
         st.session_state._seq_toast_flags[mod] = flags
         st.session_state._cmd_toast_flags[mod] = cmd_flags
 
-    # Note: Rendering is done synchronously outside this fragment to avoid
+    # Note: Rendering is done synchronously from the heartbeat loop to avoid
     # placeholder capture issues across module swaps and navigation.
-
-
-# Kick off background collector
-background_collector()
-
 
 def _render_sequence_status_panel(placeholder):
     mod = str(st.session_state.get("selected_module"))
@@ -1412,8 +1433,7 @@ def _render_storage_panel(placeholder):
         st.caption(f"{_human_bytes(free_bytes)} free of {_human_bytes(total_bytes)}")
 
 
-@st.fragment(run_every=1.5)
-def _status_panels_tick():
+def _status_panels_tick_body():
     try:
         phs = st.session_state.get("_status_panel_placeholders") or {}
         main_ph = phs.get("main")
@@ -1439,8 +1459,44 @@ def _status_panels_tick():
     except Exception:
         pass
 
-_status_panels_tick()
+def _heartbeat_tick():
+    """Single tick function orchestrating all periodic updates for this page.
+
+    This is invoked from a single Streamlit fragment so that toasts, charts,
+    status panels, and MQTT collection all share one schedule. That helps
+    avoid races with SessionInfo when the page is reloaded or navigated.
+    """
+    # Only run if we're actually on this page
+    if st.session_state.get("_current_page_key") != PAGE_KEY:
+        return
+
+    # Background MQTT + state updates
+    try:
+        _background_collector_tick()
+    except Exception:
+        pass
+
+    module_selected_local = bool(st.session_state.get("selected_module"))
+    if module_selected_local:
+        try:
+            _charts_tick()
+        except Exception:
+            pass
+
+    try:
+        _status_panels_tick_body()
+    except Exception:
+        pass
+
+    try:
+        _update_toasts_tick()
+    except Exception:
+        pass
 
 
-if module_selected:
-    update_loop()
+@st.fragment(run_every=0.5)
+def heartbeat():
+    _heartbeat_tick()
+
+
+heartbeat()
