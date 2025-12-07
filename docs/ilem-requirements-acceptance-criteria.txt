@@ -1,0 +1,146 @@
+Integrated LEM – Functional Requirements and Acceptance Criteria
+================================================================
+
+FR1 – Support only extended sequence files for LEM control
+----------------------------------------------------------
+Description:
+- Cycler sequence execution SHALL only support sequence files that conform to the extended CSV schema defined in FR2 (including the LEM valve columns `valve11`–`valve15`).
+- Legacy or non-extended sequence file formats (i.e. files that do not conform to the FR2 schema) SHALL NOT be supported for Cycler execution in this version.
+- When a conforming extended-format sequence is executed, it SHALL be possible to open/close each integrated LEM valve at specified steps/time points based solely on the values provided in the sequence file.
+
+Acceptance criteria:
+1) Given a user-supplied sequence file that conforms to the FR2 schema (including the LEM valve columns), when that sequence is executed on the Cycler, then:
+   - All valves (including the integrated LEM valves) follow exactly the states specified in the sequence file at each step (including remaining closed wherever the file specifies them as closed).
+2) Given a user-supplied sequence file that does not conform to the FR2 schema (e.g. missing LEM valve columns, wrong column names, or incompatible types), when a user attempts to load or start that sequence in Proteus, then:
+   - Proteus SHALL NOT run the sequence and SHALL display a clear validation error indicating that only extended-format sequence files conforming to FR2 are supported.
+
+
+FR2 – Sequence file schema with LEM valve variables
+---------------------------------------------------
+Description:
+- The Proteus sequence file SHALL use a CSV schema that explicitly exposes variables/fields for integrated LEM valves.
+- The header row (columns), shown with `|` boundaries, SHALL be exactly:
+  - `|cmd|circFlow|pressureFlow|valve1|valve2|valve3|valve4|valve5|valve6|valve7|valve8|valve9|valve10|valve11|valve12|valve13|valve14|valve15|airpump1|airpump2|pressureSP|oxySP|pressureKp|pressureKi|pressureKd|oxyKp|oxyKi|oxyKd|pump2Dir|pump1Dir|tube_bore|pump_2_speed_ratio|ascmds1|ascmds2|ascmds3|wristCmd|transTimeSec|`
+- The type row (second line of the CSV), with `|` boundaries, SHALL be exactly:
+  - `|int|int|int|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|bool|double|double|double|double|double|double|double|double|bool|bool|int|float|int|int|int|int|int|`
+- Each addressable LEM valve (11–15) SHALL therefore have a clear, documented boolean column (`valve11`–`valve15`) in the sequence format.
+
+Acceptance criteria:
+1) Given the sequence file schema, then:
+   - Each integrated LEM valve (11–15) has a named field/identifier in the header (e.g. `valve11`–`valve15`) that can be set to open/close (or equivalent state) per row.
+2) Given a validation step (manual or automated) in Proteus, when a sequence file is parsed, then:
+   - The file is accepted as valid when all LEM-related fields (including `valve11`–`valve15`) and types conform to the schema.
+   - The file is rejected when any LEM-related fields are missing/invalid, and Proteus SHALL show a clear, user-facing error message that the sequence file format is incorrect and must be updated to include the integrated LEM columns.
+
+
+FR3 – ILEM UI and navigation
+----------------------------
+Description:
+- The existing legacy LEM controller page in Proteus/Alpha SHALL be deprecated and replaced by a new Integrated LEM (ILEM) page.
+- The new ILEM page SHALL provide a simplified layout where:
+  - Instead of four separate columns (one per liquid), there is a single column/list of row items (one per liquid/bottle).
+  - Each row SHALL have a single DISPENSE button which both selects that bottle and starts the dispense for the currently entered volume.
+  - There is a single numeric input field (float) for the dispense volume in millilitres (mL), applied to whichever row’s DISPENSE button is pressed.
+  - Valve 15 SHALL NOT have a manual enable/disable control on the UI; instead, its state is derived automatically from Pump 1 activity and is only displayed as a read‑only indicator.
+  - A dedicated global STOP LEM control SHALL be provided to stop any ongoing dispense.
+- The page SHALL allow the user to:
+  - Specify a dispense volume.
+  - Start a dispense for a chosen bottle by pressing that bottle’s DISPENSE button.
+  - Stop the dispense via the global STOP LEM control.
+
+Acceptance criteria:
+1) Given a running Alpha instance, when the user navigates to the location/route previously used for the legacy LEM controller, then:
+   - The user is shown the new ILEM page, and the old legacy LEM UI is no longer accessible in normal operation.
+2) Given the ILEM page is open, then:
+  - A single column/list of selectable liquids/bottles is visible, where each row has a DISPENSE button.
+  - A single numeric volume input field is visible, which accepts floating-point values in mL and validates that the value is within allowed bounds.
+  - A read-only indicator of the current state of valve 15 is visible (no manual enable/disable control).
+  - A global STOP LEM control is visible and enabled (subject to FR5).
+3) Given a valid volume entered in the ILEM page and the Cycler is idle, when the user presses DISPENSE on a specific bottle row, then:
+  - A dispense operation for that bottle is initiated using the entered volume and the user can observe progress (e.g. status/indicator).
+4) Given an ongoing dispense started from the ILEM UI, when the user presses the global STOP LEM control, then:
+  - The dispense operation stops and the UI clearly indicates that the LEM is no longer dispensing.
+
+
+FR4 – ILEM dispense control logic (pump and valves)
+---------------------------------------------------
+Description:
+- When a dispense is active from the ILEM page, Pump 1 (P1) SHALL run in the “backwards” direction for the duration of the dispense.
+- Valve 15 SHALL be controlled automatically as follows:
+  - Open whenever Pump 1 is commanded to run backwards for a LEM dispense.
+  - Closed whenever Pump 1 is not running a LEM dispense (including after STOP LEM and at the end of a dispense sequence).
+- When a dispense is initiated for a given media/bottle (mapped to a specific valve among `valve11`–`valve14`), the control logic SHALL:
+  - Open `valve15` and the selected media valve (e.g. `valve11` for Media 1).
+  - Close all other LEM media valves in the range `valve11`–`valve15` (except the selected one).
+  - Ensure `valve1` and `valve4` are explicitly closed for the duration of the dispense.
+  - Treat the remaining valves (outside of 1,4,11–15) as “don’t care” for the purposes of this requirement, provided no other safety requirements are violated.
+
+Acceptance criteria:
+1) Given a valid volume entered in the ILEM page and the Cycler is idle, when the user presses DISPENSE on a specific bottle row, then:
+   - Pump 1 is commanded to run in the backwards direction while fluid is being dispensed.
+   - The effective valve state during the dispense satisfies:
+     - `valve15` = open (automatically, due to Pump 1 running backwards).
+     - Exactly one of `valve11`–`valve14` = open (the valve corresponding to the selected bottle); the others in that range are closed.
+     - `valve1` = closed and `valve4` = closed.
+2) Given an ongoing dispense started from the ILEM UI, when the user presses the global STOP LEM control or the dispense completes normally, then:
+   - Pump 1 stops.
+   - `valve15` automatically transitions to closed.
+   - All LEM valves are left in a safe (closed) state.
+
+
+FR5 – ILEM UI Page uses Cycler comms by sending ILEM commands
+-------------------------------------------------------------
+Description:
+- The ILEM UI Page SHALL control the integrated LEM via the same comms channel used by the Cycler (no separate legacy serial link).
+- Instead of sending a sequence file, the ILEM UI Page SHALL send normalized ILEM command messages (e.g. volume, selected bottle) over MQTT to the appropriate `ModuleHandler` instance for the target module.
+- Each `ModuleHandler` instance SHALL translate these UI-level ILEM commands into an Alpha envelope containing a `lem_cmd` command and forward it over the USB/serial link to AlphaCommsManager on the Cycler.
+- AlphaCommsManager SHALL unwrap the envelope and publish the `lem_cmd` payload onto an internal event-bus topic (e.g. `lem-cmd`) consumed by LEMController.
+
+Acceptance criteria:
+1) Given a dispense request from the ILEM UI Page, when the user presses DISPENSE for a bottle, then:
+   - An MQTT message representing the ILEM command (including selected bottle and volume) is published by the UI and received by the correct `ModuleHandler` for that module.
+   - `ModuleHandler` wraps this into an Alpha envelope with `{"command": "lem_cmd", ...}` and sends it to the Cycler over the existing comms link.
+   - AlphaCommsManager publishes the decoded `lem_cmd` payload on an internal `lem-cmd` topic for consumption by LEMController.
+2) Given system logs or debug telemetry, when an ILEM UI Page dispense is triggered, then:
+   - The logs clearly show an ILEM command flowing from the ILEM UI Page → MQTT → `ModuleHandler` → AlphaCommsManager → internal `lem-cmd` topic, and no legacy serial LEM path is used.
+
+
+FR6 – Prevent ILEM commands during live transfer or sequence execution
+----------------------------------------------------------------------
+Description:
+- The system SHALL prevent ILEM dispense commands from being executed while either:
+  - A sequence file transfer is in progress, or
+  - A live sequence is currently executing on the Cycler.
+- LEMController (or equivalent firmware component) SHALL act as the primary gatekeeper by inspecting internal state from AlphaCommsManager and SequenceController and rejecting ILEM commands when the Cycler is not idle.
+- The ILEM UI Page MAY always allow the user to press DISPENSE/STOP, but it SHALL surface a clear notification when a command is rejected due to the Cycler being busy.
+
+Acceptance criteria:
+1) Given a sequence file transfer is in progress (i.e. the Cycler is not idle with respect to transfer), when the user sends a DISPENSE command from the ILEM UI Page, then:
+   - The corresponding ILEM command received on the internal `lem-cmd` topic is rejected by firmware, no LEM valves or pumps are actuated, and the host receives a status/ack containing wording equivalent to “Unable to execute ILEM command – live transfer in process, Cycler must be idle.”
+2) Given a live sequence is currently executing on the Cycler (as reported by SequenceController), when the user sends a DISPENSE command from the ILEM UI Page, then:
+   - The corresponding ILEM command received on the internal `lem-cmd` topic is rejected by firmware, no LEM valves or pumps are actuated, and the host receives a status/ack containing wording equivalent to “Unable to execute ILEM command – live sequence in process, Cycler must be idle.”
+3) Given the Cycler is idle (no active sequence transfer and no live sequence executing), when the user sends a DISPENSE command from the ILEM UI Page, then:
+   - The ILEM command is accepted by firmware, actuates the LEM according to FR4, and the host receives a status/ack indicating that the command was accepted/started (or completed) rather than rejected.
+
+
+FR7 – User workflow for integrated LEM dispensing
+-------------------------------------------------
+Description:
+- The intended user workflow SHALL be:
+  - Stop the current Cycler sequence.
+  - Navigate to the integrated LEM page.
+  - Enter the required volume.
+  - Select the bottle to dispense from.
+  - Start the LEM dispense.
+  - Either wait until the dispense completes normally OR press the global STOP LEM control to terminate the dispense early.
+  - Navigate back to the Live page and restart the desired sequence.
+
+Acceptance criteria:
+1) Given a user is running a normal Cycler process and wants to perform a LEM dispense, when they follow the documented workflow above, then:
+   - No conflicting valve operations occur between the Cycler process and the LEM dispense.
+   - Liquids do not accidentally route out of the system into LEM bottles except during the explicit LEM dispense.
+2) Given UX documentation or in-app help, when an operator looks up how to use the integrated LEM, then:
+   - This workflow (or an equivalent clearly safe workflow) is described.
+
+
+

@@ -1,0 +1,45 @@
+Integrated LEM – User Stories (from client email)
+================================================
+
+1) Control integrated LEM valves via sequence files
+---------------------------------------------------
+As a **developer**, I want the new integrated LEM valves (GPIOs) to be controllable via Cycler **sequence files**, so that we can test new operating strategies (e.g. having the LEM run automatically at set time points).
+
+2) New sequence file format with LEM valve variables
+----------------------------------------------------
+As a **developer**, I want a **new sequence file format** that exposes variables for the integrated LEM valves, so that sequence authors can explicitly open/close these valves at defined times in the process.
+
+3) UI page for manual integrated LEM control
+--------------------------------------------
+As a **user/operator**, I want a **UI page in Alpha** (similar to the current LEM controller) where I can:
+- Specify a volume to dispense
+- Select a bottle to dispense from
+- Start dispensing
+- Stop dispensing
+so that I can manually run the integrated LEM in an intuitive way.
+
+4) LEM UI uses Cycler comms by sending a sequence
+-------------------------------------------------
+As a **system integrator**, I want the integrated LEM UI page to control the LEM by **sending a sequence file via the Cycler comms** (same comms as the Cycler, not the old serial LEM), so that the integrated LEM remains part of the Cycler’s standard control path.
+
+5) Prevent LEM UI operation while Cycler is running a sequence
+--------------------------------------------------------------
+As a **user/operator**, I want the integrated LEM UI to **not be able to operate while the Cycler is already executing a sequence**, so that we don’t accidentally open extra valves and route liquid out of the system into LEM bottles.
+
+6) Default closed valves in other sequences
+-------------------------------------------
+As a **process engineer/product owner**, I want all existing and future non-LEM sequences to have the integrated LEM valves **closed by default**, and only opened when explicitly requested in a sequence or LEM dispense operation, so that liquids do not unintentionally flow into or through the LEM.
+
+7) User workflow for dispensing via integrated LEM UI
+-----------------------------------------------------
+As a **user/operator**, I want a workflow where I:
+- Stop the current Cycler sequence
+- Navigate to the LEM page
+- Enter the required volume
+- Select the bottle to dispense from
+- Start the LEM dispense
+- Wait for the dispense to finish
+- Navigate back to the Live page and restart the previous/“current” sequence
+so that I can safely perform LEM dispensing in-between normal Cycler sequences.
+
+
