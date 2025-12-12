@@ -11,8 +11,8 @@ from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 
 
-st.set_page_config(page_title="LEM", layout="wide")
-st.title("LEM")
+st.set_page_config(page_title="ILEM", layout="wide")
+st.title("ILEM")
 # Mark current page for cross-page navigation detection
 st.session_state["_current_page_key"] = "proteus_ui_lem"
 
@@ -180,9 +180,9 @@ def _available_modules() -> List[str]:
 
 
 # -----------------------------
-# Top row: Left = Dispense Volume, Right = LEM Pump Config
+# Top row: Dispense Volume | ILEM Pump Config | ILEM Module & Media
 # -----------------------------
-left_col, right_col = st.columns([2, 2], gap="small")
+left_col, middle_col, right_col = st.columns([2, 2, 2], gap="small")
 
 with left_col:
     with st.container(border=True):
@@ -199,9 +199,9 @@ with left_col:
             lem_stop()
 
 
-with right_col:
+with middle_col:
     with st.container(border=True):
-        st.subheader("LEM Pump Config")
+        st.subheader("ILEM Pump Config")
 
         # Subscribe once for config and status
         _mqtt = MQTTService()
@@ -281,46 +281,44 @@ with right_col:
         # Trigger refresh via Get Config only
 
 
-##############################
-# Single column: module + media
-##############################
-mods = _available_modules()
-with st.container(border=True):
-    st.subheader("ILEM Module & Media")
-    available = mods or []
-    placeholder = "— Select a module —"
-    prev = st.session_state.get("ilem_selected_module")
-    if prev is not None and prev not in available:
-        prev = None
-    if available:
-        options = [placeholder] + available
-        try:
-            default_index = options.index(prev) if prev in options else 0
-        except Exception:
-            default_index = 0
-        sel = st.selectbox(
-            "Select module",
-            options=options,
-            index=default_index,
-            key="_ilem_select_module",
-        )
-        if sel == placeholder:
+with right_col:
+    with st.container(border=True):
+        st.subheader("ILEM Module & Media")
+        mods = _available_modules()
+        available = mods or []
+        placeholder = "— Select a module —"
+        prev = st.session_state.get("ilem_selected_module")
+        if prev is not None and prev not in available:
+            prev = None
+        if available:
+            options = [placeholder] + available
+            try:
+                default_index = options.index(prev) if prev in options else 0
+            except Exception:
+                default_index = 0
+            sel = st.selectbox(
+                "Select module",
+                options=options,
+                index=default_index,
+                key="_ilem_select_module",
+            )
+            if sel == placeholder:
+                sel = None
+        else:
             sel = None
-    else:
-        sel = None
-        st.info("No modules available.")
+            st.info("No modules available.")
 
-    st.session_state.ilem_selected_module = sel
+        st.session_state.ilem_selected_module = sel
 
-    # Media buttons: bottle 1..4
-    for btn_idx, media in enumerate(MEDIA_LIST):
-        if st.button(media, use_container_width=True, key=f"lem_btn_single_{btn_idx}"):
-            vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
-            bottle_index = btn_idx + 1
-            if sel:
-                lem_dispense(sel, media, bottle_index, vol)
-            else:
-                _append_lem_log(f"ERROR: No module selected; cannot dispense {media}")
+        # Media buttons: bottle 1..4
+        for btn_idx, media in enumerate(MEDIA_LIST):
+            if st.button(media, use_container_width=True, key=f"lem_btn_single_{btn_idx}"):
+                vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
+                bottle_index = btn_idx + 1
+                if sel:
+                    lem_dispense(sel, media, bottle_index, vol)
+                else:
+                    _append_lem_log(f"ERROR: No module selected; cannot dispense {media}")
 
 
 # Progress bars (disabled)
