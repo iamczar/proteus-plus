@@ -18,7 +18,7 @@ auto_sampler = st.Page("pages/auto_sampler.py", title="Auto Sampler Control", ic
 pid_diagram = st.Page("pages/pid_diagram.py", title="PI&D", icon=":material/image:")
 pid_controls = st.Page("pages/pid_controls.py", title="PID Controls", icon=":material/tune:")
 pid_charts = st.Page("pages/pid_charts.py", title="PID Charts", icon=":material/monitoring:")
-lem_page = st.Page("pages/lem.py", title="LEM", icon=":material/precision_manufacturing:")
+lem_page = st.Page("pages/lem.py", title="ILEM", icon=":material/precision_manufacturing:")
 csv_viewer = st.Page("pages/plot_cvs.py", title="Analyse Historical Data", icon=":material/article:")
 
 pg = st.navigation(
