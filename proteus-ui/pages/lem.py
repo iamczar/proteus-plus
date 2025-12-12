@@ -125,15 +125,35 @@ def _append_lem_log(message: str) -> None:
         pass
 
 
-def _publish_lem_command(message: dict) -> None:
-    """Publish a generic LEM command envelope without module scoping."""
-    topic = "lem-commands"
-    envelope = {
-        "message_source": "proteus-ui",
-        "timestamp": datetime.now().isoformat(),
-        "message": message or {},
-    }
-    MQTTService().publish(topic, envelope)
+def _publish_ilem_command(module_id: str | int, message: dict) -> None:
+    """
+    Publish an ILEM command for a specific module.
+
+    Topic: ilem-command/<module_id>
+    Payload envelope matches example-messages.json:
+        {
+          "message_source": "proteus-ui",
+          "timestamp": "...",
+          "message": {
+            "command": "lem_cmd",
+            "action": "dispense" | "stop",
+            ...
+          }
+        }
+    """
+    try:
+        if module_id is None:
+            _append_lem_log("ERROR: No module selected for ILEM command")
+            return
+        topic = f"ilem-command/{module_id}"
+        envelope = {
+            "message_source": "proteus-ui",
+            "timestamp": datetime.now().isoformat(),
+            "message": message or {},
+        }
+        MQTTService().publish(topic, envelope)
+    except Exception as exc:
+        _append_lem_log(f"ERROR: Failed to publish ILEM command for module {module_id}: {exc}")
 
 
 def _request_config_snapshot() -> None:
@@ -152,31 +172,51 @@ def _update_config(values: dict) -> None:
 
 
 def lem_stop() -> None:
+    """
+    Global STOP LEM.
+
+    Sends a stop command to all modules currently assigned in the LEM page
+    (columns), via ilem-command/<module_id>.
+    """
     try:
-        _publish_lem_command({"command": "stop_lem"})
-        _append_lem_log("STOP LEM sent")
+        assignments = st.session_state.get("lem_assignments", []) or []
+        targets = {m for m in assignments if m}
+        if not targets:
+            _append_lem_log("ERROR: No modules assigned for STOP LEM")
+            return
+        for module_id in targets:
+            inner = {
+                "command": "lem_cmd",
+                "action": "stop",
+            }
+            _publish_ilem_command(module_id, inner)
+        _append_lem_log(f"STOP LEM sent to modules: {', '.join(str(t) for t in targets)}")
     except Exception as exc:
         _append_lem_log(f"ERROR: Failed to stop LEM: {exc}")
 
 
-def lem_dispense(media: str, valve_index: int, volume_ml: float) -> None:
+def lem_dispense(module_id: str | int, media: str, bottle: int, volume_ml: float) -> None:
     try:
         vol = max(0.0, float(volume_ml or 0.0))
     except Exception:
         vol = 0.0
     try:
-        payload = {
-            "command": "lem_dispense",
+        inner = {
+            "command": "lem_cmd",
+            "action": "dispense",
             "media": str(media),
-            "valve_index": int(valve_index),
+            "bottle": int(bottle),
             "volume_ml": float(vol),
         }
-        _publish_lem_command(payload)
-        _append_lem_log(f"DISPENSE {media} {vol:.2f} mL -> valve {int(valve_index)}")
+        _publish_ilem_command(module_id, inner)
+        _append_lem_log(
+            f"DISPENSE {media} {vol:.2f} mL -> bottle {int(bottle)} on module {module_id}"
+        )
         # Animate a local progress bar for quick feedback (1–10s based on volume)
         dur = max(1.0, min(10.0, (vol / 200.0) if vol > 0 else 1.0))
         now = time.time()
-        st.session_state.lem_progress[f"valve_{int(valve_index)}"] = {"start_ts": now, "end_ts": now + dur}
+        key = f"mod_{module_id}_bottle_{int(bottle)}"
+        st.session_state.lem_progress[key] = {"start_ts": now, "end_ts": now + dur}
     except Exception as exc:
         _append_lem_log(f"ERROR: Failed to send dispense: {exc}")
 
@@ -344,8 +384,12 @@ for idx, col in enumerate(cols):
             for btn_idx, media in enumerate(MEDIA_LIST):
                 if st.button(media, use_container_width=True, key=f"lem_btn_{idx}_{btn_idx}"):
                     vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
-                    valve_index = (idx * 4) + btn_idx + 1
-                    lem_dispense(media, valve_index, vol)
+                    # Bottle index is 1..4 based on row within the column
+                    bottle_index = btn_idx + 1
+                    if sel not in (None, placeholder):
+                        lem_dispense(sel, media, bottle_index, vol)
+                    else:
+                        _append_lem_log(f"ERROR: No module selected for column {idx+1}; cannot dispense {media}")
             # Local progress indicator (animated via periodic fragment)
             # ph = st.empty()
             # _lem_progress_placeholders.append(ph)
