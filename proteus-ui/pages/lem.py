@@ -181,8 +181,9 @@ def _available_modules() -> List[str]:
 
 # -----------------------------
 # Top row: Dispense Volume | ILEM Pump Config | ILEM Module & Media
+# Use equal-width columns with a medium gap to avoid visual overlap.
 # -----------------------------
-left_col, middle_col, right_col = st.columns([2, 2, 2], gap="small")
+left_col, middle_col, right_col = st.columns(3, gap="medium")
 
 with left_col:
     with st.container(border=True):
