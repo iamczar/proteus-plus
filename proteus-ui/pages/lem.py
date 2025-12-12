@@ -184,43 +184,48 @@ def _drain_ilem_status_to_toasts() -> None:
     """
     Drain ILEM status/ack messages from ilem-status/<module_id> topics and
     push them into the shared toast area for display.
+
+    Only messages for the currently selected module are surfaced to the user.
     """
     try:
-        modules = _available_modules()
-        if not modules:
+        selected = st.session_state.get("ilem_selected_module")
+        if not selected:
             return
-        for m in modules:
-            topic = f"{ILEM_STATUS_PREFIX}/{m}"
-            MQTTService().subscribe(topic)
-            for _, payload in MQTTService().drain(topic, max_items=100):
-                try:
-                    # Expect full system message envelope:
-                    # { "message_source": "ilem_controller", "message": { ... } }
-                    if isinstance(payload, (bytes, str)):
-                        try:
-                            payload = json.loads(
-                                payload if isinstance(payload, str) else payload.decode("utf-8", errors="ignore")
-                            )
-                        except Exception:
-                            continue
-                    inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-                    if not isinstance(inner, dict):
+
+        topic = f"{ILEM_STATUS_PREFIX}/{selected}"
+        MQTTService().subscribe(topic)
+        for actual_topic, payload in MQTTService().drain(topic, max_items=200):
+            try:
+                # Expect full system message envelope:
+                # { "message_source": "ilem_controller", "message": { ... } }
+                if isinstance(payload, (bytes, str)):
+                    try:
+                        payload = json.loads(
+                            payload if isinstance(payload, str) else payload.decode("utf-8", errors="ignore")
+                        )
+                    except Exception:
                         continue
-                    if inner.get("event") != "ilem_cmd_ack":
-                        continue
-                    stage = str(inner.get("stage", ""))
-                    if stage != "ilem_controller":
-                        # Only show controller-level acks in the toast area
-                        continue
-                    accepted = bool(inner.get("accepted", False))
-                    reason = str(inner.get("reason", "")) if inner.get("reason") is not None else ""
-                    action = str(inner.get("action", "")) or "command"
-                    status = "success" if accepted else "error"
-                    verdict = "ACCEPTED" if accepted else "REJECTED"
-                    msg = f"Module {m}: ILEM {action} {verdict}. {reason}"
-                    show_toast(msg, status=status, source="ILEM Controller")
-                except Exception:
+                if not isinstance(payload, dict):
                     continue
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if not isinstance(inner, dict):
+                    continue
+                if inner.get("event") != "ilem_cmd_ack":
+                    continue
+                stage = str(inner.get("stage", ""))
+                # Only show controller-level acks in the toast area; if stage is
+                # absent (e.g. from older test payloads), accept it as well.
+                if stage and stage != "ilem_controller":
+                    continue
+                accepted = bool(inner.get("accepted", False))
+                reason = str(inner.get("reason", "")) if inner.get("reason") is not None else ""
+                action = str(inner.get("action", "")) or "command"
+                status = "success" if accepted else "error"
+                verdict = "ACCEPTED" if accepted else "REJECTED"
+                msg = f"Module {selected}: ILEM {action} {verdict}. {reason}"
+                show_toast(msg, status=status, source="ILEM Controller")
+            except Exception:
+                continue
     except Exception:
         # Best-effort; don't break the page if MQTT parsing fails
         pass
