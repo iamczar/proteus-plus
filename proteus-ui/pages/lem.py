@@ -25,9 +25,6 @@ MEDIA_LIST: List[str] = ["Media 1", "Media 2", "Flush", "Sterilant"]
 # -----------------------------
 # Session state (page-local)
 # -----------------------------
-if "lem_assignments" not in st.session_state:
-    # Up to 4 columns; values are module ids as strings or None
-    st.session_state.lem_assignments = [None, None, None, None]
 if "lem_progress" not in st.session_state:
     # module_id (str) -> {start_ts: float, end_ts: float}
     st.session_state.lem_progress = {}
@@ -36,8 +33,9 @@ if "lem_logs" not in st.session_state:
 # Initialize default config values in session state
 st.session_state.setdefault("lem_cfg_target", 10.0)
 st.session_state.setdefault("lem_cfg_actual", 22.0)
-st.session_state.setdefault("lem_active", False)
-st.session_state.setdefault("lem_port", "")
+st.session_state.setdefault("lem_active", False)  # legacy; no longer shown
+st.session_state.setdefault("lem_port", "")       # legacy; no longer shown
+st.session_state.setdefault("ilem_selected_module", None)
 
 # Persisted UI settings file (proteus-ui/data/settings.json)
 _ui_settings_path = Path(__file__).resolve().parents[1] / "data" / "settings.json"
@@ -68,54 +66,6 @@ def _save_ui_settings_volume(v: float) -> None:
 
 if "lem_volume_ml" not in st.session_state:
     st.session_state.lem_volume_ml = _load_ui_settings_default_volume()
-
-# -----------------------------
-# LEM status chip/panel (above first row)
-# -----------------------------
-_status_mqtt = MQTTService()
-_status_mqtt.subscribe("module_controller/lem-status")
-
-def _drain_lem_status() -> bool:
-    changed = False
-    for _, data in _status_mqtt.drain("module_controller/lem-status", max_items=50):
-        try:
-            if isinstance(data, (bytes, str)):
-                data = json.loads(data) if isinstance(data, str) else json.loads(data.decode("utf-8", errors="ignore"))
-            new_active = bool(data.get("lem_active", False))
-            new_port = str(data.get("port", ""))
-            if st.session_state.get("lem_active") != new_active:
-                st.session_state["lem_active"] = new_active
-                changed = True
-            if st.session_state.get("lem_port") != new_port:
-                st.session_state["lem_port"] = new_port
-                changed = True
-        except Exception:
-            pass
-    return changed
-
-@st.fragment(run_every=1.0)
-def _lem_status_fragment():
-    _drain_lem_status()
-    status_color = "green" if st.session_state.get("lem_active", False) else "red"
-    status_text = "ACTIVE" if st.session_state.get("lem_active", False) else "DISABLED"
-    port_text = st.session_state.get("lem_port", "")
-    st.markdown(
-        f"<div class='lem-chip-wrap'><span class='lem-chip {status_color}'>LEM: {status_text}{(' (' + port_text + ')') if port_text else ''}</span></div>",
-        unsafe_allow_html=True,
-    )
-
-status_css = """
-<style>
-.lem-chip { display:inline-block; padding:6px 12px; border-radius:16px; font-weight:600; color:#fff; }
-.lem-chip.green { background:#2E7D32; }
-.lem-chip.red { background:#C62828; }
-.lem-chip-wrap { margin-bottom:8px; }
-</style>
-"""
-st.markdown(status_css, unsafe_allow_html=True)
-_lem_status_fragment()
-
-
 
 def _append_lem_log(message: str) -> None:
     try:
@@ -179,18 +129,16 @@ def lem_stop() -> None:
     (columns), via ilem-command/<module_id>.
     """
     try:
-        assignments = st.session_state.get("lem_assignments", []) or []
-        targets = {m for m in assignments if m}
-        if not targets:
-            _append_lem_log("ERROR: No modules assigned for STOP LEM")
+        selected = st.session_state.get("ilem_selected_module")
+        if not selected:
+            _append_lem_log("ERROR: No module selected for STOP LEM")
             return
-        for module_id in targets:
-            inner = {
-                "command": "lem_cmd",
-                "action": "stop",
-            }
-            _publish_ilem_command(module_id, inner)
-        _append_lem_log(f"STOP LEM sent to modules: {', '.join(str(t) for t in targets)}")
+        inner = {
+            "command": "lem_cmd",
+            "action": "stop",
+        }
+        _publish_ilem_command(selected, inner)
+        _append_lem_log(f"STOP LEM sent to module {selected}")
     except Exception as exc:
         _append_lem_log(f"ERROR: Failed to stop LEM: {exc}")
 
@@ -333,66 +281,46 @@ with right_col:
         # Trigger refresh via Get Config only
 
 
-# -----------------------------
-# Columns with Media buttons and progress
-# -----------------------------
+##############################
+# Single column: module + media
+##############################
 mods = _available_modules()
-assignments: List[Optional[str]] = list(st.session_state.get("lem_assignments", [None, None, None, None]))
-# Pre-fill first time with first up-to-4 modules
-if all(v is None for v in assignments) and mods:
-    for i in range(min(4, len(mods))):
-        assignments[i] = mods[i]
-    st.session_state.lem_assignments = assignments
-cols = st.columns(4, gap="small")
-# Progress bars (disabled)
-# Placeholders for per-column progress bars so we can refresh them periodically
-# _lem_progress_placeholders = []
-for idx, col in enumerate(cols):
-    with col:
-        with st.container(border=True):
-            # Module selector above column buttons
-            available = mods or []
-            prev = st.session_state.lem_assignments[idx]
-            if prev is not None and prev not in available:
-                prev = None
-                st.session_state.lem_assignments[idx] = None
-            placeholder = "— Select a module —"
-            if prev is None:
-                initial_options = [placeholder] + available if available else [placeholder]
-                sel = st.selectbox(
-                    f"Position {idx+1}",
-                    options=initial_options,
-                    index=0,
-                    key=f"_lem_select_first_{idx}",
-                    label_visibility="collapsed",
-                )
+with st.container(border=True):
+    st.subheader("ILEM Module & Media")
+    available = mods or []
+    placeholder = "— Select a module —"
+    prev = st.session_state.get("ilem_selected_module")
+    if prev is not None and prev not in available:
+        prev = None
+    if available:
+        options = [placeholder] + available
+        try:
+            default_index = options.index(prev) if prev in options else 0
+        except Exception:
+            default_index = 0
+        sel = st.selectbox(
+            "Select module",
+            options=options,
+            index=default_index,
+            key="_ilem_select_module",
+        )
+        if sel == placeholder:
+            sel = None
+    else:
+        sel = None
+        st.info("No modules available.")
+
+    st.session_state.ilem_selected_module = sel
+
+    # Media buttons: bottle 1..4
+    for btn_idx, media in enumerate(MEDIA_LIST):
+        if st.button(media, use_container_width=True, key=f"lem_btn_single_{btn_idx}"):
+            vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
+            bottle_index = btn_idx + 1
+            if sel:
+                lem_dispense(sel, media, bottle_index, vol)
             else:
-                final_options = available
-                default_index = final_options.index(prev) if prev in available else (0 if final_options else 0)
-                sel = st.selectbox(
-                    f"Position {idx+1}",
-                    options=final_options,
-                    index=default_index,
-                    key=f"_lem_select_final_{idx}",
-                    label_visibility="collapsed",
-                )
-            if sel not in (None, placeholder) and sel != prev:
-                st.session_state.lem_assignments[idx] = sel
-                _append_lem_log(f"Selected module for column {idx+1}: {sel}")
-                st.rerun()
-            # Media buttons mapped to valve indices (1..16) by column and button position
-            for btn_idx, media in enumerate(MEDIA_LIST):
-                if st.button(media, use_container_width=True, key=f"lem_btn_{idx}_{btn_idx}"):
-                    vol = float(st.session_state.get("lem_volume_ml", 0.0) or 0.0)
-                    # Bottle index is 1..4 based on row within the column
-                    bottle_index = btn_idx + 1
-                    if sel not in (None, placeholder):
-                        lem_dispense(sel, media, bottle_index, vol)
-                    else:
-                        _append_lem_log(f"ERROR: No module selected for column {idx+1}; cannot dispense {media}")
-            # Local progress indicator (animated via periodic fragment)
-            # ph = st.empty()
-            # _lem_progress_placeholders.append(ph)
+                _append_lem_log(f"ERROR: No module selected; cannot dispense {media}")
 
 
 # Progress bars (disabled)
