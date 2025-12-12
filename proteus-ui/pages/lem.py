@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from common.utils import inject_button_theme
+from common.utils import inject_button_theme, show_toast, render_toast_area
 from services.module_manager import ModuleManager
 from services.mqtt_service import MQTTService
 
@@ -20,6 +20,7 @@ st.session_state["_current_page_key"] = "proteus_ui_lem"
 inject_button_theme(height="36px", min_width="120px", font_size="14px", padding_x="12px")
 
 MEDIA_LIST: List[str] = ["Media 1", "Media 2", "Flush", "Sterilant"]
+ILEM_STATUS_PREFIX = "ilem-status"
 
 
 # -----------------------------
@@ -179,6 +180,52 @@ def _available_modules() -> List[str]:
         return []
 
 
+def _drain_ilem_status_to_toasts() -> None:
+    """
+    Drain ILEM status/ack messages from ilem-status/<module_id> topics and
+    push them into the shared toast area for display.
+    """
+    try:
+        modules = _available_modules()
+        if not modules:
+            return
+        for m in modules:
+            topic = f"{ILEM_STATUS_PREFIX}/{m}"
+            MQTTService().subscribe(topic)
+            for _, payload in MQTTService().drain(topic, max_items=100):
+                try:
+                    # Expect full system message envelope:
+                    # { "message_source": "ilem_controller", "message": { ... } }
+                    if isinstance(payload, (bytes, str)):
+                        try:
+                            payload = json.loads(
+                                payload if isinstance(payload, str) else payload.decode("utf-8", errors="ignore")
+                            )
+                        except Exception:
+                            continue
+                    inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                    if not isinstance(inner, dict):
+                        continue
+                    if inner.get("event") != "ilem_cmd_ack":
+                        continue
+                    stage = str(inner.get("stage", ""))
+                    if stage != "ilem_controller":
+                        # Only show controller-level acks in the toast area
+                        continue
+                    accepted = bool(inner.get("accepted", False))
+                    reason = str(inner.get("reason", "")) if inner.get("reason") is not None else ""
+                    action = str(inner.get("action", "")) or "command"
+                    status = "success" if accepted else "error"
+                    verdict = "ACCEPTED" if accepted else "REJECTED"
+                    msg = f"Module {m}: ILEM {action} {verdict}. {reason}"
+                    show_toast(msg, status=status, source="ILEM Controller")
+                except Exception:
+                    continue
+    except Exception:
+        # Best-effort; don't break the page if MQTT parsing fails
+        pass
+
+
 # -----------------------------
 # Top row: Dispense Volume | ILEM Pump Config | ILEM Module & Media
 # Use equal-width columns with a medium gap to avoid visual overlap.
@@ -323,38 +370,10 @@ with right_col:
                     _append_lem_log(f"ERROR: No module selected; cannot dispense {media}")
 
 
-# Progress bars (disabled)
-# def _render_progress_once():
-#     # Render progress bars for each column into their placeholders
-#     try:
-#         for i, ph in enumerate(_lem_progress_placeholders):
-#             mod = st.session_state.lem_assignments[i] if i < len(st.session_state.lem_assignments) else None
-#             prog = st.session_state.lem_progress.get(str(mod)) if mod else None
-#             with ph.container():
-#                 if not prog:
-#                     st.progress(0)
-#                 else:
-#                     now = time.time()
-#                     start_ts = float(prog.get("start_ts", now))
-#                     end_ts = float(prog.get("end_ts", now))
-#                     if end_ts <= now:
-#                         try:
-#                             del st.session_state.lem_progress[str(mod)]
-#                         except Exception:
-#                             pass
-#                         st.progress(0)
-#                     else:
-#                         pct = int(max(0, min(100, ((now - start_ts) / max(0.001, (end_ts - start_ts))) * 100)))
-#                         st.progress(pct)
-#     except Exception:
-#         pass
-#
-# @st.fragment(run_every=0.25)
-# def _refresh_progress():
-#     _render_progress_once()
-#
-# _render_progress_once()
-# _refresh_progress()
+# ILEM ack toasts between controls and logs
+_drain_ilem_status_to_toasts()
+toast_placeholder = st.empty()
+render_toast_area(max_messages=3, container=toast_placeholder.container())
 
 with st.container(border=True):
     st.subheader("LEM Logs")
