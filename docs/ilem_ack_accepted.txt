@@ -1,3 +1,1 @@
 {"message_source": "ilem_controller", "timestamp": "2025-12-12T15:05:00.000000", "message": {"event": "ilem_cmd_ack", "accepted": true, "cycler_idle": true, "file_transfer_state": "idle", "sequence_state": "idle", "action": "dispense", "reason": "ILEM command accepted (execution logic TBD)."}}
-
-
