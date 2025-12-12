@@ -1,0 +1,3 @@
+{"message_source": "ilem_controller", "timestamp": "2025-12-12T15:04:06.500000", "message": {"event": "ilem_cmd_ack", "accepted": false, "cycler_idle": false, "file_transfer_state": "receiving_sequence", "sequence_state": "idle", "action": "dispense", "reason": "Unable to execute ILEM command – live transfer in process, Cycler must be idle."}}
+
+
