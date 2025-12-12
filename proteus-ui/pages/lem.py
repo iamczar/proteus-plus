@@ -341,7 +341,8 @@ with right_col:
         mods = _available_modules()
         available = mods or []
         placeholder = "— Select a module —"
-        prev = st.session_state.get("ilem_selected_module")
+        # Prefer existing ILEM selection; fall back to global selected_module
+        prev = st.session_state.get("ilem_selected_module") or st.session_state.get("selected_module")
         if prev is not None and prev not in available:
             prev = None
         if available:
@@ -362,7 +363,10 @@ with right_col:
             sel = None
             st.info("No modules available.")
 
+        # Keep ILEM selection in sync with global selected_module used on Live View
         st.session_state.ilem_selected_module = sel
+        if sel:
+            st.session_state.selected_module = sel
 
         # Media buttons: bottle 1..4
         for btn_idx, media in enumerate(MEDIA_LIST):
@@ -375,10 +379,15 @@ with right_col:
                     _append_lem_log(f"ERROR: No module selected; cannot dispense {media}")
 
 
-# ILEM ack toasts between controls and logs
-_drain_ilem_status_to_toasts()
+# ILEM ack toasts between controls and logs (auto-refreshing)
 toast_placeholder = st.empty()
-render_toast_area(max_messages=3, container=toast_placeholder.container())
+
+@st.fragment(run_every=1.0)
+def ilem_toast_loop():
+    _drain_ilem_status_to_toasts()
+    render_toast_area(max_messages=3, container=toast_placeholder.container())
+
+ilem_toast_loop()
 
 with st.container(border=True):
     st.subheader("LEM Logs")
