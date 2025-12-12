@@ -251,7 +251,8 @@ with middle_col:
             key="lem_cfg_actual",
         )
 
-        cols_btn = st.columns([1,1,6])
+        # Action buttons row (two equal-width columns to avoid overlap)
+        cols_btn = st.columns(2)
         with cols_btn[0]:
             if st.button("Get Config", key="lem_btn_getcfg", use_container_width=True):
                 _request_config_snapshot()
