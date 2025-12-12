@@ -1,0 +1,88 @@
+{
+  "ilem_dispense": {
+    "message_source": "proteus-ui",
+    "timestamp": "2025-12-12T15:04:05.123456",
+    "message": {
+        "command": "lem_cmd",
+        "action": "dispense",
+        "bottle": 1,
+        "volume_ml": 50.0
+    }
+  },
+  "ilem_stop": {
+    "message_source": "proteus-ui",
+    "timestamp": "2025-12-12T15:04:10.000000",
+    "message": {
+      "command": "lem_cmd",
+      "action": "stop"
+    }
+  },
+
+  "eventbus_lem_cmd_dispense": {
+    "command": "lem_cmd",
+    "action": "dispense",
+    "bottle": 1,
+    "volume_ml": 50.0
+  },
+  "eventbus_lem_cmd_stop": {
+    "command": "lem_cmd",
+    "action": "stop"
+  },
+
+  "file_transfer_status_idle": {
+    "command": "state_notification",
+    "state": "idle",
+    "sequence_current": 0,
+    "sequence_total": 0
+  },
+  "file_transfer_status_receiving": {
+    "command": "state_notification",
+    "state": "receiving_sequence",
+    "sequence_current": 5,
+    "sequence_total": 120
+  },
+
+  "sequence_status_executing": {
+    "event": "status",
+    "state": "executing",
+    "current_sequence": 10,
+    "total_sequences": 120,
+    "is_running": true,
+    "hold_remaining_sec": 3
+  },
+  "sequence_status_idle": {
+    "event": "status",
+    "state": "idle",
+    "current_sequence": 0,
+    "total_sequences": 0,
+    "is_running": false,
+    "hold_remaining_sec": 0
+  },
+
+  "ilem_controller_ack_rejected_busy": {
+    "message_source": "ilem_controller",
+    "timestamp": "2025-12-12T15:04:06.500000",
+    "message": {
+      "event": "ilem_cmd_ack",
+      "accepted": false,
+      "cycler_idle": false,
+      "file_transfer_state": "receiving_sequence",
+      "sequence_state": "idle",
+      "action": "dispense",
+      "reason": "Unable to execute ILEM command – live transfer in process, Cycler must be idle."
+    }
+  },
+  "ilem_controller_ack_accepted": {
+    "message_source": "ilem_controller",
+    "timestamp": "2025-12-12T15:05:00.000000",
+    "message": {
+      "event": "ilem_cmd_ack",
+      "accepted": true,
+      "cycler_idle": true,
+      "file_transfer_state": "idle",
+      "sequence_state": "idle",
+      "action": "dispense",
+      "reason": "ILEM command accepted (execution logic TBD)."
+    }
+  }
+}

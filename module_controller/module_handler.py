@@ -554,6 +554,16 @@ class ModuleHandler:
             source = str(obj.get("message_source", "")).lower()
             inner = obj.get("message") if isinstance(obj.get("message"), dict) else {}
 
+            # Mirror all ILEM-related acks to ilem-debug/<module_id> for debugging.
+            try:
+                if source in ("alpha_comms_manager", "ilem_controller", "ilem_actuator"):
+                    if isinstance(inner, dict) and inner.get("event") == "ilem_cmd_ack":
+                        self.mqtt_client.publish(
+                            f"ilem-debug/{self.module_id}", json.dumps(obj)
+                        )
+            except Exception:
+                pass
+
             # Explicit routing rules:
             # - data_logger:
             #   * sensor_data -> live-sensor-data
@@ -614,6 +624,10 @@ class ModuleHandler:
             # - auto_sampler -> autosampler-status
             if source == "auto_sampler":
                 return f"autosampler-status/{self.module_id}"
+
+            # - ilem_actuator / ilem_controller -> ilem-status
+            if source in ("ilem_actuator", "ilem_controller"):
+                return f"ilem-status/{self.module_id}"
 
             # Also route to file-info if an explicit file_path is present
             if (isinstance(obj, dict) and ("file_path" in obj)) or (isinstance(inner, dict) and ("file_path" in inner)):
