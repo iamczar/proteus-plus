@@ -72,8 +72,11 @@ Description:
 - When a dispense is initiated for a given media/bottle (mapped to a specific valve among `valve11`–`valve14`), the control logic SHALL:
   - Open `valve15` and the selected media valve (e.g. `valve11` for Media 1).
   - Close all other LEM media valves in the range `valve11`–`valve15` (except the selected one).
-  - Ensure `valve1` and `valve4` are explicitly closed for the duration of the dispense.
-  - Treat the remaining valves (outside of 1,4,11–15) as “don’t care” for the purposes of this requirement, provided no other safety requirements are violated.
+  - Ensure `valve1`, `valve3`, `valve4`, and `valve7` are explicitly closed for the duration of the dispense.
+  - Treat the remaining valves (outside of 1,3,4,7,11–15) as “don’t care” for the purposes of this requirement, provided no other safety requirements are violated.
+  - For the purposes of this requirement, “open” and “closed” refer to the effective flow state of the valve, not simply the raw control bit:
+    - For valves 1, 2, 3, 5, and 7 (normally-open valves): a control bit value of `0` SHALL correspond to **open** and a control bit value of `1` SHALL correspond to **closed**.
+    - For valves 4, 6, 8, 9, 10, 11, 12, 13, 14, and 15 (normally-closed valves): a control bit value of `0` SHALL correspond to **closed** and a control bit value of `1` SHALL correspond to **open**.
 
 Acceptance criteria:
 1) Given a valid volume entered in the ILEM page and the Cycler is idle, when the user presses DISPENSE on a specific bottle row, then:
@@ -81,7 +84,7 @@ Acceptance criteria:
    - The effective valve state during the dispense satisfies:
      - `valve15` = open (automatically, due to Pump 1 running backwards).
      - Exactly one of `valve11`–`valve14` = open (the valve corresponding to the selected bottle); the others in that range are closed.
-     - `valve1` = closed and `valve4` = closed.
+     - `valve1` = closed, `valve3` = closed, `valve4` = closed, and `valve7` = closed.
 2) Given an ongoing dispense started from the ILEM UI, when the user presses the global STOP LEM control or the dispense completes normally, then:
    - Pump 1 stops.
    - `valve15` automatically transitions to closed.

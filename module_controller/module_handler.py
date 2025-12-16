@@ -199,6 +199,8 @@ class ModuleHandler:
                     (f"autosampler-command/{self.module_id}", 0),
                     (f"wrist-command/{self.module_id}", 0),
                     (f"pid-commands/{self.module_id}", 0),
+                    # ILEM UI commands (normalized lem_cmd envelopes)
+                    (f"ilem-command/{self.module_id}", 0),
                 ]
                 client.subscribe(topics)
                 # Attach simple per-topic callbacks
@@ -206,6 +208,7 @@ class ModuleHandler:
                 client.message_callback_add(f"autosampler-command/{self.module_id}", self._cb_autosampler_command)
                 client.message_callback_add(f"wrist-command/{self.module_id}", self._cb_wrist_command)
                 client.message_callback_add(f"pid-commands/{self.module_id}", self._cb_pid_commands)
+                client.message_callback_add(f"ilem-command/{self.module_id}", self._cb_ilem_command)
                 self.logger.info(f"{self.module_name}: subscribed to command topics")
             except Exception as e:
                 self.logger.warn(f"{self.module_name}: subscribe failed: {e}")
@@ -330,6 +333,39 @@ class ModuleHandler:
             self.send(self._wrap_alpha_envelope(inner))
         except Exception as e:
             self.logger.warn(f"{self.module_name}: pid command error: {e}")
+
+    def _cb_ilem_command(self, client, userdata, msg):
+        """
+        Handle ILEM UI commands published on ilem-command/<module_id>.
+
+        Expected payload (from UI):
+            {
+              "message_source": "proteus-ui",
+              "timestamp": "...",
+              "message": {
+                  "command": "lem_cmd",
+                  "action": "dispense" | "stop",
+                  ...
+              }
+            }
+
+        We unwrap to the inner message and wrap it in an Alpha envelope so that
+        AlphaCommsManager sees it as coming from "proteus" with command "lem_cmd".
+        """
+        try:
+            payload = self._decode_payload(msg.payload)
+            inner = self._extract_inner_message(payload)
+            if inner is None or not isinstance(inner, dict):
+                self.logger.warn(f"{self.module_name}: invalid ilem payload: {payload}")
+                return
+            cmd = str(inner.get("command", "")).strip()
+            if cmd != "lem_cmd":
+                self.logger.warn(f"{self.module_name}: ilem payload without lem_cmd: {inner}")
+                return
+            # Forward to Alpha over serial
+            self.send(self._wrap_alpha_envelope(inner))
+        except Exception as e:
+            self.logger.warn(f"{self.module_name}: ilem command error: {e}")
 
     
 
