@@ -13,6 +13,89 @@ from common.logger import Logger
 from pathlib import Path
 
 
+# Expected extended LEM sequence schema (FR2)
+_FR2_HEADERS = [
+    "cmd",
+    "circFlow",
+    "pressureFlow",
+    "valve1",
+    "valve2",
+    "valve3",
+    "valve4",
+    "valve5",
+    "valve6",
+    "valve7",
+    "valve8",
+    "valve9",
+    "valve10",
+    "valve11",
+    "valve12",
+    "valve13",
+    "valve14",
+    "valve15",
+    "airpump1",
+    "airpump2",
+    "pressureSP",
+    "oxySP",
+    "pressureKp",
+    "pressureKi",
+    "pressureKd",
+    "oxyKp",
+    "oxyKi",
+    "oxyKd",
+    "pump2Dir",
+    "pump1Dir",
+    "tube_bore",
+    "pump_2_speed_ratio",
+    "ascmds1",
+    "ascmds2",
+    "ascmds3",
+    "wristCmd",
+    "transTimeSec",
+]
+
+_FR2_TYPES = [
+    "int",
+    "int",
+    "int",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "bool",
+    "double",
+    "double",
+    "double",
+    "double",
+    "double",
+    "double",
+    "double",
+    "double",
+    "bool",
+    "bool",
+    "int",
+    "float",
+    "int",
+    "int",
+    "int",
+    "int",
+    "int",
+]
+
+
 class ModuleHandler:
     def __init__(
         self,
@@ -454,6 +537,28 @@ class ModuleHandler:
         except Exception:
             return value
 
+    def _publish_sequence_format_error(self, path: str, reason: str) -> None:
+        """
+        Publish a sequence format error to sequence-commands-status/<module_id>
+        so the UI can surface a clear toast per FR2.
+        """
+        try:
+            topic = f"sequence-commands-status/{self.module_id}"
+            payload = {
+                "message_source": "module_handler",
+                "module_id": self.module_id,
+                "timestamp": self._utc_timestamp(),
+                "message": {
+                    "event": "sequence_format_error",
+                    "file_path": path,
+                    "reason": reason,
+                },
+            }
+            self.mqtt_client.publish(topic, json.dumps(payload))
+        except Exception:
+            # Best-effort; do not crash caller on MQTT issues
+            pass
+
     def _read_sequence_csv(self, path: str) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         try:
@@ -465,9 +570,22 @@ class ModuleHandler:
             headers = [h.strip() for h in all_rows[0]]
             types: Optional[List[str]] = None
             start_idx = 1
-            if len(all_rows) > 1 and any(t in ("int", "bool", "double", "float") for t in all_rows[1]):
-                types = [t.strip() for t in all_rows[1]]
+            # Require FR2 schema (header + type row) for sequence execution
+            if len(all_rows) > 1:
+                candidate_types = [t.strip() for t in all_rows[1]]
+                types = candidate_types
                 start_idx = 2
+
+            # Validate against FR2 header + types exactly; reject anything else.
+            if headers != _FR2_HEADERS or types != _FR2_TYPES:
+                reason = (
+                    "Sequence file format invalid – expected extended LEM schema "
+                    "with valves 1–15, airpump1/2 and LEM-related fields."
+                )
+                self.logger.warn(f"{self.module_name}: sequence CSV schema mismatch for {path}")
+                self._publish_sequence_format_error(path, reason)
+                return []
+
             for r in all_rows[start_idx:]:
                 if not any((cell or "").strip() for cell in r):
                     continue

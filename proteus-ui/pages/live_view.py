@@ -43,6 +43,7 @@ MQTT_TOPIC = "sequence-commands"
 LIVE_TOPIC_PREFIX = "live-sensor-data"
 ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
+SEQCMD_STATUS_PREFIX = "sequence-commands-status"
 MAX_POINTS = 8640  # default; overridden by UI control below
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
@@ -1123,6 +1124,14 @@ def background_collector():
                 subs.add(fi_t)
             except Exception:
                 pass
+        # Subscribe to sequence-commands status topic (schema/format errors, etc.)
+        scs_t = f"{SEQCMD_STATUS_PREFIX}/{m}"
+        if scs_t not in subs:
+            try:
+                MQTTService().subscribe(scs_t)
+                subs.add(scs_t)
+            except Exception:
+                pass
     # Drain each topic and append to per-module buffers
     for m in modules:
         topic = f"{LIVE_TOPIC_PREFIX}/{m}"
@@ -1211,6 +1220,27 @@ def background_collector():
         if "_cmd_toast_flags" not in st.session_state:
             st.session_state._cmd_toast_flags = {}
         cmd_flags = st.session_state._cmd_toast_flags.get(mod, {})
+
+        # Sequence command status (e.g. CSV format errors)
+        scs_topic = f"{SEQCMD_STATUS_PREFIX}/{m}"
+        scs_updates = MQTTService().drain(scs_topic, max_items=100)
+        for _, payload in scs_updates:
+            try:
+                inner = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                if inner.get("event") == "sequence_format_error":
+                    reason = str(inner.get("reason", "Sequence file format invalid."))
+                    file_path = inner.get("file_path")
+                    try:
+                        file_name = Path(file_path).name if file_path else None
+                    except Exception:
+                        file_name = None
+                    if file_name:
+                        msg = f"{reason} File: {file_name}"
+                    else:
+                        msg = reason
+                    show_toast(msg, "error", source="Sequence Format")
+            except Exception:
+                continue
 
         # Alpha status
         a_msgs = MQTTService().drain(f"{ALPHA_STATUS_PREFIX}/{m}", max_items=500)
