@@ -45,6 +45,9 @@ ALPHA_STATUS_PREFIX = "alphacommsmanager-status"
 SEQCTRL_STATUS_PREFIX = "sequence-controller-status"
 SEQCMD_STATUS_PREFIX = "sequence-commands-status"
 MAX_POINTS = 8640  # default; overridden by UI control below
+# When buffers hit MAX_POINTS, trim this many oldest samples and redraw once,
+# then return to incremental add_rows updates until MAX_POINTS is reached again.
+TRIM_POINTS = 1000
 DATA_LOGGING_PREFIX = "data-logging"
 FILE_INFO_PREFIX = "file-info"
 
@@ -1032,50 +1035,66 @@ def update_loop():
                 pass
         st.session_state._live_painted[mod] = painted
 
-        # Compaction trigger to enforce visual window and shift cleanly
+        # Compaction trigger to enforce visual window and shift cleanly.
+        # When buffers hit MAX_POINTS, drop the oldest TRIM_POINTS samples,
+        # redraw once with the trimmed window, then continue using add_rows
+        # until MAX_POINTS is reached again.
         at_capacity = False
         try:
             at_capacity = len(buffers[0]) >= MAX_POINTS if buffers and buffers[0] is not None else False
         except Exception:
             at_capacity = False
-        append_ctr = int((st.session_state.get("_live_x_counters") or {}).get(mod, 0))
-        last_compact_key = ("_live_last_compact_counter", mod)
-        last_compact = int(st.session_state.get(last_compact_key) or -1)
-        # Compact every MAX_POINTS appends, or if painted is at end while at capacity (rotation)
-        need_compact_interval = (append_ctr // max(1, MAX_POINTS)) != (last_compact // max(1, MAX_POINTS))
-        painted_at_end = all(painted[i] >= len(buffers[i]) for i in range(len(buffers)))
-        if at_capacity and (need_compact_interval or painted_at_end):
-            full_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
-            for s_idx, buf in enumerate(buffers):
-                if not buf:
-                    continue
-                try:
-                    df_full = pd.DataFrame({
-                        "x": [pt[0] for pt in buf],
-                        "y": [pt[1] for pt in buf],
-                        "series": [_series_labels[s_idx] for _ in range(len(buf))],
-                    })
-                    target_chart = _series_to_chart_idx.get(s_idx, 0)
-                    full_frames[target_chart].append(df_full)
-                except Exception:
-                    pass
-            for chart_i, frames in enumerate(full_frames):
-                try:
-                    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
-                    ch = (
-                        alt.Chart(combined)
-                        .mark_line()
-                        .encode(
-                            x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
-                            y=alt.Y("y:Q", title=None),
-                            color=alt.Color("series:N", legend=alt.Legend(title=None))
+        if at_capacity:
+            try:
+                target_len = max(0, MAX_POINTS - TRIM_POINTS)
+                # Trim oldest points down to target_len for each series buffer
+                for buf in buffers:
+                    try:
+                        while len(buf) > target_len:
+                            buf.popleft()
+                    except Exception:
+                        continue
+
+                # Full redraw from trimmed buffers
+                full_frames = [ [] for _ in range(len(CHART_GROUPS)) ]
+                for s_idx, buf in enumerate(buffers):
+                    if not buf:
+                        continue
+                    try:
+                        df_full = pd.DataFrame({
+                            "x": [pt[0] for pt in buf],
+                            "y": [pt[1] for pt in buf],
+                            "series": [_series_labels[s_idx] for _ in range(len(buf))],
+                        })
+                        target_chart = _series_to_chart_idx.get(s_idx, 0)
+                        full_frames[target_chart].append(df_full)
+                    except Exception:
+                        pass
+                for chart_i, frames in enumerate(full_frames):
+                    try:
+                        combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame({"x": [], "y": [], "series": []})
+                        ch = (
+                            alt.Chart(combined)
+                            .mark_line()
+                            .encode(
+                                x=alt.X("x:T", title=None, axis=alt.Axis(format="%H:%M:%S", tickCount=5, labelOverlap=False)),
+                                y=alt.Y("y:Q", title=None),
+                                color=alt.Color("series:N", legend=alt.Legend(title=None))
+                            )
+                            .properties(height=220)
                         )
-                        .properties(height=220)
-                    )
-                    charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(ch, use_container_width=True)
+                        charts[chart_i]["chart"] = charts[chart_i]["ph"].altair_chart(ch, use_container_width=True)
+                    except Exception:
+                        pass
+
+                # After trim+redraw, reset painted counters to match current buffer sizes
+                try:
+                    painted = [len(buf) for buf in buffers]
+                    st.session_state._live_painted[mod] = painted
                 except Exception:
                     pass
-            st.session_state[last_compact_key] = append_ctr
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1140,7 +1159,9 @@ def background_collector():
         if "_live_buffers" not in st.session_state:
             st.session_state._live_buffers = {}
         if mod not in st.session_state._live_buffers:
-            st.session_state._live_buffers[mod] = [deque(maxlen=MAX_POINTS) for _ in range(len(METRICS))]
+            # Use manual trimming instead of deque(maxlen=MAX_POINTS) so we can
+            # compact windows in chunks and control when redraws occur.
+            st.session_state._live_buffers[mod] = [deque() for _ in range(len(METRICS))]
         if "_live_x_counters" not in st.session_state:
             st.session_state._live_x_counters = {}
         x_counter = st.session_state._live_x_counters.get(mod, 0)
