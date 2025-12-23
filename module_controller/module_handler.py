@@ -55,44 +55,46 @@ _FR2_HEADERS = [
 ]
 
 _FR2_TYPES = [
-    "int",
-    "int",
-    "int",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "bool",
-    "double",
-    "double",
-    "double",
-    "double",
-    "double",
-    "double",
-    "double",
-    "double",
-    "bool",
-    "bool",
-    "int",
-    "float",
-    "int",
-    "int",
-    "int",
-    "int",
-    "int",
+    "int",    # cmd
+    "int",    # circFlow
+    "int",    # pressureFlow
+    # valve1–valve15, airpump1, airpump2 (17 bools)
+    "bool",   # valve1
+    "bool",   # valve2
+    "bool",   # valve3
+    "bool",   # valve4
+    "bool",   # valve5
+    "bool",   # valve6
+    "bool",   # valve7
+    "bool",   # valve8
+    "bool",   # valve9
+    "bool",   # valve10
+    "bool",   # valve11
+    "bool",   # valve12
+    "bool",   # valve13
+    "bool",   # valve14
+    "bool",   # valve15
+    "bool",   # airpump1
+    "bool",   # airpump2
+    # pressure/oxy SP + gains
+    "double",  # pressureSP
+    "double",  # oxySP
+    "double",  # pressureKp
+    "double",  # pressureKi
+    "double",  # pressureKd
+    "double",  # oxyKp
+    "double",  # oxyKi
+    "double",  # oxyKd
+    # pump directions and misc
+    "bool",   # pump2Dir
+    "bool",   # pump1Dir
+    "int",    # tube_bore
+    "float",  # pump_2_speed_ratio
+    "int",    # ascmds1
+    "int",    # ascmds2
+    "int",    # ascmds3
+    "int",    # wristCmd
+    "int",    # transTimeSec
 ]
 
 
